@@ -1,0 +1,46 @@
+echo "비밀키 검사 중..."
+npx secretlint $(git diff --cached --name-only --diff-filter=ACM) || {
+  echo "비밀키가 감지되었습니다! 커밋 차단."
+  echo ".env.local에 넣고 process.env.변수명으로 사용하세요."
+  exit 1
+}
+
+echo "코드 정리 중..."
+npx lint-staged || {
+  echo "린트/포맷 에러가 있습니다! 커밋 차단."
+  echo "위 에러를 AI에게 복사해서 이 에러 고쳐줘라고 요청하세요."
+  exit 1
+}
+
+echo "규칙 동기화 확인 중..."
+if git diff --cached --name-only | grep -q "PROJECT_RULES.md"; then
+  if ! diff -q PROJECT_RULES.md .cursorrules > /dev/null 2>&1; then
+    echo "PROJECT_RULES.md가 변경됐지만 .cursorrules와 동기화되지 않았습니다."
+    echo "scripts/sync-rules.sh를 실행하세요."
+    exit 1
+  fi
+fi
+
+echo "패키지 검사 중..."
+if git diff --cached --name-only | grep -q "package.json"; then
+  DIFF=$(git diff --cached -- package.json | grep -E "^\+")
+  
+  BANNED="prisma|@prisma|drizzle-orm|typeorm|@mui|@material-ui|antd|@ant-design|@chakra-ui|@mantine|@reduxjs|redux|axios"
+  if echo "$DIFF" | grep -qiE "$BANNED"; then
+    echo ""
+    echo "절대 금지된 라이브러리가 추가되었습니다! 커밋 차단."
+    echo "대체 수단: ORM→supabase-js, UI→shadcn/ui, HTTP→fetch, 상태→useState"
+    exit 1
+  fi
+  
+  NEEDS_APPROVAL="@tanstack/react-query|swr|zustand|jotai"
+  if echo "$DIFF" | grep -qiE "$NEEDS_APPROVAL"; then
+    echo ""
+    echo "PM 승인이 필요한 라이브러리가 추가되었습니다!"
+    echo "PM에게 사유를 공유하고 승인을 받은 후,"
+    echo "PROJECT_RULES.md의 금지 목록을 수정한 뒤 다시 커밋하세요."
+    exit 1
+  fi
+fi
+
+echo "커밋 검사 통과!"

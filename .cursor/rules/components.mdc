@@ -1,0 +1,12 @@
+---
+globs: ["src/components/**/*.tsx", "src/components/**/*.ts"]
+description: "React 컴포넌트 작성 시 적용되는 규칙"
+---
+
+- 코드 작성 전 어떤 파일을 생성/수정할지 먼저 나열하세요
+- shared/ 컴포넌트(DataTable, StatCard, ChartContainer, LoadingSpinner, EmptyState) 중
+  재사용 가능한 것이 있는지 먼저 확인하세요
+- 데이터는 같은 폴더의 _hooks/에서 가져오세요
+- 다른 팀원 폴더의 파일은 절대 수정하지 마세요
+- UI 컴포넌트는 반드시 src/components/ui/에서 import
+- 한국어 주석을 사용하세요

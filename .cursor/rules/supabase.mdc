@@ -1,0 +1,12 @@
+---
+globs: ["src/**/*supabase*", "src/**/_hooks/**"]
+description: "Supabase 데이터 작업 시 적용되는 규칙"
+---
+
+- import { createBrowserClient } from '@/lib/supabase/client'
+- 타입은 @/lib/supabase/types에서 import
+- insert/update 후 반드시 const { data, error } 구조분해
+- .single() 대신 .maybeSingle() 사용
+- select('*')는 1000행 제한 → .range() 사용
+- 환경변수를 코드에 직접 넣지 마세요
+- RLS 활성화 상태: anon key 조회 시 빈 배열 반환은 정상

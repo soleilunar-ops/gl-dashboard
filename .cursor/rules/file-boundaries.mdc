@@ -1,0 +1,40 @@
+---
+alwaysApply: true
+description: "팀원별 파일 영역 규칙 — 모든 파일에 적용"
+---
+
+## PM 전용 — 팀원 수정 금지
+- CLAUDE.md, PROJECT_RULES.md, .cursorrules, GEMINI.md
+- supabase/, data/, src/lib/, src/types/
+- src/components/ui/, src/components/layout/ (본체)
+- src/app/layout.tsx, src/app/page.tsx, src/app/auth/, src/app/api/
+- services/api/ (main.py, rag/, triggers.py, keywords.py, utils/)
+- .claude/, .cursor/, .github/, .husky/, scripts/, docs/
+
+## 팀원 전용 — 해당 팀원만 수정
+
+### 슬아
+- src/components/orders/, src/components/analytics/promotion/
+- src/app/orders/, src/components/layout/nav-orders.ts
+
+### 정민
+- src/components/analytics/forecast/
+- services/api/routers/forecast.py, services/api/models/
+- src/app/analytics/forecast/, src/components/layout/nav-forecast.ts
+
+### 나경
+- src/components/analytics/reviews/, src/components/analytics/cost/
+- src/app/analytics/reviews/, src/app/analytics/cost/
+- src/components/layout/nav-reviews.ts
+
+### 진희
+- src/components/logistics/
+- src/app/logistics/, src/components/layout/nav-logistics.ts
+
+## 공용 — 수정 시 PR 필수
+- src/components/shared/ → 사용(import)은 자유, 소스 수정 시 PM에게 요청
+
+## 경계 이탈 시
+- 다른 팀원의 components 폴더 파일 수정 → 금지
+- 다른 팀원의 컴포넌트를 import해서 사용 → 허용
+- PM 영역 수정 필요 시 → PM에게 직접 요청
