@@ -1,28 +1,45 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+// 이 파일은 패턴 참조용 스켈레톤입니다. 기능 구현 시 select 컬럼, 필터, 정렬을 자유롭게 수정하세요.
 
-// 재고 관리: v_inventory_dashboard 뷰 또는 inventory 테이블
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import type { Tables } from "@/lib/supabase/types";
+
+// 재고 관리: inventory + products JOIN
+type Inventory = Tables<"inventory">;
+type Product = Tables<"products">;
+type InventoryRow = Inventory & {
+  products: Pick<Product, "name" | "erp_code" | "category"> | null;
+};
+
 export function useInventory() {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<InventoryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const [error, setError] = useState<string | null>(null);
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     const fetchData = async () => {
-      // v_inventory_dashboard 뷰가 있으면 사용, 없으면 inventory 직접 조회
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("inventory")
-        .select("*, products(name, sku, category)")
-        .order("updated_at", { ascending: false });
+        .select("*, products(name, erp_code, category)")
+        .order("updated_at", { ascending: false })
+        .limit(200);
 
-      if (data) setData(data);
+      if (error) {
+        console.error("재고 데이터 조회 실패:", error.message);
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      setData((data as unknown as InventoryRow[]) ?? []);
       setLoading(false);
     };
 
     fetchData();
-  }, []);
+  }, [supabase]);
 
-  return { data, loading };
+  return { data, loading, error };
 }
