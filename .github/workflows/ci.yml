@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [submain, main]
+
+jobs:
+  lint-and-build:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: TypeScript 타입 체크
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npx eslint src/ --ext .ts,.tsx --max-warnings 0
+
+      - name: Build
+        run: npm run build
+
+      - name: 비밀키 검사
+        run: npx secretlint "src/**/*"
+
+  boundary-check:
+    name: 파일 경계 검사
+    runs-on: ubuntu-latest
+    if: github.base_ref == 'submain'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 팀원 파일 경계 검사
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          echo "브랜치: $BRANCH"
+
+          # PM 브랜치는 검사 생략
+          if echo "$BRANCH" | grep -qE "^team/지호$"; then
+            echo "✅ PM 브랜치 — 경계 검사 생략"
+            exit 0
+          fi
+
+          # 브랜치명에서 팀원 식별 (team/이름 형식)
+          MEMBER=""
+          if echo "$BRANCH" | grep -qE "^team/슬아$"; then
+            MEMBER="슬아"
+          elif echo "$BRANCH" | grep -qE "^team/정민$"; then
+            MEMBER="정민"
+          elif echo "$BRANCH" | grep -qE "^team/나경$"; then
+            MEMBER="나경"
+          elif echo "$BRANCH" | grep -qE "^team/진희$"; then
+            MEMBER="진희"
+          else
+            echo "⚠️ 팀원을 식별할 수 없는 브랜치입니다: $BRANCH"
+            echo "브랜치명은 team/이름 형식이어야 합니다. (예: team/슬아)"
+            exit 1
+          fi
+
+          echo "팀원: $MEMBER"
+
+          # 팀원별 허용 경로 설정
+          case "$MEMBER" in
+            "슬아")
+              ALLOWED="src/components/orders/|src/components/analytics/promotion/|src/app/(dashboard)/orders/|src/components/layout/nav-orders.ts"
+              ;;
+            "정민")
+              ALLOWED="src/components/analytics/forecast/|services/api/|src/app/(dashboard)/analytics/forecast/|src/components/layout/nav-forecast.ts"
+              ;;
+            "나경")
+              ALLOWED="src/components/analytics/reviews/|src/components/analytics/cost/|src/app/(dashboard)/analytics/reviews/|src/app/(dashboard)/analytics/cost/|src/components/layout/nav-reviews.ts"
+              ;;
+            "진희")
+              ALLOWED="src/components/logistics/|src/app/(dashboard)/logistics/|src/components/layout/nav-logistics.ts"
+              ;;
+          esac
+
+          # PM 전용 영역 패턴
+          PM_ONLY="src/lib/|src/types/|src/components/ui/|src/components/layout/Sidebar|src/components/layout/Header|src/components/layout/PageWrapper|src/components/layout/navigation.config|src/app/(dashboard)/layout|src/app/(dashboard)/page|src/app/auth/|src/middleware|supabase/|\.claude/|\.cursor/|CLAUDE\.md|PROJECT_RULES|\.cursorrules|GEMINI\.md|scripts/|docs/"
+
+          # 변경된 파일 목록
+          CHANGED=$(git diff --name-only origin/submain...HEAD)
+
+          VIOLATIONS=""
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+
+            # 공용 허용 파일
+            if echo "$file" | grep -qE "(src/components/shared/|package\.json|\.gitkeep)"; then
+              continue
+            fi
+
+            # 허용 경로인지 확인
+            if echo "$file" | grep -qE "$ALLOWED"; then
+              continue
+            fi
+
+            # PM 전용 영역 침범 확인
+            if echo "$file" | grep -qE "$PM_ONLY"; then
+              VIOLATIONS="$VIOLATIONS\n  ❌ $file (PM 전용 영역)"
+            fi
+          done <<< "$CHANGED"
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo ""
+            echo "🚫 파일 경계 위반이 발견되었습니다!"
+            echo "팀원: $MEMBER"
+            echo ""
+            echo -e "위반 파일:$VIOLATIONS"
+            echo ""
+            echo "💡 본인 담당 영역 외의 파일은 수정할 수 없습니다."
+            echo "   PM 영역 수정이 필요하면 PM에게 요청하세요."
+            exit 1
+          fi
+
+          echo "✅ 파일 경계 검사 통과! ($MEMBER)"
