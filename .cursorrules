@@ -91,11 +91,11 @@ type: feat, fix, chore, docs, style, refactor
 
 main ← submain에서만 PR (배포용)
 submain ← 팀원 브랜치에서 PR (통합 테스트)
-feat/orders-슬아
-feat/forecast-정민
-feat/cost-나경
-feat/logistics-진희
-data/pm-지호
+team/슬아
+team/정민
+team/나경
+team/진희
+team/지호
 PR 병합: 하루 2회 (오전 11시, 오후 5시)
 
 ## 9. 작업 로그 규칙

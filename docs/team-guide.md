@@ -10,13 +10,13 @@
 
 ## 내 브랜치에서 코딩
 
-1. git checkout feat/orders-슬아 (본인 브랜치)
+1. git checkout team/슬아 (본인 브랜치)
 2. git pull origin submain (매일 아침)
 3. AI에게 코딩 요청
 4. 브라우저에서 기능 확인
 5. git add .
 6. git commit -m "[슬아] feat: 주문 목록 추가"
-7. git push origin feat/orders-슬아
+7. git push origin team/슬아
 8. GitHub에서 submain으로 PR 생성
 9. PM이 오전 11시/오후 5시에 리뷰
 
