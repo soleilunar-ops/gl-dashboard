@@ -6,38 +6,46 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
-// 수요 예측: coupang_performance 데이터 + FastAPI 예측 결과
+// 프로모션 분석: coupang_performance에서 프로모션 관련 컬럼
 type CoupangPerformance = Tables<"coupang_performance">;
+type PromoRow = Pick<
+  CoupangPerformance,
+  | "coupang_sku_id"
+  | "sku_name"
+  | "date"
+  | "gmv"
+  | "promo_gmv"
+  | "promo_units"
+  | "coupon_discount"
+  | "instant_discount"
+  | "units_sold"
+>;
 
-export function useForecast() {
-  const [data, setData] = useState<CoupangPerformance[]>([]);
+export function usePromotion() {
+  const [data, setData] = useState<PromoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     const fetchData = async () => {
-      // 쿠팡 성과 데이터 조회 (분석용 100건)
       const { data, error } = await supabase
         .from("coupang_performance")
-        .select("*")
+        .select(
+          "coupang_sku_id, sku_name, date, gmv, promo_gmv, promo_units, coupon_discount, instant_discount, units_sold"
+        )
         .order("date", { ascending: false })
         .limit(100);
 
       if (error) {
-        console.error("쿠팡 성과 데이터 조회 실패:", error.message);
+        console.error("프로모션 데이터 조회 실패:", error.message);
         setError(error.message);
         setLoading(false);
         return;
       }
 
-      setData(data ?? []);
+      setData((data as PromoRow[]) ?? []);
       setLoading(false);
-
-      // TODO: FastAPI 예측 호출
-      // import { FASTAPI_URL } from "@/lib/constants";
-      // const res = await fetch(`${FASTAPI_URL}/forecast`);
-      // const forecast = await res.json();
     };
 
     fetchData();
