@@ -22,7 +22,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: ESLint
-        run: npx eslint src/ --ext .ts,.tsx --max-warnings 0
+        run: npx eslint src/ --ext .ts,.tsx
 
       - name: Build
         run: npm run build

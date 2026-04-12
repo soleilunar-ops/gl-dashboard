@@ -11,7 +11,7 @@ export function useOrders() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("stock_movements")
         .select("*, products(name, sku)")
         .eq("movement_type", "출고")

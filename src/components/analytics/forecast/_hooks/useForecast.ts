@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { FASTAPI_URL } from "@/lib/constants";
+// import { FASTAPI_URL } from "@/lib/constants";
 
 // 수요 예측: coupang_performance + FastAPI 예측 결과
 export function useForecast() {

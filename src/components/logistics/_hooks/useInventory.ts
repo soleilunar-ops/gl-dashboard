@@ -12,7 +12,7 @@ export function useInventory() {
   useEffect(() => {
     const fetchData = async () => {
       // v_inventory_dashboard 뷰가 있으면 사용, 없으면 inventory 직접 조회
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("inventory")
         .select("*, products(name, sku, category)")
         .order("updated_at", { ascending: false });
