@@ -22,9 +22,9 @@
 
 ## 내 담당 폴더
 
-- 슬아: src/components/orders/, src/app/orders/
+- 슬아: src/components/orders/, src/components/analytics/cost/, src/app/orders/, src/app/analytics/cost/
 - 정민: src/components/analytics/forecast/, services/api/
-- 나경: src/components/analytics/reviews/, cost/
+- 나경: src/components/analytics/reviews/, src/components/analytics/promotion/, src/app/analytics/reviews/, src/app/analytics/promotion/
 - 진희: src/components/logistics/, src/app/logistics/
 
 ## pre-commit 에러 시
