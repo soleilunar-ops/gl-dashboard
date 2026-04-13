@@ -74,13 +74,13 @@ jobs:
           # 팀원별 허용 경로 설정
           case "$MEMBER" in
             "슬아")
-              ALLOWED="src/components/orders/|src/components/analytics/promotion/|src/app/(dashboard)/orders/|src/components/layout/nav-orders.ts"
+              ALLOWED="src/components/orders/|src/components/analytics/cost/|src/app/(dashboard)/orders/|src/app/(dashboard)/analytics/cost/|src/components/layout/nav-orders.ts"
               ;;
             "정민")
               ALLOWED="src/components/analytics/forecast/|services/api/|src/app/(dashboard)/analytics/forecast/|src/components/layout/nav-forecast.ts"
               ;;
             "나경")
-              ALLOWED="src/components/analytics/reviews/|src/components/analytics/cost/|src/app/(dashboard)/analytics/reviews/|src/app/(dashboard)/analytics/cost/|src/components/layout/nav-reviews.ts"
+              ALLOWED="src/components/analytics/reviews/|src/components/analytics/promotion/|src/app/(dashboard)/analytics/reviews/|src/app/(dashboard)/analytics/promotion/|src/components/layout/nav-reviews.ts"
               ;;
             "진희")
               ALLOWED="src/components/logistics/|src/app/(dashboard)/logistics/|src/components/layout/nav-logistics.ts"

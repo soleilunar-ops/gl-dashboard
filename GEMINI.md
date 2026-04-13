@@ -36,12 +36,12 @@ src/app/page.tsx, src/app/auth/, .claude/, .cursor/, .github/, scripts/, docs/
 
 ### 팀원 영역
 
-- 슬아: src/components/orders/, src/components/analytics/promotion/,
-  src/app/orders/, src/components/layout/nav-orders.ts
+- 슬아: src/components/orders/, src/components/analytics/cost/,
+  src/app/orders/, src/app/analytics/cost/, src/components/layout/nav-orders.ts
 - 정민: src/components/analytics/forecast/, services/api/routers/forecast.py,
   services/api/models/, src/app/analytics/forecast/, src/components/layout/nav-forecast.ts
-- 나경: src/components/analytics/reviews/, src/components/analytics/cost/,
-  src/app/analytics/reviews/, src/app/analytics/cost/, src/components/layout/nav-reviews.ts
+- 나경: src/components/analytics/reviews/, src/components/analytics/promotion/,
+  src/app/analytics/reviews/, src/app/analytics/promotion/, src/components/layout/nav-reviews.ts
 - 진희: src/components/logistics/, src/app/logistics/,
   src/components/layout/nav-logistics.ts
 
