@@ -20,8 +20,9 @@
 ### 슬아
 
 - src/components/orders/ (컴포넌트 추가/수정)
-- src/components/analytics/promotion/ (컴포넌트 추가/수정)
-- src/app/orders/ (page.tsx — 컴포넌트 import해서 배치만)
+- src/components/analytics/cost/ (컴포넌트 추가/수정)
+- src/app/(dashboard)/orders/ (page.tsx — 컴포넌트 import해서 배치만)
+- src/app/(dashboard)/analytics/cost/ (page.tsx — 배치만)
 - src/components/layout/nav-orders.ts (네비게이션 메뉴)
 
 ### 정민
@@ -35,9 +36,9 @@
 ### 나경
 
 - src/components/analytics/reviews/ (컴포넌트 추가/수정)
-- src/components/analytics/cost/ (컴포넌트 추가/수정)
-- src/app/analytics/reviews/ (page.tsx — 배치만)
-- src/app/analytics/cost/ (page.tsx — 배치만)
+- src/components/analytics/promotion/ (컴포넌트 추가/수정)
+- src/app/(dashboard)/analytics/reviews/ (page.tsx — 배치만)
+- src/app/(dashboard)/analytics/promotion/ (page.tsx — 배치만)
 - src/components/layout/nav-reviews.ts (네비게이션 메뉴)
 
 ### 진희
