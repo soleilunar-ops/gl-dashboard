@@ -172,6 +172,59 @@
   **주의사항:**
 - submain을 `team/나경`에 먼저 merge한 후 작업 (슬아님 코드 + PM 로그 충돌 방지)
 
+### [2026-04-15] [PM 코드 리뷰 — 진희님]
+
+**요청:** 진희님 PR(`team/진희`) 코드 품질 및 파일 경계 규칙 준수 여부 리뷰
+**대상 커밋:** `5350547 [진희] feat: 물류 재고관리 구현` (35파일, +3,444줄)
+**결과: submain 머지 불가 — 재구현 요청 필요**
+
+**파일 경계 판정:**
+
+- PM 영역 침범: `package.json`에 패키지 4개 무단 추가
+- 다른 팀원 영역 침범: 없음
+- `src/components/logistics/` 내부에 `app/api/`(11개), `lib/`(5개), `store/`(1개) 미러 구조 생성
+
+**기술 스택 위반 (Critical):**
+
+- Supabase 대신 `better-sqlite3`로 로컬 SQLite DB 구축 — 프로젝트 기술 스택 정면 충돌
+- `zustand` PM 승인 없이 추가 (CLAUDE.md, .cursorrules 모두 "PM 승인 필요"로 명시)
+- `@tanstack/react-table`, `xlsx` 패키지 무단 추가
+- `src/components/ui/` import 0건 — shadcn/ui 전혀 미사용, 네이티브 HTML + Tailwind로 전면 구현
+
+**구조적 문제 (Critical):**
+
+- `src/components/logistics/app/api/*` 11개 API 라우트 → Next.js App Router가 인식하지 않음 (`src/app/api/`에 있어야 동작)
+- `page.tsx`에서 `fetch("/api/items")` 등 호출 → 실제 라우트 없어서 **404 발생, 화면 데이터 로드 불가**
+- PM이 만들어둔 Supabase 스켈레톤 훅(`useInventory.ts`, `useStockMovements.ts`) 미사용
+- `src/components/logistics/lib/db.ts`에서 SQLite 테이블 5개 자체 생성 (items, inventory_snapshots, transactions, scheduled_transactions, erp_sync_log)
+
+**발생 원인 분석:**
+
+- 진희님은 파일 경계 규칙을 인식하고 있었음 (로그에 "PM 영역 연동 필요" 명시)
+- PM 전용 영역에 직접 파일을 만들지 않기 위해 `components/logistics/` 안에 미러 구조를 생성
+- AI(Cursor)가 독립적인 풀스택 앱을 통째로 생성한 것으로 추정 — 기존 Supabase 패턴/스켈레톤을 무시하고 자체 DB+API 구조를 만듦
+- `.cursorrules`에 규칙이 명확히 있으나 AI가 대규모 생성 시 따르지 않은 것
+
+**양호한 항목:**
+
+- `src/app/(dashboard)/logistics/page.tsx` 배치만 규칙: 5줄, import+배치만 (슬아/나경보다 잘 지킴)
+- 컴포넌트 분리: 8개 컴포넌트로 잘 분리
+- 작업 로그: 7건 상세 작성
+- 다른 팀원 영역 침범: 없음
+- 기능 완성도 자체: CRUD, ERP 연동, 엑셀 임포트/익스포트, 원장, 예정 관리 — 매우 높음
+
+**PM 결정:**
+
+- `team/진희` 브랜치는 submain에 머지하지 않음
+- 진희님에게 아래 기준으로 재구현 요청:
+  1. SQLite(`better-sqlite3`) 제거 → Supabase 직접 호출로 전환
+  2. 기존 스켈레톤 훅(`_hooks/useInventory.ts`, `_hooks/useStockMovements.ts`) 기반으로 데이터 조회
+  3. API 라우트가 필요하면 PM에게 `src/app/api/` 생성 요청
+  4. `zustand` 제거 → `useState`/`useContext`로 전환 (또는 PM 승인 절차 진행)
+  5. 네이티브 HTML → `src/components/ui/` shadcn/ui 컴포넌트 사용
+  6. `package.json` 변경 금지 — 패키지 추가 필요 시 PM에게 요청
+- 현재 코드의 컴포넌트 구조(8개)와 기능 설계는 참고 가능, DB/API 레이어만 교체
+
 **잔류 — 이번에 수정하지 않는 항목:**
 
 - `src/lib/margin/`, `src/app/api/exchange-rate/` PM 영역 파일 위치: orders와 cost 양쪽에서 공유하는 엔진이므로 `src/lib/`에 두는 것이 합리적. PM이 직접 생성한 것으로 간주하고 승인
