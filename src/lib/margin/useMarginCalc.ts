@@ -1,8 +1,3 @@
-"use client";
-
-import { useMemo } from "react";
-
-// 변경 이유: Claude 우선 요구에 맞춰 ORDERS 공통 마진 엔진을 채널/센터 데이터 포함 구조로 확장했습니다.
 export const CENTER_RATES: Record<string, { basic: number; over: number }> = {
   "이천1(36)": { basic: 44700, over: 59700 },
   "이천2(05)": { basic: 44700, over: 59700 },
@@ -24,81 +19,6 @@ export const CENTER_RATES: Record<string, { basic: number; over: number }> = {
   "고양1(27)": { basic: 31200, over: 46200 },
   "평택1(24)": { basic: 35000, over: 50000 },
   "마장1(12)": { basic: 44700, over: 59700 },
-};
-
-export const PACKAGING_DATA: Record<
-  string,
-  {
-    innerUnit: number;
-    cartonQty: number;
-    palletQty: number;
-    pcsPerPallet: number;
-    palletLayout: string;
-  }
-> = {
-  붙이는하루온팩_10: {
-    innerUnit: 10,
-    cartonQty: 24,
-    palletQty: 60,
-    pcsPerPallet: 14400,
-    palletLayout: "12 x 5단",
-  },
-  붙이는하루온팩_20: {
-    innerUnit: 20,
-    cartonQty: 12,
-    palletQty: 60,
-    pcsPerPallet: 14400,
-    palletLayout: "12 x 5단",
-  },
-  붙이는하루온팩_40: {
-    innerUnit: 40,
-    cartonQty: 6,
-    palletQty: 60,
-    pcsPerPallet: 14400,
-    palletLayout: "12 x 5단",
-  },
-  붙이는하루온팩_50: {
-    innerUnit: 50,
-    cartonQty: 5,
-    palletQty: 48,
-    pcsPerPallet: 12000,
-    palletLayout: "12 x 4단",
-  },
-  박상병150g_10: {
-    innerUnit: 10,
-    cartonQty: 16,
-    palletQty: 24,
-    pcsPerPallet: 3840,
-    palletLayout: "6 x 4단",
-  },
-  손난로80g_10: {
-    innerUnit: 10,
-    cartonQty: 24,
-    palletQty: 48,
-    pcsPerPallet: 11520,
-    palletLayout: "12 x 4단",
-  },
-  손난로80g_20: {
-    innerUnit: 20,
-    cartonQty: 10,
-    palletQty: 48,
-    pcsPerPallet: 9600,
-    palletLayout: "12 x 4단",
-  },
-  대용량150g_10: {
-    innerUnit: 10,
-    cartonQty: 10,
-    palletQty: 40,
-    pcsPerPallet: 4000,
-    palletLayout: "8 x 5단",
-  },
-  하루온미니_30: {
-    innerUnit: 30,
-    cartonQty: 16,
-    palletQty: 40,
-    pcsPerPallet: 19200,
-    palletLayout: "8 x 5단",
-  },
 };
 
 export const CHANNEL_RATES = {
@@ -139,29 +59,6 @@ export interface MarginCalcResult {
   profitPerUnit: number;
 }
 
-export interface MarginInput {
-  exPi: number;
-  exCurrent: number;
-  shipmentQty: number;
-  totalQty: number;
-  unitCostCny: number;
-  palletReworkCost: number;
-  milkRunUnitCost: number;
-  palletLoadQty: number;
-}
-
-export interface MarginResult {
-  exFinal: number;
-  totalUnitCost: number;
-  logisticsUnitCost: number;
-}
-
-export interface PriceRecommendation {
-  targetMarginRate: number;
-  netPrice: number;
-  vatIncludedPrice: number;
-}
-
 export interface ProfitResult {
   settlementPerUnit: number;
   profitPerUnit: number;
@@ -169,20 +66,7 @@ export interface ProfitResult {
   totalProfit: number;
 }
 
-const SAFE_MIN_DENOMINATOR = 0.0001;
-
 export const roundCurrency = (value: number) => Math.round(value);
-export const roundRate = (value: number) => Number(value.toFixed(4));
-
-export function calcFinalExchangeRate(
-  exPi: number,
-  exCurrent: number,
-  shipmentQty: number,
-  totalQty: number
-) {
-  const safeTotalQty = totalQty > 0 ? totalQty : 1;
-  return exPi * 0.3 + exCurrent * 0.7 * (shipmentQty / safeTotalQty);
-}
 
 export function calcMargin(input: MarginCalcInput): MarginCalcResult {
   const shipRatio = input.qTotal > 0 ? input.qShip / input.qTotal : 1;
@@ -218,44 +102,14 @@ export function calcMargin(input: MarginCalcInput): MarginCalcResult {
   };
 }
 
-export function calcTotalUnitCost(input: MarginInput): MarginResult {
-  const exFinal = calcFinalExchangeRate(
-    input.exPi,
-    input.exCurrent,
-    input.shipmentQty,
-    input.totalQty
-  );
-  const safePalletLoadQty = input.palletLoadQty > 0 ? input.palletLoadQty : 1;
-  const logisticsUnitCost = (input.palletReworkCost + input.milkRunUnitCost) / safePalletLoadQty;
-  const totalUnitCost = input.unitCostCny * exFinal + logisticsUnitCost;
-  return {
-    exFinal,
-    logisticsUnitCost,
-    totalUnitCost,
-  };
-}
-
-export function calcRecommendedPrice(
-  totalUnitCost: number,
-  targetMarginRate: number
-): PriceRecommendation {
-  const denominator = Math.max(0.56 - targetMarginRate, SAFE_MIN_DENOMINATOR);
-  const netPrice = totalUnitCost / denominator;
-  const vatIncludedPrice = netPrice * 1.1;
-  return {
-    targetMarginRate,
-    netPrice,
-    vatIncludedPrice,
-  };
-}
-
 export function calcProfitWithVatPrice(
   totalUnitCost: number,
   vatIncludedPrice: number,
-  qty: number
+  qty: number,
+  settlementRatio: number
 ): ProfitResult {
   const netPrice = vatIncludedPrice / 1.1;
-  const settlementPerUnit = netPrice * 0.56;
+  const settlementPerUnit = netPrice * settlementRatio;
   const profitPerUnit = settlementPerUnit - totalUnitCost;
   const marginRate = settlementPerUnit > 0 ? profitPerUnit / settlementPerUnit : 0;
   return {
@@ -271,35 +125,4 @@ export function calcPricePer10g(vatIncludedPrice: number, weightGram: number) {
     return 0;
   }
   return vatIncludedPrice / (weightGram / 10);
-}
-
-export function useMarginCalc(input: MarginInput) {
-  const cost = useMemo(() => calcTotalUnitCost(input), [input]);
-
-  return {
-    cost,
-    recommendPrice: (targetMarginRate: number) =>
-      calcRecommendedPrice(cost.totalUnitCost, targetMarginRate),
-    calcProfit: (vatIncludedPrice: number, qty: number) =>
-      calcProfitWithVatPrice(cost.totalUnitCost, vatIncludedPrice, qty),
-  };
-}
-
-export function useMarginEngine(input: MarginCalcInput): MarginCalcResult {
-  return useMemo(
-    () => calcMargin(input),
-    [
-      input.cnyCostPerUnit,
-      input.exPI,
-      input.exCurrent,
-      input.qShip,
-      input.qTotal,
-      input.palletReworkCost,
-      input.centerName,
-      input.pcsPerPallet,
-      input.targetMargin,
-      input.channel,
-      input.isOver,
-    ]
-  );
 }

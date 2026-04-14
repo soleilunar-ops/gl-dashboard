@@ -20,6 +20,11 @@ export async function GET(request: Request) {
   const base = searchParams.get("base") ?? "CNY";
   const target = searchParams.get("target") ?? "KRW";
 
+  const ALLOWED_BASES = ["CNY", "USD", "JPY", "EUR"];
+  if (!ALLOWED_BASES.includes(base)) {
+    return NextResponse.json({ message: "지원하지 않는 통화입니다." }, { status: 400 });
+  }
+
   try {
     const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/${base}`, {
       cache: "no-store",

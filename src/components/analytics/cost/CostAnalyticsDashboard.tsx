@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/chart";
 import {
   CENTER_RATES,
+  CHANNEL_RATES,
   calcMargin,
   calcPricePer10g,
   calcProfitWithVatPrice,
@@ -61,7 +62,8 @@ export default function CostAnalyticsDashboard() {
           channel,
         }).totalCostPerUnit,
         currentVatPrice,
-        shipmentQty
+        shipmentQty,
+        CHANNEL_RATES[channel].settlementRatio
       ),
     [
       centerName,
@@ -106,7 +108,8 @@ export default function CostAnalyticsDashboard() {
       const simulatedProfit = calcProfitWithVatPrice(
         simulated.totalCostPerUnit,
         currentVatPrice,
-        shipmentQty
+        shipmentQty,
+        CHANNEL_RATES[channel].settlementRatio
       );
       return {
         rate,
@@ -142,7 +145,12 @@ export default function CostAnalyticsDashboard() {
         targetMargin: 0.15,
         channel,
       });
-      const profit = calcProfitWithVatPrice(cost.totalCostPerUnit, currentVatPrice, shipmentQty);
+      const profit = calcProfitWithVatPrice(
+        cost.totalCostPerUnit,
+        currentVatPrice,
+        shipmentQty,
+        CHANNEL_RATES[channel].settlementRatio
+      );
       return {
         center: center.replace(/\(.+\)/, ""),
         netProfit: roundCurrency(profit.totalProfit),
