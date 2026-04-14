@@ -99,6 +99,18 @@
 **주의사항:** 새로운 통화가 필요하면 `ALLOWED_BASES` 배열에 추가해야 함
 **검증:** `npx tsc --noEmit` 타입 체크 통과
 
+### [2026-04-15] [PM 네이티브 HTML → shadcn/ui 교체]
+
+**요청:** 슬아님 코드에서 네이티브 HTML 태그를 shadcn/ui 컴포넌트로 교체
+**변경 파일:**
+
+- `src/components/analytics/cost/MarginStrategyCards.tsx` — 네이티브 `<table>` → `ui/table`의 Table, TableHeader, TableBody, TableRow, TableHead, TableCell로 교체
+- `src/components/analytics/cost/CostAnalyticsDashboard.tsx` — 네이티브 `<select>` 2곳 → `ui/select`의 Select, SelectTrigger, SelectValue, SelectContent, SelectItem으로 교체
+  **변경 내용:** 코드 스타일 규칙("UI 컴포넌트는 반드시 src/components/ui/에서 import")에 맞게 PM이 만들어둔 UI 컴포넌트 사용으로 통일
+  **검증:** `npx tsc --noEmit` 타입 체크 통과
+  **주의사항:**
+- `OrderDashboard.tsx`의 `<input type="file">`은 shadcn/ui에 file upload 전용 컴포넌트가 없어 네이티브 유지 (숨겨놓고 Button으로 트리거하는 표준 패턴)
+
 **잔류 — 이번에 수정하지 않는 항목:**
 
 - `src/lib/margin/`, `src/app/api/exchange-rate/` PM 영역 파일 위치: orders와 cost 양쪽에서 공유하는 엔진이므로 `src/lib/`에 두는 것이 합리적. PM이 직접 생성한 것으로 간주하고 승인

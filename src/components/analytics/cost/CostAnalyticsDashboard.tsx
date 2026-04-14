@@ -6,6 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
@@ -210,35 +217,37 @@ export default function CostAnalyticsDashboard() {
             />
           </div>
           <div className="mt-2 grid gap-2 md:grid-cols-2">
-            <label className="space-y-1">
+            <div className="space-y-1">
               <span className="text-muted-foreground text-xs">센터</span>
-              <select
-                className="h-8 w-full rounded-lg border px-2 text-sm"
-                value={centerName}
-                onChange={(event) => setCenterName(event.target.value)}
-              >
-                {Object.keys(CENTER_RATES).map((center) => (
-                  <option key={center} value={center}>
-                    {center}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1">
+              <Select value={centerName} onValueChange={setCenterName}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.keys(CENTER_RATES).map((center) => (
+                    <SelectItem key={center} value={center}>
+                      {center}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <span className="text-muted-foreground text-xs">채널</span>
-              <select
-                className="h-8 w-full rounded-lg border px-2 text-sm"
-                value={channel}
-                onChange={(event) => setChannel(event.target.value as ChannelKey)}
-              >
-                <option value="coupang_rocket">쿠팡 로켓배송</option>
-                <option value="coupang_seller">쿠팡 판매자로켓</option>
-                <option value="naver">네이버</option>
-                <option value="gmarket">지마켓</option>
-                <option value="ssg">SSG</option>
-                <option value="kakao">카카오</option>
-              </select>
-            </label>
+              <Select value={channel} onValueChange={(value) => setChannel(value as ChannelKey)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="coupang_rocket">쿠팡 로켓배송</SelectItem>
+                  <SelectItem value="coupang_seller">쿠팡 판매자로켓</SelectItem>
+                  <SelectItem value="naver">네이버</SelectItem>
+                  <SelectItem value="gmarket">지마켓</SelectItem>
+                  <SelectItem value="ssg">SSG</SelectItem>
+                  <SelectItem value="kakao">카카오</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
