@@ -111,9 +111,73 @@
   **주의사항:**
 - `OrderDashboard.tsx`의 `<input type="file">`은 shadcn/ui에 file upload 전용 컴포넌트가 없어 네이티브 유지 (숨겨놓고 Button으로 트리거하는 표준 패턴)
 
+### [2026-04-15] [PM 코드 리뷰 — 나경님]
+
+**요청:** 나경님 PR(`team/나경` → `submain`) 코드 품질 및 파일 경계 규칙 준수 여부 리뷰
+**대상 커밋:** `2312a75 분석 및 리뷰 페이지 수정` (4파일, +551줄)
+
+**파일 경계 판정:**
+
+- PM 영역 침범: 없음
+- 다른 팀원 영역 침범: 없음
+- 4개 파일 모두 나경님 영역 내
+
+**수정 항목 3건:**
+
+**① reviews/page.tsx 컴포넌트 분리 (절대규칙 3번 위반)**
+
+- 원인: 351줄 로직(타입, Mock 데이터, useMemo 4개, Tabs 2탭, 차트, 전체 JSX)이 page.tsx에 직접 작성됨
+- 적용: `src/components/analytics/reviews/ReviewsDashboard.tsx`로 이동, page.tsx는 import+배치만
+
+**② promotion/page.tsx 컴포넌트 분리 (절대규칙 3번 위반)**
+
+- 원인: 204줄 로직(useMemo 3개, ComposedChart, BarChart, 플랫폼 행사 카드)이 page.tsx에 직접 작성됨
+- 적용: `src/components/analytics/promotion/PromotionDashboard.tsx`로 이동, page.tsx는 import+배치만
+
+**③ reviews/page.tsx 네이티브 `<table>` → shadcn/ui Table 교체**
+
+- 원인: 스펙 비교표(320~343줄)에서 네이티브 `<table><thead><th><td>` 사용. 코드 스타일 규칙 위반
+- 적용: `ui/table`의 Table, TableHeader, TableBody, TableRow, TableHead, TableCell로 교체
+
+**기능 누락 검증:** 수정 3건 적용 후 기존 기능 11개 항목(KPI 카드, 별점 차트, 개선 포인트, 경쟁 키워드, 가격 비교, 스펙 비교, 프로모션 KPI, 월별 차트, 연도 비교 차트, 행사 알림, 에러 Alert) 전수 점검 — 위치 이동 + table 교체만이라 누락 없음
+
+**슬아님 대비 비교:**
+
+- PM 영역 침범: 없음 (슬아님은 3건)
+- 런타임 버그: 없음 (슬아님은 무한루프 + 채널 버그)
+- 데드 코드: 없음 (슬아님은 ~40%)
+- 훅 수정: useReviews에 컬럼 추가(units_sold, return_units), 양쪽 limit 100→500 — 합리적 수정
+
+### [2026-04-15] [PM 병합 전 수정 계획 — 나경님]
+
+**요청:** 위 리뷰 결과 기반, 머지 전 PM이 직접 수정할 항목 3건 실행 예정
+**변경 예정 파일:**
+
+- 생성: `src/components/analytics/reviews/ReviewsDashboard.tsx`, `src/components/analytics/promotion/PromotionDashboard.tsx`
+- 수정: `src/app/(dashboard)/analytics/reviews/page.tsx` (351줄 → ~10줄), `src/app/(dashboard)/analytics/promotion/page.tsx` (204줄 → ~10줄)
+- ReviewsDashboard 내 네이티브 `<table>` → shadcn/ui Table 교체
+
+### [2026-04-15] [PM 병합 전 수정 완료 — 나경님]
+
+**요청:** 위 수정 계획 3건 실행
+**변경 파일:**
+
+- 생성: `src/components/analytics/reviews/ReviewsDashboard.tsx`, `src/components/analytics/promotion/PromotionDashboard.tsx`
+- 수정: `src/app/(dashboard)/analytics/reviews/page.tsx` (351줄 → 10줄), `src/app/(dashboard)/analytics/promotion/page.tsx` (204줄 → 10줄)
+  **변경 내용:**
+- ① reviews/page.tsx 로직 전체를 `ReviewsDashboard.tsx`로 이동, page.tsx는 import+배치만
+- ② promotion/page.tsx 로직 전체를 `PromotionDashboard.tsx`로 이동, page.tsx는 import+배치만
+- ③ ReviewsDashboard 내 스펙 비교표 네이티브 `<table>` → shadcn/ui Table 교체
+  **검증:** `npx tsc --noEmit` 타입 체크 통과
+  **주의사항:**
+- submain을 `team/나경`에 먼저 merge한 후 작업 (슬아님 코드 + PM 로그 충돌 방지)
+
 **잔류 — 이번에 수정하지 않는 항목:**
 
 - `src/lib/margin/`, `src/app/api/exchange-rate/` PM 영역 파일 위치: orders와 cost 양쪽에서 공유하는 엔진이므로 `src/lib/`에 두는 것이 합리적. PM이 직접 생성한 것으로 간주하고 승인
 - Mock 데이터 → Supabase 전환: 초안 단계이므로 다음 이터레이션에서 `useOrders.ts` 스켈레톤과 연결
 - CSV 업로드 미완성: 행 수만 세는 껍데기 상태. 실제 CSV 파일 확정 후 구현 예정
 - `CENTER_RATES` 하드코딩: `useMarginCalc.ts`에 20개 센터 밀크런 단가(basic/over)가 코드에 직접 박혀있음. `calcMargin` 물류비 계산, CostAnalyticsDashboard 센터 드롭다운 및 센터별 순이익 차트에서 사용 중. Supabase에 센터 테이블 생성 후 DB 조회로 교체 필요
+- `ratingChartData` 별점 분포: 평균 별점에서 역산한 추정값이며 실제 분포가 아님. neutralRatio(0.2)가 lowRatio+highRatio(=1.0)과 별도로 사용되어 비율 합계 초과. 실제 리뷰 별점 데이터 확보 시 교체 필요
+- 경쟁사 데이터(가격 4건, 스펙 3건) / 키워드 / 플랫폼 행사 정보: 하드코딩 초안. 크롤링/API 연동 시 교체 예정
+- 나경님 작업 로그(`docs/logs/나경.md`): 미작성 상태 — 나경님에게 기록 요청 필요
