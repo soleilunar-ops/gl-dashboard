@@ -3,6 +3,14 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   CHANNEL_RATES,
   calcMargin,
   type ChannelKey,
@@ -127,34 +135,34 @@ export function ChannelMarginTable(props: ChannelMarginTableProps) {
         <CardDescription>목표 마진 15% 기준 권장 판매가/실마진 비교</CardDescription>
       </CardHeader>
       <CardContent className="pt-3">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-muted-foreground border-b">
-              <th className="p-2 text-left">채널</th>
-              <th className="p-2 text-right">수수료율</th>
-              <th className="p-2 text-right">권장가(VAT)</th>
-              <th className="p-2 text-right">개당 순익</th>
-              <th className="p-2 text-right">실마진</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table className="text-xs">
+          <TableHeader>
+            <TableRow>
+              <TableHead>채널</TableHead>
+              <TableHead className="text-right">수수료율</TableHead>
+              <TableHead className="text-right">권장가(VAT)</TableHead>
+              <TableHead className="text-right">개당 순익</TableHead>
+              <TableHead className="text-right">실마진</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {rows.map((row) => (
-              <tr key={row.channel} className="border-b">
-                <td className="p-2">{row.name}</td>
-                <td className="p-2 text-right">{row.fee}%</td>
-                <td className="p-2 text-right">
+              <TableRow key={row.channel}>
+                <TableCell>{row.name}</TableCell>
+                <TableCell className="text-right">{row.fee}%</TableCell>
+                <TableCell className="text-right">
                   {Math.round(row.suggestedPriceVAT).toLocaleString()}원
-                </td>
-                <td className="p-2 text-right">
+                </TableCell>
+                <TableCell className="text-right">
                   {Math.round(row.profitPerUnit).toLocaleString()}원
-                </td>
-                <td className={`p-2 text-right ${row.isMarginAlert ? "text-red-500" : ""}`}>
+                </TableCell>
+                <TableCell className={`text-right ${row.isMarginAlert ? "text-red-500" : ""}`}>
                   {(row.actualMargin * 100).toFixed(1)}%
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </CardContent>
     </Card>
   );
