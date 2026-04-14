@@ -1,11 +1,15 @@
-node_modules/
-.next/
-.env.local
+# 로컬 비밀 (절대 커밋하지 않음)
 .env
-data/raw/
-data/processed/
-data/embeddings/
-.venv/
+.ecmwfapirc
+
+# Python
 __pycache__/
-*.pyc
-.mcp.json
+*.py[cod]
+.venv/
+venv/
+
+# 데이터·모델 산출물(크기/민감도에 따라 조정)
+*.grib
+*.grib2
+/data/
+.cache/

@@ -1,0 +1,10 @@
+# TODO: 실제 배포 환경에 맞게 복사 후 사용 (예: feature_flags.yaml)
+# 아래 불리언은 예시 자리일 뿐이며, 운영 값은 데이터·정책 확정 후 설정한다.
+# 여름 상품 SKU 목록은 운영 데이터 확정 후 연결
+
+summer_mode: false
+# TODO: summer_sku_exists 판별 기준(상품 마스터 소스, SKU 리스트 경로) 확정
+summer_sku_source: null
+
+# 폭염 특보 UI/알림: 기본 비활성, summer_mode 및 summer_sku_exists가 true일 때만 true 권장
+show_heatwave_alert: false
