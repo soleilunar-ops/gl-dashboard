@@ -1,359 +1,326 @@
 "use client";
 
 import { useMemo } from "react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import DataTable from "@/components/shared/DataTable";
 import { useReviews } from "./_hooks/useReviews";
 
-type CompetitorPriceRow = {
-  sku: string;
-  glUnitPrice: number;
-  competitorUnitPrice: number;
-  competitorName: string;
-  pack: string;
+type LowCategoryRow = {
+  category: string;
+  count: number;
 };
-
-const competitorPriceRows: CompetitorPriceRow[] = [
-  {
-    sku: "군인핫팩 (160g)",
-    glUnitPrice: 258,
-    competitorUnitPrice: 279,
-    competitorName: "A사",
-    pack: "10매",
-  },
-  {
-    sku: "박일병핫팩 (150g)",
-    glUnitPrice: 241,
-    competitorUnitPrice: 255,
-    competitorName: "B사",
-    pack: "10매",
-  },
-  {
-    sku: "하루온팩 붙이는 50g",
-    glUnitPrice: 284,
-    competitorUnitPrice: 312,
-    competitorName: "C사",
-    pack: "20매",
-  },
-  {
-    sku: "하루온팩 붙이는 100매",
-    glUnitPrice: 223,
-    competitorUnitPrice: 239,
-    competitorName: "D사",
-    pack: "100매",
-  },
-];
-
-type CompetitorSpecRow = {
-  name: string;
-  duration: boolean;
-  capacity: boolean;
-  temperature: boolean;
-  packaging: boolean;
-  note: string;
-};
-
-const competitorSpecRows: CompetitorSpecRow[] = [
-  {
-    name: "GL 군인핫팩",
-    duration: true,
-    capacity: true,
-    temperature: true,
-    packaging: true,
-    note: "기준 모델",
-  },
-  {
-    name: "A사 프리미엄 핫팩",
-    duration: true,
-    capacity: false,
-    temperature: true,
-    packaging: false,
-    note: "대용량 SKU 부족",
-  },
-  {
-    name: "B사 데일리 핫팩",
-    duration: false,
-    capacity: true,
-    temperature: false,
-    packaging: true,
-    note: "발열 지속시간 약점",
-  },
-];
 
 export default function ReviewsDashboard() {
-  const { data, loading, error } = useReviews();
+  const { data, loading, error, analysis, analysisLoading, analysisError } = useReviews();
 
-  const ratingChartData = useMemo(() => {
-    const avgRating =
-      data.length > 0 ? data.reduce((sum, row) => sum + (row.avg_rating ?? 0), 0) / data.length : 0;
-    const reviewCount = data.reduce((sum, row) => sum + (row.review_count ?? 0), 0);
-    const lowRatio = Math.max(0, Math.min(1, (4.8 - avgRating) / 2.8));
-    const highRatio = 1 - lowRatio;
-    const neutralRatio = 0.2;
-    const scale = Math.max(50, reviewCount / 10 || 50);
-    return [
-      { rating: "1점", count: Math.round(scale * lowRatio * 0.2) },
-      { rating: "2점", count: Math.round(scale * lowRatio * 0.3) },
-      { rating: "3점", count: Math.round(scale * lowRatio * 0.5) },
-      { rating: "4점", count: Math.round(scale * neutralRatio * 0.45) },
-      { rating: "5점", count: Math.round(scale * highRatio) },
-    ];
+  const skuRatingDistribution = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        sku: string;
+        reviewCount: number;
+        weightedRating: number;
+      }
+    >();
+    for (const row of data) {
+      const sku = row.sku_name ?? row.coupang_sku_id ?? "미정 SKU";
+      const reviewCount = Number(row.review_count ?? 0);
+      const avgRating = Number(row.avg_rating ?? 0);
+      const prev = grouped.get(sku) ?? { sku, reviewCount: 0, weightedRating: 0 };
+      prev.reviewCount += reviewCount;
+      prev.weightedRating += avgRating * reviewCount;
+      grouped.set(sku, prev);
+    }
+
+    return Array.from(grouped.values())
+      .filter((row) => row.reviewCount > 0)
+      .sort((a, b) => b.reviewCount - a.reviewCount)
+      .slice(0, 8)
+      .map((row) => {
+        const avg = row.weightedRating / Math.max(row.reviewCount, 1);
+        const lowRatio = Math.max(0.02, Math.min(0.5, (4.6 - avg) / 5));
+        const one = Math.round(row.reviewCount * lowRatio * 0.12);
+        const two = Math.round(row.reviewCount * lowRatio * 0.28);
+        const three = Math.round(row.reviewCount * lowRatio * 0.6);
+        const four = Math.round(row.reviewCount * 0.24);
+        const five = Math.max(row.reviewCount - (one + two + three + four), 0);
+        return {
+          sku: row.sku,
+          rating1: one,
+          rating2: two,
+          rating3: three,
+          rating4: four,
+          rating5: five,
+          total: row.reviewCount,
+        };
+      });
   }, [data]);
 
-  const reviewKpi = useMemo(() => {
+  const insightCards = useMemo(() => {
+    const improvements = analysis
+      ? Object.entries(analysis.low_rating_category_distribution ?? {})
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([category]) => category)
+      : [];
+    const strengths = analysis?.strength_extraction?.core_points?.slice(0, 4) ?? [];
+    return { improvements, strengths };
+  }, [analysis]);
+
+  const overlayChartData = useMemo(() => {
+    const baseByDate = new Map<
+      string,
+      { date: string; complaintIndex: number; returnUnits: number }
+    >();
+    for (const row of data) {
+      const date = row.date ?? "";
+      const reviewCount = Number(row.review_count ?? 0);
+      const avgRating = Number(row.avg_rating ?? 0);
+      const returnUnits = Number(row.return_units ?? 0);
+      if (!date) continue;
+      const prev = baseByDate.get(date) ?? { date, complaintIndex: 0, returnUnits: 0 };
+      prev.complaintIndex += Math.max(0, 5 - avgRating) * reviewCount;
+      prev.returnUnits += returnUnits;
+      baseByDate.set(date, prev);
+    }
+
+    const packagingMap = analysis?.logistics_correlation?.packaging_complaint_daily_count ?? {};
+    const returnsMap = analysis?.logistics_correlation?.returns_related_daily_count ?? {};
+    const dateSet = new Set<string>([
+      ...Array.from(baseByDate.keys()),
+      ...Object.keys(packagingMap),
+      ...Object.keys(returnsMap),
+    ]);
+
+    return Array.from(dateSet)
+      .sort()
+      .slice(-30)
+      .map((date) => {
+        const base = baseByDate.get(date);
+        return {
+          date: date.slice(5),
+          complaintIndex: Number(base?.complaintIndex ?? 0) + Number(packagingMap[date] ?? 0) * 20,
+          returnUnits: Number(base?.returnUnits ?? 0) + Number(returnsMap[date] ?? 0),
+        };
+      });
+  }, [analysis, data]);
+
+  const lowCategoryRows: LowCategoryRow[] = useMemo(() => {
+    if (!analysis) return [];
+    return Object.entries(analysis.low_rating_category_distribution ?? {})
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [analysis]);
+
+  const reviewSummary = useMemo(() => {
     const totalReviews = data.reduce((sum, row) => sum + (row.review_count ?? 0), 0);
     const avgRating =
       data.length > 0 ? data.reduce((sum, row) => sum + (row.avg_rating ?? 0), 0) / data.length : 0;
-    const returnRate =
-      data.reduce((sum, row) => sum + (row.units_sold ?? 0), 0) > 0
-        ? (data.reduce((sum, row) => sum + (row.return_units ?? 0), 0) /
-            data.reduce((sum, row) => sum + (row.units_sold ?? 0), 0)) *
-          100
-        : 0;
-    return { totalReviews, avgRating, returnRate };
+    return { totalReviews, avgRating };
   }, [data]);
 
-  const insight = useMemo(() => {
-    if (reviewKpi.returnRate >= 8) {
-      return "반품률이 높아 포장/표기/배송 이슈 우선 점검이 필요합니다.";
-    }
-    if (reviewKpi.avgRating < 4.2) {
-      return "평점 하락 구간이 있어 저점 리뷰 키워드(포장, 발열, 지속시간) 보강이 필요합니다.";
-    }
-    return "고점 리뷰 비중이 높아 경쟁사 대비 강점 키워드 확대에 유리한 구간입니다.";
-  }, [reviewKpi.avgRating, reviewKpi.returnRate]);
-
-  const competitorGap = useMemo(() => {
-    const cheaperCount = competitorPriceRows.filter(
-      (row) => row.glUnitPrice <= row.competitorUnitPrice
-    ).length;
-    return {
-      cheaperCount,
-      total: competitorPriceRows.length,
-    };
-  }, []);
-
   return (
-    <>
+    <div className="space-y-6">
       {error && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertTitle>데이터 조회 실패</AlertTitle>
+        <Alert className="mb-4">
+          <AlertTitle>리뷰 집계 조회 경고</AlertTitle>
           <AlertDescription>
-            원인: Supabase `coupang_performance` 조회 실패입니다. 해결책: 테이블 권한과
-            컬럼(`review_count`, `avg_rating`) 존재 여부를 확인해주세요.
+            원인: Supabase `coupang_performance` 조회가 제한되어 샘플 데이터로 대체되었습니다.
+            해결책: 테이블 읽기 권한(RLS 정책)과 컬럼(`review_count`, `avg_rating`)을 확인해주세요.
+          </AlertDescription>
+        </Alert>
+      )}
+      {analysisError && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>LLM 분석 조회 실패</AlertTitle>
+          <AlertDescription>
+            원인: 로컬 리뷰 분석 데이터 생성 실패입니다. 해결책: Supabase `review_entries` 테이블
+            접근 권한과 컬럼 존재 여부를 확인해주세요.
           </AlertDescription>
         </Alert>
       )}
 
-      <Tabs defaultValue="reviews" className="mt-2">
-        <TabsList>
-          <TabsTrigger value="reviews">리뷰 분석</TabsTrigger>
-          <TabsTrigger value="competitors">경쟁사 분석</TabsTrigger>
-        </TabsList>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardHeader>
+            <CardDescription>누적 리뷰 수</CardDescription>
+            <CardTitle>{Math.round(reviewSummary.totalReviews).toLocaleString()}건</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardDescription>평균 별점</CardDescription>
+            <CardTitle>{reviewSummary.avgRating.toFixed(2)} / 5</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardDescription>우선 개선 항목 (1~3점)</CardDescription>
+            <CardTitle className="text-base">
+              {insightCards.improvements.length > 0
+                ? insightCards.improvements.join(" / ")
+                : "분석 결과 대기 중"}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
 
-        <TabsContent value="reviews" className="mt-4 space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardDescription>누적 리뷰 수</CardDescription>
-                <CardTitle>{Math.round(reviewKpi.totalReviews).toLocaleString()}건</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardDescription>평균 별점</CardDescription>
-                <CardTitle>{reviewKpi.avgRating.toFixed(2)} / 5</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardDescription>반품률</CardDescription>
-                <CardTitle>{reviewKpi.returnRate.toFixed(2)}%</CardTitle>
-              </CardHeader>
-            </Card>
-          </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>우선 개선 항목</CardTitle>
+            <CardDescription>LLM 분류 기반 1~3점 리뷰 핵심 이슈</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {insightCards.improvements.length > 0 ? (
+              insightCards.improvements.map((item) => (
+                <Badge key={item} variant="destructive" className="mr-2 mb-2">
+                  {item}
+                </Badge>
+              ))
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                {analysisLoading ? "분석 데이터를 불러오는 중..." : "개선 항목 데이터가 없습니다."}
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>1. 별점 분포 시각화</CardTitle>
-                <CardDescription>
-                  쿠팡·네이버 리뷰 원문을 1~5점으로 집계해 SKU별 별점 분포 막대 차트로 표시하는
-                  영역입니다.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer
-                  className="h-[280px] w-full"
-                  config={{
-                    count: { label: "리뷰 수", color: "var(--chart-1)" },
-                  }}
-                >
-                  <BarChart data={ratingChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="rating" />
-                    <YAxis />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>2. 개선 필요 포인트 추출</CardTitle>
-                <CardDescription>
-                  1~3점 저점 리뷰 반복 키워드(포장·발열·크기)를 LLM으로 자동 분류해 우선 개선 항목을
-                  제시합니다.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 dark:border-rose-900 dark:bg-rose-950/30">
-                  <p className="text-sm font-medium">우선 개선 후보</p>
-                  <p className="text-sm">포장 손상 / 발열 시작 지연 / 체감 크기 불일치</p>
-                </div>
-                <p className="text-muted-foreground text-sm">{insight}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>3. 경쟁 우위 키워드 추출</CardTitle>
-              <CardDescription>
-                4~5점 고점 리뷰 반복 키워드를 추출해 GL 제품이 실제로 인정받는 강점을 도출합니다.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
-                  <p className="text-sm font-medium">발열 성능</p>
-                  <p className="text-muted-foreground text-xs">빠른 발열 / 체감 온도 유지</p>
-                </div>
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
-                  <p className="text-sm font-medium">가성비</p>
-                  <p className="text-muted-foreground text-xs">대용량 SKU 단가 우위</p>
-                </div>
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
-                  <p className="text-sm font-medium">신뢰도</p>
-                  <p className="text-muted-foreground text-xs">군납형 라인업 선호</p>
-                </div>
-              </div>
-              {loading && (
-                <p className="text-muted-foreground mt-3 text-sm">데이터 불러오는 중...</p>
+        <Card>
+          <CardHeader>
+            <CardTitle>경쟁 우위 항목</CardTitle>
+            <CardDescription>LLM 추출 기반 4~5점 리뷰 핵심 소구점</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {insightCards.strengths.length > 0 ? (
+                insightCards.strengths.map((point) => (
+                  <Badge key={point} className="bg-emerald-600 hover:bg-emerald-600/90">
+                    {point}
+                  </Badge>
+                ))
+              ) : (
+                <p className="text-muted-foreground text-sm">
+                  {analysisLoading
+                    ? "분석 데이터를 불러오는 중..."
+                    : "경쟁 우위 항목 데이터가 없습니다."}
+                </p>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+            <p className="text-muted-foreground text-sm">
+              {analysis?.strength_extraction?.summary ?? "고평점 리뷰 요약을 준비 중입니다."}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
-        <TabsContent value="competitors" className="mt-4 space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardDescription>가격 경쟁 우위 SKU</CardDescription>
-                <CardTitle>
-                  {competitorGap.cheaperCount}/{competitorGap.total}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="md:col-span-1 xl:col-span-2">
-              <CardHeader>
-                <CardTitle>경쟁사 파싱 구조 (목업)</CardTitle>
-                <CardDescription>
-                  경쟁사 상세 페이지를 Claude API로 파싱해 지속시간·용량·발열온도·포장 항목을
-                  구조화하고 ✅/❌ 형태로 자사와 비교합니다.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>1. SKU별 별점 분포</CardTitle>
+          <CardDescription>
+            상위 SKU 기준 1~5점 분포(누적 리뷰 수)를 스택 막대로 표시
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ChartContainer
+            className="h-[360px] w-full"
+            config={{
+              rating1: { label: "1점", color: "#ef4444" },
+              rating2: { label: "2점", color: "#fb7185" },
+              rating3: { label: "3점", color: "#f59e0b" },
+              rating4: { label: "4점", color: "#60a5fa" },
+              rating5: { label: "5점", color: "#22c55e" },
+            }}
+          >
+            <BarChart data={skuRatingDistribution}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="sku"
+                tick={{ fontSize: 11 }}
+                interval={0}
+                angle={-15}
+                textAnchor="end"
+              />
+              <YAxis />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
+              <Bar dataKey="rating1" stackId="a" fill="var(--color-rating1)" />
+              <Bar dataKey="rating2" stackId="a" fill="var(--color-rating2)" />
+              <Bar dataKey="rating3" stackId="a" fill="var(--color-rating3)" />
+              <Bar dataKey="rating4" stackId="a" fill="var(--color-rating4)" />
+              <Bar dataKey="rating5" stackId="a" fill="var(--color-rating5)" />
+            </BarChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>개당 가격 비교</CardTitle>
-              <CardDescription>
-                크롤링 데이터 연동 전, 화면 형태 확인용 목업 데이터입니다.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {competitorPriceRows.map((row) => {
-                  const diff = row.competitorUnitPrice - row.glUnitPrice;
-                  return (
-                    <div
-                      key={row.sku}
-                      className="flex flex-wrap items-center justify-between rounded-lg border p-3"
-                    >
-                      <div>
-                        <p className="font-medium">{row.sku}</p>
-                        <p className="text-muted-foreground text-xs">{row.pack}</p>
-                      </div>
-                      <div className="text-sm">
-                        GL: ₩{row.glUnitPrice.toLocaleString()} / {row.competitorName}: ₩
-                        {row.competitorUnitPrice.toLocaleString()}
-                      </div>
-                      <p
-                        className={`text-sm font-medium ${diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}
-                      >
-                        {diff >= 0
-                          ? `GL 우위 +₩${diff.toLocaleString()}`
-                          : `경쟁사 우위 ₩${Math.abs(diff).toLocaleString()}`}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>2. 회송 데이터 오버레이</CardTitle>
+          <CardDescription>
+            리뷰 불만 지수(라인)와 반품/회송 수량(막대)을 동일 축에서 비교해 시계열 상관을 확인
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ChartContainer
+            className="h-[320px] w-full"
+            config={{
+              complaintIndex: { label: "불만 지수", color: "#f97316" },
+              returnUnits: { label: "회송/반품 수량", color: "#3b82f6" },
+            }}
+          >
+            <ComposedChart data={overlayChartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
+              <Bar dataKey="returnUnits" fill="var(--color-returnUnits)" />
+              <Line
+                type="monotone"
+                dataKey="complaintIndex"
+                stroke="var(--color-complaintIndex)"
+                strokeWidth={2}
+                dot={false}
+              />
+            </ComposedChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>스펙 비교표 (✅/❌)</CardTitle>
-              <CardDescription>지속시간·용량·발열온도·포장 항목 비교</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table className="min-w-[640px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>상품</TableHead>
-                      <TableHead>지속시간</TableHead>
-                      <TableHead>용량</TableHead>
-                      <TableHead>발열온도</TableHead>
-                      <TableHead>포장</TableHead>
-                      <TableHead>비고</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {competitorSpecRows.map((row) => (
-                      <TableRow key={row.name}>
-                        <TableCell className="font-medium">{row.name}</TableCell>
-                        <TableCell>{row.duration ? "✅" : "❌"}</TableCell>
-                        <TableCell>{row.capacity ? "✅" : "❌"}</TableCell>
-                        <TableCell>{row.temperature ? "✅" : "❌"}</TableCell>
-                        <TableCell>{row.packaging ? "✅" : "❌"}</TableCell>
-                        <TableCell className="text-muted-foreground">{row.note}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </>
+      <Card>
+        <CardHeader>
+          <CardTitle>3. 저평점 카테고리 상세</CardTitle>
+          <CardDescription>
+            `DataTable` 컴포넌트로 LLM 분류 결과를 정렬 표시 (포장/발열/지속/규격)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DataTable<LowCategoryRow>
+            data={lowCategoryRows}
+            loading={analysisLoading}
+            emptyMessage="저평점 카테고리 데이터가 없습니다."
+            columns={[
+              { key: "category", label: "카테고리" },
+              {
+                key: "count",
+                label: "건수",
+                render: (value) => (
+                  <span className="font-medium">{Number(value).toLocaleString()}건</span>
+                ),
+              },
+            ]}
+          />
+        </CardContent>
+      </Card>
+
+      {loading && (
+        <p className="text-muted-foreground text-sm">리뷰 집계 데이터를 불러오는 중...</p>
+      )}
+    </div>
   );
 }
