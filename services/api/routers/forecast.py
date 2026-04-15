@@ -121,21 +121,50 @@ def get_weekly_forecast(
 
 
 @router.post("/run", response_model=ForecastRunResponse)
-def run_forecast_pipeline(req: ForecastRunRequest) -> ForecastRunResponse:
+def run_forecast_pipeline_endpoint(req: ForecastRunRequest) -> ForecastRunResponse:
     """
-    예측 파이프라인 실행 (학습 + 추론 + forecasts insert).
+    예측 파이프라인 실행 (weekly_feature_builder → Model A 학습 → forecasts insert).
 
-    TODO(Step 5 완성 시 연결):
-    - coupang_performance 조회 → 일→주 집계 → weekly_df
-    - weather_data 조회 + 관측소 평균 또는 region 선택
-    - feature_engineering 호출
-    - weekly_demand_forecast.run_baseline_pipeline 호출
-    - forecasts 테이블 insert
+    - model_kind: lightgbm(권장) | linear
+    - val_weeks: 검증 구간 길이(최근 N주)
+    - forecast_horizon: 예측 대상 주 수
+    - warmers_only: 현재는 True 전용(34 SKU + 보온소품 범위)
     """
-    raise HTTPException(
-        status_code=501,
-        detail=(
-            "run_forecast_pipeline 구현 대기 중입니다. "
-            "Step 3~5(Supabase 연동 + 주단위 집계 + Model B 신규 구현) 완료 후 활성화됩니다."
+    # 지연 import로 FastAPI 부팅 시 무거운 ML 의존성 회피
+    try:
+        from services.api.analytics.forecast_runner import run_forecast_pipeline
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"forecast_runner 로딩 실패: {exc}") from exc
+
+    if not req.warmers_only:
+        raise HTTPException(
+            status_code=400,
+            detail="현재는 warmers_only=True(보온소품 × 34 SKU)만 지원합니다.",
+        )
+
+    supabase = _get_supabase_client()
+    try:
+        result = run_forecast_pipeline(
+            supabase,
+            model_kind=req.model_kind,
+            val_weeks=req.val_weeks,
+            forecast_horizon=req.forecast_horizon,
+        )
+    except ImportError as exc:
+        # lightgbm 미설치 등
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"파이프라인 실행 실패: {exc}") from exc
+
+    return ForecastRunResponse(
+        status=result.status,
+        model_kind=req.model_kind,
+        metrics=result.metrics,
+        inserted_rows=result.inserted_rows,
+        message=(
+            f"forecast_rows={result.forecast_rows}, "
+            f"skipped_skus={result.skipped_skus}, "
+            f"period={result.period}"
+            + (f" | {result.message}" if result.message else "")
         ),
     )
