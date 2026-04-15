@@ -1,15 +1,23 @@
-# 로컬 비밀 (절대 커밋하지 않음)
+node_modules/
+.next/
+.env.local
 .env
-.ecmwfapirc
-
-# Python
-__pycache__/
-*.py[cod]
+data/raw/
+data/processed/
+data/embeddings/
 .venv/
-venv/
+__pycache__/
+*.pyc
+*.py[cod]
+.mcp.json
 
-# 데이터·모델 산출물(크기/민감도에 따라 조정)
+# 대용량 기상 데이터 (ECMWF/KMA GRIB 포맷)
 *.grib
 *.grib2
-/data/
+
+# ECMWF API 인증 토큰
+.ecmwfapirc
+
+# 로컬 캐시
 .cache/
+.cache.sqlite

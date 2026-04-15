@@ -188,7 +188,65 @@ def normalize_asos_columns(df: pd.DataFrame) -> pd.DataFrame:
         ]
     ].sort_values(["date", "station_id"])
 
+    out = _add_cold_wave_flag(out)
+    out["source"] = "asos"
+
     return out.reset_index(drop=True)
+
+
+def _add_cold_wave_flag(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    한파 플래그 계산 (기상청 한파주의보 간이 기준).
+
+    조건(region 단위로 독립 계산):
+    - 일 최저기온 <= -12℃, 또는
+    - (전일 최저기온 - 당일 최저기온) >= 10℃ AND 당일 최저기온 <= 3℃
+    """
+    out = df.sort_values(["region", "date"]).copy()
+    prev_min = out.groupby("region")["temp_min"].shift(1)
+    drop = prev_min - out["temp_min"]
+
+    cond_abs = out["temp_min"] <= -12
+    cond_rel = (drop >= 10) & (out["temp_min"] <= 3)
+    out["cold_wave_alert"] = (cond_abs | cond_rel).fillna(False)
+    return out
+
+
+def to_weather_data_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    weather_data 테이블(Supabase) 컬럼명으로 매핑한다.
+
+    매핑:
+    - temp_mean → temp_avg
+    - rain_mm → precipitation
+    - wind_mean → wind_speed
+    - snow_cm → snow_depth
+    """
+    out = df.rename(
+        columns={
+            "temp_mean": "temp_avg",
+            "rain_mm": "precipitation",
+            "wind_mean": "wind_speed",
+            "snow_cm": "snow_depth",
+        }
+    ).copy()
+
+    table_cols = [
+        "date",
+        "region",
+        "temp_min",
+        "temp_max",
+        "temp_avg",
+        "precipitation",
+        "wind_speed",
+        "snow_depth",
+        "cold_wave_alert",
+        "source",
+    ]
+    for col in table_cols:
+        if col not in out.columns:
+            out[col] = pd.NA
+    return out[table_cols]
 
 
 def fetch_asos_multi_station_daily(
