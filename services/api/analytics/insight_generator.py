@@ -61,6 +61,19 @@ def build_insight_context_from_local(
         if not future.empty else "N/A"
     )
 
+    # SKU → 제품명 매핑
+    from pathlib import Path as _Path
+    sku_name_map: dict[int, str] = {}
+    if _Path(bi_box_dir).exists():
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(_Path(__file__).resolve().parents[1]))
+            from data_pipeline.bi_box_loader import build_sku_name_map
+            from data_pipeline.weekly_feature_builder import WARMER_SKUS
+            sku_name_map = build_sku_name_map(directory=bi_box_dir, skus=WARMER_SKUS)
+        except Exception:
+            pass
+
     # 상위 SKU
     sku_totals = (
         future.groupby("sku")["weekly_sales_qty_forecast"]
@@ -70,7 +83,12 @@ def build_insight_context_from_local(
     )
     total_for_pct = sku_totals.sum() or 1
     top_skus = [
-        {"sku": int(s), "qty": int(q), "pct": round(q / total_for_pct * 100, 1)}
+        {
+            "sku": int(s),
+            "name": sku_name_map.get(int(s), f"SKU {int(s)}"),
+            "qty": int(q),
+            "pct": round(q / total_for_pct * 100, 1),
+        }
         for s, q in sku_totals.items()
     ]
 
@@ -143,7 +161,8 @@ def _context_to_user_prompt(ctx: InsightContext) -> str:
 
     lines.append("\n상위 SKU:")
     for s in ctx.top_skus:
-        lines.append(f"  SKU {s['sku']}: {s['qty']:,}개 ({s['pct']}%)")
+        name = s.get("name", f"SKU {s['sku']}")
+        lines.append(f"  {name} (SKU {s['sku']}): {s['qty']:,}개 ({s['pct']}%)")
 
     return "\n".join(lines)
 
@@ -202,6 +221,7 @@ def _fallback_insight(ctx: InsightContext) -> str:
 
     if ctx.top_skus:
         top = ctx.top_skus[0]
-        lines.append(f"권장: SKU {top['sku']} ({top['pct']}% 비중) 우선 납품 준비")
+        name = top.get("name", f"SKU {top['sku']}")
+        lines.append(f"권장: {name} ({top['pct']}% 비중) 우선 납품 준비")
 
     return "\n".join(lines)

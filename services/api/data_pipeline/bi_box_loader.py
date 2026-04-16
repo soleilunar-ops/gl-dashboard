@@ -119,6 +119,26 @@ def load_bi_box_all(
     return agg.sort_values(["date", "coupang_sku_id"]).reset_index(drop=True)
 
 
+def build_sku_name_map(
+    directory: Path | str = DEFAULT_DIR,
+    skus: Iterable[int] | None = None,
+) -> dict[int, str]:
+    """SKU ID → 제품명 매핑 딕셔너리. 바이박스 CSV 기준."""
+    base = Path(directory)
+    files = sorted(base.glob("*.csv"))
+    if not files:
+        return {}
+
+    frames = [_normalize(_read_bi_box_csv(f)) for f in files]
+    df = pd.concat(frames, ignore_index=True)
+
+    if skus is not None:
+        df = df[df["coupang_sku_id"].isin(list(skus))]
+
+    names = df.drop_duplicates("coupang_sku_id").set_index("coupang_sku_id")["sku_name"]
+    return {int(k): str(v) for k, v in names.items()}
+
+
 def aggregate_weekly_bi_box(daily_df: pd.DataFrame) -> pd.DataFrame:
     """
     일자 단위 bi_box DF → 주단위 집계 (weekly_feature_builder에 merge 용).
