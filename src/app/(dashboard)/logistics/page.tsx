@@ -1,5 +1,5 @@
-import LogisticsDashboardPage from "@/components/logistics/app/page";
+import LogisticsPage from "@/components/logistics/LogisticsPage";
 
-export default function LogisticsPage() {
-  return <LogisticsDashboardPage />;
+export default function Page() {
+  return <LogisticsPage />;
 }
