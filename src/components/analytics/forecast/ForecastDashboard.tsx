@@ -1,6 +1,7 @@
 "use client";
 
-import { TrendingUp, AlertTriangle, CalendarRange } from "lucide-react";
+import { useEffect, useState } from "react";
+import { TrendingUp, AlertTriangle, CalendarRange, Sparkles, Package } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -14,14 +15,18 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { useForecast } from "./_hooks/useForecast";
+import { FASTAPI_URL } from "@/lib/constants";
 
 export default function ForecastDashboard() {
-  const { performance, forecasts, loading, error } = useForecast({ warmersOnly: true, limit: 180 });
+  const { performance, forecasts, loading, error } = useForecast({
+    warmersOnly: true,
+    limit: 5000,
+  });
+  const { insight, insightLoading } = useInsight();
 
-  // 일별 매출/판매수량 집계 (최근 날짜부터 역순이므로 차트용 reverse)
   const salesSeries = aggregateDailySales(performance);
-  // 예측 시계열 (forecasts 테이블)
   const forecastSeries = forecasts
     .filter((f) => f.predicted_qty != null)
     .map((f) => ({
@@ -30,7 +35,6 @@ export default function ForecastDashboard() {
     }))
     .reverse();
 
-  // KPI
   const totalUnits = performance.reduce((acc, r) => acc + (r.units_sold ?? 0), 0);
   const totalGmv = performance.reduce((acc, r) => acc + Number(r.gmv ?? 0), 0);
   const latestForecastQty = forecasts[0]?.predicted_qty ?? null;
@@ -40,7 +44,7 @@ export default function ForecastDashboard() {
       <header>
         <h1 className="text-2xl font-bold">수요 예측 (핫팩)</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          보온소품 SKU 판매 추이와 예측 수량. 추후 FastAPI `/forecast/run` 결과를 실시간 반영합니다.
+          보온소품 SKU 판매 추이 · 예측 수량 · AI 인사이트
         </p>
       </header>
 
@@ -51,6 +55,9 @@ export default function ForecastDashboard() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      {/* AI 인사이트 카드 */}
+      <InsightCard insight={insight} loading={insightLoading} />
 
       {/* KPI 행 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -89,7 +96,7 @@ export default function ForecastDashboard() {
           {loading ? (
             <Skeleton className="h-full w-full" />
           ) : salesSeries.length === 0 ? (
-            <EmptyHint text="판매 데이터가 없습니다. Step 3(Supabase 연동) 완료 후 표시됩니다." />
+            <EmptyHint text="판매 데이터가 없습니다. Supabase 연동 완료 후 표시됩니다." />
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={salesSeries} margin={{ top: 16, right: 24, left: 8, bottom: 8 }}>
@@ -120,7 +127,7 @@ export default function ForecastDashboard() {
           {loading ? (
             <Skeleton className="h-full w-full" />
           ) : forecastSeries.length === 0 ? (
-            <EmptyHint text="아직 예측 결과가 없습니다. Step 5~6(모델 실행) 완료 후 표시됩니다." />
+            <EmptyHint text="아직 예측 결과가 없습니다. 모델 실행 완료 후 표시됩니다." />
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={forecastSeries} margin={{ top: 16, right: 24, left: 8, bottom: 8 }}>
@@ -141,10 +148,145 @@ export default function ForecastDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* 발주 시뮬레이션 테이블 */}
+      <OrderSimulationCard />
     </div>
   );
 }
 
+// ────────────────────────────────────────────
+// AI 인사이트 카드
+// ────────────────────────────────────────────
+function InsightCard({ insight, loading }: { insight: string | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <Card className="border-blue-200 bg-blue-50/50">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <Sparkles className="h-5 w-5 text-blue-600" />
+          <CardTitle className="text-base font-semibold text-blue-900">AI 발주 인사이트</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!insight) {
+    return (
+      <Card className="border-gray-200 bg-gray-50/50">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <Sparkles className="h-5 w-5 text-gray-400" />
+          <CardTitle className="text-base text-gray-500">AI 발주 인사이트</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground text-sm">
+            FastAPI 서버(localhost:8000) 실행 후 인사이트가 표시됩니다.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-blue-200 bg-blue-50/50">
+      <CardHeader className="flex flex-row items-center gap-2 pb-2">
+        <Sparkles className="h-5 w-5 text-blue-600" />
+        <CardTitle className="text-base font-semibold text-blue-900">AI 발주 인사이트</CardTitle>
+        <Badge variant="secondary" className="ml-auto text-xs">
+          GPT-4o-mini
+        </Badge>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm leading-relaxed whitespace-pre-line">{insight}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ────────────────────────────────────────────
+// 발주 시뮬레이션 카드 (Model B 결과 로컬 CSV)
+// ────────────────────────────────────────────
+function OrderSimulationCard() {
+  const [data, setData] = useState<any[]>([]);
+  const [simLoading, setSimLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${FASTAPI_URL}/forecast/order-simulation`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setData)
+      .catch(() => setData([]))
+      .finally(() => setSimLoading(false));
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center gap-2">
+        <Package className="h-5 w-5 text-orange-600" />
+        <CardTitle>발주 시뮬레이션 (Model B)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {simLoading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : data.length === 0 ? (
+          <EmptyHint text="FastAPI /forecast/order-simulation 엔드포인트 응답 대기 중" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b text-xs font-medium text-gray-500">
+                  <th className="pb-2">주차</th>
+                  <th className="pb-2">SKU</th>
+                  <th className="pb-2">제품명</th>
+                  <th className="pb-2 text-right">권장 발주량</th>
+                  <th className="pb-2 text-right">비중</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((row: any, i: number) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 text-gray-600">{row.week_start?.slice(0, 10)}</td>
+                    <td className="py-2 font-mono text-xs">{row.sku}</td>
+                    <td className="py-2">{row.name || `SKU ${row.sku}`}</td>
+                    <td className="py-2 text-right font-semibold">
+                      {(row.predicted_order_qty ?? 0).toLocaleString()}
+                    </td>
+                    <td className="py-2 text-right text-gray-500">
+                      {row.sku_ratio ? `${(row.sku_ratio * 100).toFixed(1)}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ────────────────────────────────────────────
+// 인사이트 훅 (FastAPI /forecast/insight)
+// ────────────────────────────────────────────
+function useInsight() {
+  const [insight, setInsight] = useState<string | null>(null);
+  const [insightLoading, setInsightLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${FASTAPI_URL}/forecast/insight`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setInsight(d?.insight ?? null))
+      .catch(() => setInsight(null))
+      .finally(() => setInsightLoading(false));
+  }, []);
+
+  return { insight, insightLoading };
+}
+
+// ────────────────────────────────────────────
+// 유틸
+// ────────────────────────────────────────────
 function KpiCard({
   title,
   value,
@@ -178,14 +320,15 @@ function EmptyHint({ text }: { text: string }) {
   );
 }
 
-// 같은 날짜의 여러 SKU를 합쳐서 일별 시리즈로 변환
 function aggregateDailySales(
   rows: { date: string; units_sold: number }[]
 ): { date: string; units: number }[] {
   const map = new Map<string, number>();
   for (const r of rows) {
-    const prev = map.get(r.date) ?? 0;
-    map.set(r.date, prev + (r.units_sold ?? 0));
+    const d = r.date ?? (r as any).sale_date;
+    if (!d) continue;
+    const prev = map.get(d) ?? 0;
+    map.set(d, prev + (r.units_sold ?? 0));
   }
   return Array.from(map.entries())
     .map(([date, units]) => ({ date, units }))

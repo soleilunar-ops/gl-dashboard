@@ -46,7 +46,7 @@ def _fetch_daily_performance(client, skus: tuple[int, ...], page_size: int = 100
             client.table("daily_performance")
             .select(
                 "sale_date,sku_id,units_sold,gmv,promo_units_sold,asp,"
-                "conversion_rate,page_views,return_units"
+                "conversion_rate,page_views,return_units,review_count,avg_rating"
             )
             .in_("sku_id", skus_str)
             .order("sale_date")
@@ -76,6 +76,11 @@ def _aggregate_weekly_sales(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["week_start"] = df["date"] - pd.to_timedelta(df["date"].dt.weekday, unit="D")
     df["week_start"] = df["week_start"].dt.normalize()
+    if "review_count" not in df.columns:
+        df["review_count"] = 0
+    if "avg_rating" not in df.columns:
+        df["avg_rating"] = pd.NA
+
     agg = df.groupby(["week_start", "coupang_sku_id"], as_index=False).agg(
         weekly_sales_qty=("units_sold", "sum"),
         weekly_return_qty=("return_units", "sum"),
@@ -84,6 +89,8 @@ def _aggregate_weekly_sales(df: pd.DataFrame) -> pd.DataFrame:
         weekly_page_views=("page_views", "sum"),
         avg_asp=("asp", "mean"),
         avg_conversion_rate=("conversion_rate", "mean"),
+        weekly_review_count=("review_count", "sum"),
+        avg_rating=("avg_rating", "mean"),
         days_observed=("date", "nunique"),
     )
     agg["promotion_flag"] = (agg["weekly_promo_units"] > 0).astype(int)

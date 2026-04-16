@@ -57,6 +57,14 @@ class InsightResponse(BaseModel):
     source: str = "openai"
 
 
+class OrderSimulationItem(BaseModel):
+    week_start: str
+    sku: int
+    name: str
+    predicted_order_qty: int
+    sku_ratio: float
+
+
 # ────────────────────────────────────────────
 # Supabase 클라이언트 (지연 초기화)
 # ────────────────────────────────────────────
@@ -153,6 +161,56 @@ def get_forecast_insight(
         generated_at=datetime.now(KST).isoformat(),
         source=source,
     )
+
+
+@router.get("/order-simulation", response_model=list[OrderSimulationItem])
+def get_order_simulation() -> list[OrderSimulationItem]:
+    """
+    Model B 발주 시뮬레이션 결과 (로컬 CSV 기반).
+
+    data/processed/model_b_sku_distribution.csv에서 미래 주차만 반환.
+    """
+    from pathlib import Path
+
+    csv_path = Path("data/processed/model_b_sku_distribution.csv")
+    if not csv_path.exists():
+        return []
+
+    import pandas as pd
+
+    df = pd.read_csv(csv_path, parse_dates=["week_start"])
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).date()
+    df = df[df["week_start"].dt.date >= today]
+
+    if df.empty:
+        return []
+
+    # SKU 이름 매핑
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from data_pipeline.bi_box_loader import build_sku_name_map
+        from data_pipeline.weekly_feature_builder import WARMER_SKUS
+
+        name_map = build_sku_name_map(skus=WARMER_SKUS)
+    except Exception:
+        name_map = {}
+
+    rows = []
+    for _, r in df.sort_values(["week_start", "predicted_order_qty"], ascending=[True, False]).iterrows():
+        sku = int(r["sku"])
+        if r["predicted_order_qty"] <= 0:
+            continue
+        rows.append(OrderSimulationItem(
+            week_start=r["week_start"].strftime("%Y-%m-%d"),
+            sku=sku,
+            name=name_map.get(sku, f"SKU {sku}"),
+            predicted_order_qty=int(r["predicted_order_qty"]),
+            sku_ratio=round(float(r["sku_ratio"]), 4),
+        ))
+
+    return rows[:50]
 
 
 @router.post("/run", response_model=ForecastRunResponse)
