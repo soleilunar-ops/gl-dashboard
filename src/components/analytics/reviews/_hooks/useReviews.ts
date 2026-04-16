@@ -10,7 +10,13 @@ import type { Tables } from "@/lib/supabase/types";
 type CoupangPerformance = Tables<"coupang_performance">;
 type ReviewRow = Pick<
   CoupangPerformance,
-  "coupang_sku_id" | "sku_name" | "review_count" | "avg_rating" | "date"
+  | "coupang_sku_id"
+  | "sku_name"
+  | "review_count"
+  | "avg_rating"
+  | "units_sold"
+  | "return_units"
+  | "date"
 >;
 
 export function useReviews() {
@@ -23,9 +29,11 @@ export function useReviews() {
     const fetchData = async () => {
       const { data, error } = await supabase
         .from("coupang_performance")
-        .select("coupang_sku_id, sku_name, review_count, avg_rating, date")
+        .select(
+          "coupang_sku_id, sku_name, review_count, avg_rating, units_sold, return_units, date"
+        )
         .order("date", { ascending: false })
-        .limit(100);
+        .limit(500);
 
       if (error) {
         console.error("리뷰 데이터 조회 실패:", error.message);
