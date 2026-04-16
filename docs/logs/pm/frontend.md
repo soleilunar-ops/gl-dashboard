@@ -225,6 +225,139 @@
   6. `package.json` 변경 금지 — 패키지 추가 필요 시 PM에게 요청
 - 현재 코드의 컴포넌트 구조(8개)와 기능 설계는 참고 가능, DB/API 레이어만 교체
 
+### [2026-04-15] [PM 코드 리뷰 — 정민님]
+
+**요청:** 정민님 PR #13(`team/정민` → `submain`) 코드 품질 및 파일 경계 규칙 준수 여부 리뷰
+**대상 커밋:** `8c617c0 초안 push` (34파일, +3,325줄)
+**결과: submain 머지 불가 — 파일 위치 이동 + 아키텍처 연동 필요**
+
+**파일 경계 판정:**
+
+- 허용 영역 내 파일: 0개 (34개 전부 영역 밖)
+- 프로젝트 루트에 `analytics/`, `backend/`, `data_pipeline/`, `data_sources/`, `config/` 새 폴더 생성
+- PM 전용 영역 침범: `scripts/` (4파일), `.gitignore` 수정
+- `.cache.sqlite` 바이너리 파일 커밋 포함
+- `src/components/analytics/forecast/`에 컴포넌트 0개, 스켈레톤 `useForecast.ts` 미사용
+- `services/api/routers/forecast.py`, `services/api/models/` 미생성
+- 작업 로그(`docs/logs/정민.md`): 미작성
+
+**코드 품질:** Python 코드 자체는 팀 내 가장 체계적
+
+- 타입 힌트 전면 적용, dataclass/Pydantic 스키마 설계, 함수 분리 우수
+- TODO 97개 — 미확정 사항을 더미 데이터로 때우지 않고 명시하는 원칙 준수
+- 인수인계 문서(HANDOFF 2개) 상세하게 작성
+- LightGBM/LinearRegression 예측 모델, 피처 엔지니어링, ASOS/ECMWF 연동 모듈 구현
+
+**핵심 문제:** 프로젝트 아키텍처와 완전히 단절
+
+- Supabase 연결점 0 — 읽기도 쓰기도 안 함 (CSV 파일에서 직접 읽는 구조)
+- 기존 FastAPI 구조(`services/api/`) 무시 — 루트 `backend/`에 새 앱 생성
+- 프론트엔드 컴포넌트 0개 — 브라우저에서 예측 결과를 볼 방법 없음
+- 별도 프로젝트를 gl-dashboard 레포에 통째로 이식한 것으로 추정
+
+**Supabase 테이블 현황 (실제 DB 연결 확인):**
+
+- `coupang_performance`: 12,492행 (55개 SKU, 1년치 판매 데이터) — 정민님이 읽어야 할 소스
+- `products`: 144행 — SKU 마스터
+- `forecasts`: 0행 (테이블+컬럼 있음) — 정민님이 예측 결과 저장할 곳
+- `weather_data`: 0행 (테이블+컬럼 있음) — 정민님이 날씨 데이터 저장할 곳
+- migration 불필요 — PM이 이미 테이블 구조를 만들어놨음, 데이터 insert만 하면 됨
+
+### [2026-04-15] [PM 재구현 가이드 — 정민님]
+
+**정민님에게 전달 (카톡용):**
+
+정민님이 만든 Python 코드(수요예측 모델, 날씨 수집, 피처 엔지니어링)의 품질은 팀 내 가장 높습니다.
+문제는 코드가 프로젝트 구조와 연결되지 않은 것입니다.
+Supabase에 필요한 테이블(`weather_data`, `forecasts`)은 PM이 이미 만들어놨고,
+판매 데이터(`coupang_performance`)도 12,492행이 들어있습니다.
+아래 순서대로 진행하면 기존 코드를 살리면서 프로젝트에 연결할 수 있습니다.
+
+**Step 1: 루트 파일 정리 (즉시)**
+
+- 프로젝트 루트의 `analytics/`, `backend/`, `data_pipeline/`, `data_sources/`, `config/`, `dashboard/` 삭제
+- `.cache.sqlite`, `HANDOFF_*.md`, `requirements.txt` 삭제
+- `.gitignore` 변경 되돌리기 (PM 전용 파일)
+
+**Step 2: Python 코드를 `services/api/` 하위로 이동 (PM과 협의)**
+
+- `analytics/` → `services/api/analytics/`
+- `data_pipeline/` → `services/api/data_pipeline/`
+- `data_sources/` → `services/api/data_sources/`
+- `backend/schemas/` → `services/api/schemas/`
+- `requirements.txt` → `services/api/requirements.txt` (기존에 머지)
+- `services/api/`는 PM 전용 영역이므로 PM에게 폴더 생성 요청 후 이동
+
+**Step 3: Supabase 연결 — 데이터 읽기**
+현재 `sales_loader.py`가 CSV에서 읽는 것을 Supabase로 변경:
+
+```python
+from supabase import create_client
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+response = supabase.table("coupang_performance").select("*").execute()
+df = pd.DataFrame(response.data)
+```
+
+나머지 파이프라인(feature_engineering, weekly_demand_forecast)은 DataFrame을 받으므로 수정 불필요.
+
+**Step 4: Supabase 연결 — 날씨 데이터 저장**
+`weather_data` 테이블이 이미 있음 (migration 불필요, insert만). 컬럼 매핑:
+
+- temp_min → temp_min (ASOS/Open-Meteo)
+- temp_max → temp_max
+- temp_avg → temp_mean
+- precipitation → rain_mm
+- wind_speed → wind_mean
+- cold_wave_alert → coldwave_flag
+- region → 관측소명
+- source → 'asos' 또는 'ecmwf_open_meteo'
+
+데이터 수집 범위:
+
+- 과거 날씨: `coupang_performance` 시작일 ~ 오늘 (ASOS API → weather_data insert)
+- 미래 날씨: 오늘 ~ +16일 (Open-Meteo ECMWF → weather_data insert)
+
+**Step 5: Supabase 연결 — 예측 결과 저장**
+`forecasts` 테이블이 이미 있음 (migration 불필요, insert만). 컬럼 매핑:
+
+- product_id → products.id (sku_mappings로 연결)
+- forecast_date → 예측 대상 주차 시작일
+- predicted_qty → weekly_sales_qty 예측값
+- model_name → 'lightgbm' 또는 'linear'
+- input_features → 피처 JSON (jsonb)
+
+**Step 6: FastAPI 라우터 작성**
+`services/api/routers/forecast.py` (정민님 영역):
+
+- Supabase에서 coupang_performance + weather_data 조회
+- feature_engineering으로 피처 생성
+- weekly_demand_forecast로 예측
+- 결과를 Supabase forecasts에 저장
+
+**Step 7: 프론트엔드 컴포넌트**
+`src/components/analytics/forecast/ForecastDashboard.tsx`:
+
+- 스켈레톤 `_hooks/useForecast.ts` 확장해서 Supabase forecasts 조회
+- 차트로 예측 결과 표시 (recharts, shadcn/ui Card/Chart 사용)
+
+**전체 파이프라인 (완성 시):**
+
+```
+[스케줄러 — 매일 1회]
+기상청 ASOS → weather_data (과거 관측)
+Open-Meteo ECMWF → weather_data (미래 16일 예보)
+
+[FastAPI — 요청 시 또는 스케줄러]
+Supabase(coupang_performance + weather_data)
+  → feature_engineering → 모델 학습/추론
+  → forecasts 테이블에 저장
+
+[프론트엔드 — 실시간]
+Supabase(forecasts) → useForecast.ts → ForecastDashboard.tsx → 브라우저
+```
+
+**우선순위:** Step 1~2(파일 정리) → Step 3~5(Supabase 연결) → Step 6(FastAPI) → Step 7(프론트)
+
 **잔류 — 이번에 수정하지 않는 항목:**
 
 - `src/lib/margin/`, `src/app/api/exchange-rate/` PM 영역 파일 위치: orders와 cost 양쪽에서 공유하는 엔진이므로 `src/lib/`에 두는 것이 합리적. PM이 직접 생성한 것으로 간주하고 승인
@@ -234,3 +367,5 @@
 - `ratingChartData` 별점 분포: 평균 별점에서 역산한 추정값이며 실제 분포가 아님. neutralRatio(0.2)가 lowRatio+highRatio(=1.0)과 별도로 사용되어 비율 합계 초과. 실제 리뷰 별점 데이터 확보 시 교체 필요
 - 경쟁사 데이터(가격 4건, 스펙 3건) / 키워드 / 플랫폼 행사 정보: 하드코딩 초안. 크롤링/API 연동 시 교체 예정
 - 나경님 작업 로그(`docs/logs/나경.md`): 미작성 상태 — 나경님에게 기록 요청 필요
+- Migration 동기화: Supabase에 21개 migration 적용됨, 프로젝트 파일에는 9개만 존재. 나머지 12개 파일 추가 필요 (운영에는 영향 없음, 새 환경 재구성 시 필요)
+- 정민님 작업 로그(`docs/logs/정민.md`): 미작성 상태

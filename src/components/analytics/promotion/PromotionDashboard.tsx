@@ -1,31 +1,54 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import BudgetPlanner from "@/components/analytics/promotion/BudgetPlanner";
+import PromotionSalesOverlay from "@/components/analytics/promotion/PromotionSalesOverlay";
+import ROICalculator from "@/components/analytics/promotion/ROICalculator";
+import SeasonAlertMonitor from "@/components/analytics/promotion/SeasonAlertMonitor";
+import SeasonCompare from "@/components/analytics/promotion/SeasonCompare";
+import TimingOptimizer from "@/components/analytics/promotion/TimingOptimizer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function PromotionDashboard() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>프로모션 분석</CardTitle>
-        <CardDescription>
-          프로젝트 규칙에 맞춰 `public` 정적 파일 없이, Python Dash 서버(`http://127.0.0.1:8050`)를
-          직접 임베드합니다.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-muted-foreground text-sm">
-          Dash 서버가 실행 중이 아니면 화면이 비어 보일 수 있습니다. 실행 명령:
-          <span className="ml-1 font-mono">python app.py</span>
-        </p>
-        <div className="rounded-lg border p-2">
-          <iframe
-            src="http://127.0.0.1:8050"
-            title="GL 쿠팡 프로모션 효과 분석 대시보드"
-            className="h-[980px] w-full rounded-lg border"
-            loading="lazy"
-          />
-        </div>
-      </CardContent>
-    </Card>
+    <Tabs defaultValue="effect" className="space-y-3">
+      <TabsList variant="line" className="w-full justify-start border-b pb-1">
+        <TabsTrigger value="effect">프로모션 효과</TabsTrigger>
+        <TabsTrigger value="season">시즌 비교</TabsTrigger>
+        <TabsTrigger value="roi">ROI 분석</TabsTrigger>
+        <TabsTrigger value="forecast">예측</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="effect">
+        <PromotionSalesOverlay />
+      </TabsContent>
+
+      <TabsContent value="season">
+        <SeasonCompare />
+      </TabsContent>
+
+      <TabsContent value="roi">
+        <ROICalculator />
+      </TabsContent>
+
+      <TabsContent value="forecast">
+        <Tabs defaultValue="budget" className="space-y-3">
+          <TabsList variant="line" className="w-full justify-start border-b pb-1">
+            <TabsTrigger value="budget">예산 플래너</TabsTrigger>
+            <TabsTrigger value="timing">타이밍 전략</TabsTrigger>
+            <TabsTrigger value="alert">시즌 알림</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="budget">
+            <BudgetPlanner />
+          </TabsContent>
+          <TabsContent value="timing">
+            <TimingOptimizer />
+          </TabsContent>
+          <TabsContent value="alert">
+            <SeasonAlertMonitor />
+          </TabsContent>
+        </Tabs>
+      </TabsContent>
+    </Tabs>
   );
 }
