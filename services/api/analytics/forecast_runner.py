@@ -96,31 +96,46 @@ def _forecast_to_records(
     training_period: str,
     *,
     model_name: str,
+    stockout_masked: bool = False,
 ) -> list[dict[str, Any]]:
-    """forecast_df → forecasts 테이블 insert용 레코드."""
+    """forecast_df → forecasts 테이블 insert용 레코드 (오늘 이후만 + 신뢰구간)."""
     rows: list[dict[str, Any]] = []
     input_features = {
         "weather": True,
         "promotion_flag": True,
         "lag_weeks": [1, 2, 4],
-        "stockout_masked": False,  # Step 5-a placeholder
+        "stockout_masked": stockout_masked,
     }
 
+    val_mae = metrics.get("val_mae", 0)
+    today = pd.Timestamp.today().normalize()
+
     for _, row in forecast_df.iterrows():
+        ws = pd.Timestamp(row["week_start"])
+        if ws < today:
+            continue
+
         sku = int(row["sku"])
         pid = sku_to_pid.get(sku)
         if pid is None:
             continue
         pred = float(row.get("weekly_sales_qty_forecast", 0))
+        pred = max(0.0, pred)
+
+        # MAE 기반 90% 신뢰구간 (±1.645 × MAE)
+        margin = val_mae * 1.645
+        lower = int(round(max(0.0, pred - margin)))
+        upper = int(round(pred + margin))
+
         rows.append(
             {
                 "product_id": pid,
-                "forecast_date": pd.Timestamp(row["week_start"]).strftime("%Y-%m-%d"),
-                "predicted_qty": int(round(max(0.0, pred))),
+                "forecast_date": ws.strftime("%Y-%m-%d"),
+                "predicted_qty": int(round(pred)),
                 "model_name": model_name,
-                "confidence_lower": None,
-                "confidence_upper": None,
-                "confidence_level": None,
+                "confidence_lower": lower,
+                "confidence_upper": upper,
+                "confidence_level": 0.90,
                 "input_features": input_features,
                 "model_version": MODEL_VERSION,
                 "training_period": training_period,
@@ -175,6 +190,7 @@ def run_forecast_pipeline(
         metrics,
         training_period,
         model_name=model_kind,
+        stockout_masked=apply_stockout_mask,
     )
 
     # insert (upsert 불필요: forecast_date + product_id + model_name 조합으로 신규)

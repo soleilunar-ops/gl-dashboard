@@ -137,6 +137,7 @@ def _aggregate_weekly_weather(df: pd.DataFrame) -> pd.DataFrame:
         temp_mean=("temp_mean", "mean"),
         rain_mm=("rain_mm", "sum"),
         snow_cm=("snow_cm", "sum"),
+        wind_mean=("wind_mean", "mean"),
         cold_wave_alert=("cold_wave_alert", "any"),
     )
     daily["week_start"] = daily["date"] - pd.to_timedelta(daily["date"].dt.weekday, unit="D")
@@ -147,6 +148,7 @@ def _aggregate_weekly_weather(df: pd.DataFrame) -> pd.DataFrame:
         temp_max=("temp_max", "max"),
         rain_mm=("rain_mm", "sum"),
         snow_cm=("snow_cm", "sum"),
+        wind_mean=("wind_mean", "mean"),
         cold_days_7d=("cold_wave_alert", "sum"),
     )
     weekly["temp_range"] = weekly["temp_max"] - weekly["temp_min"]
