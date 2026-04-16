@@ -56,14 +56,47 @@ src/components/shared/ — 사용(import)은 자유, 소스 수정 시 PM에게 
 - 상수: UPPER_SNAKE_CASE
 - import 순서: React → 외부 → @/components/shared → @/components/[영역] → @/lib
 - Supabase: 단순 CRUD는 프론트 직접, AI/RAG만 FastAPI
-- UI 컴포넌트는 반드시 src/components/ui/에서 import
 - 한국어 주석 사용
+
+### page.tsx 규칙 (절대)
+
+page.tsx에는 로직을 넣지 않는다. import + 배치만.
+
+```tsx
+// 올바른 예시 (10줄 이내)
+import PageWrapper from "@/components/layout/PageWrapper";
+import OrderDashboard from "@/components/orders/OrderDashboard";
+
+export default function OrdersPage() {
+  return (
+    <PageWrapper title="주문 관리">
+      <OrderDashboard />
+    </PageWrapper>
+  );
+}
+
+// 금지: useState, useMemo, useEffect, fetch, 인터페이스 정의, Mock 데이터
+```
+
+### shadcn/ui 사용 (절대)
+
+네이티브 HTML 대신 반드시 src/components/ui/ 사용:
+
+- `<table>` → `import { Table, TableHead, TableRow, TableCell } from "@/components/ui/table"`
+- `<select>` → `import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/select"`
+- `<button>` → `import { Button } from "@/components/ui/button"`
+- `<input>` → `import { Input } from "@/components/ui/input"`
+- 예외: `<input type="file">`은 네이티브 허용 (전용 컴포넌트 없음)
 
 ### 데이터 가져오기 패턴
 
-- 컴포넌트 데이터는 같은 폴더 \_hooks/에서 가져온다
+- 같은 폴더의 \_hooks/에 PM이 만든 스켈레톤 훅이 있음 — 반드시 먼저 확인
+- 스켈레톤 훅을 확장해서 사용 (컬럼 추가, 필터 추가, limit 변경 자유)
 - \_hooks/에서 supabase.from().select() 사용
+- 쓰기(insert/update/delete)도 같은 \_hooks/ 파일에 함수 추가
+- 별도 DB(SQLite, MongoDB 등) 절대 금지 — Supabase만 사용
 - FastAPI 호출은 forecast 전용 (FASTAPI_URL + '/endpoint')
+- 서버 로직(API 라우트, 외부 API 호출, 파일 처리)이 필요하면 PM에게 요청
 
 ## 5. 커밋 규칙
 
