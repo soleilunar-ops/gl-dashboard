@@ -13,7 +13,7 @@ main.py 에서 다음과 같이 include:
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -49,6 +49,12 @@ class ForecastRunResponse(BaseModel):
     metrics: dict[str, float]
     inserted_rows: int
     message: str
+
+
+class InsightResponse(BaseModel):
+    insight: str
+    generated_at: str
+    source: str = "openai"
 
 
 # ────────────────────────────────────────────
@@ -103,7 +109,8 @@ def get_weekly_forecast(
 ) -> list[ForecastItem]:
     """오늘 이후 N주 예측치 조회."""
     supabase = _get_supabase_client()
-    today = datetime.utcnow().date().isoformat()
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).date().isoformat()
 
     query = (
         supabase.table("forecasts")
@@ -118,6 +125,34 @@ def get_weekly_forecast(
     res = query.execute()
     rows: list[dict[str, Any]] = res.data or []
     return [ForecastItem(**r) for r in rows]
+
+
+@router.get("/insight", response_model=InsightResponse)
+def get_forecast_insight(
+    model: str = Query(default="gpt-4o-mini", description="OpenAI 모델"),
+) -> InsightResponse:
+    """
+    Model A/B 예측 + 날씨 데이터 기반 발주 인사이트 생성 (3~5줄).
+
+    OpenAI API 키 없으면 룰 기반 fallback 반환.
+    """
+    from services.api.analytics.insight_generator import (
+        build_insight_context_from_local,
+        generate_forecast_insight,
+    )
+
+    KST = timezone(timedelta(hours=9))
+    ctx = build_insight_context_from_local()
+    insight = generate_forecast_insight(ctx, model=model)
+    source = "fallback" if "[" in insight and "OpenAI" in insight else "openai"
+    if not os.getenv("OPENAI_API_KEY", "").strip():
+        source = "fallback"
+
+    return InsightResponse(
+        insight=insight,
+        generated_at=datetime.now(KST).isoformat(),
+        source=source,
+    )
 
 
 @router.post("/run", response_model=ForecastRunResponse)

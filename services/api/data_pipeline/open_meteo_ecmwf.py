@@ -182,9 +182,9 @@ def _add_forecast_cold_wave_flag(df: pd.DataFrame) -> pd.DataFrame:
     out = df.sort_values(["region", "date"]).copy()
     prev_min = out.groupby("region")["temp_min"].shift(1)
     drop = prev_min - out["temp_min"]
-    out["cold_wave_alert"] = (
-        (out["temp_min"] <= -12) | ((drop >= 10) & (out["temp_min"] <= 3))
-    ).fillna(False)
+    cond_abs = (out["temp_min"] <= -12).fillna(False)
+    cond_rel = ((drop >= 10) & (out["temp_min"] <= 3)).fillna(False)
+    out["cold_wave_alert"] = cond_abs | cond_rel
     return out
 
 

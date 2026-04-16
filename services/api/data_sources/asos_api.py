@@ -206,9 +206,9 @@ def _add_cold_wave_flag(df: pd.DataFrame) -> pd.DataFrame:
     prev_min = out.groupby("region")["temp_min"].shift(1)
     drop = prev_min - out["temp_min"]
 
-    cond_abs = out["temp_min"] <= -12
-    cond_rel = (drop >= 10) & (out["temp_min"] <= 3)
-    out["cold_wave_alert"] = (cond_abs | cond_rel).fillna(False)
+    cond_abs = (out["temp_min"] <= -12).fillna(False)
+    cond_rel = ((drop >= 10) & (out["temp_min"] <= 3)).fillna(False)
+    out["cold_wave_alert"] = cond_abs | cond_rel
     return out
 
 

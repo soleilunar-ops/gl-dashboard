@@ -23,9 +23,10 @@ export default function ForecastDashboard() {
   const salesSeries = aggregateDailySales(performance);
   // 예측 시계열 (forecasts 테이블)
   const forecastSeries = forecasts
+    .filter((f) => f.predicted_qty != null)
     .map((f) => ({
       date: f.forecast_date,
-      predicted: f.predicted_qty ?? 0,
+      predicted: f.predicted_qty,
     }))
     .reverse();
 
@@ -35,7 +36,7 @@ export default function ForecastDashboard() {
   const latestForecastQty = forecasts[0]?.predicted_qty ?? null;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-bold">수요 예측 (핫팩)</h1>
         <p className="text-muted-foreground mt-1 text-sm">
@@ -67,7 +68,13 @@ export default function ForecastDashboard() {
         />
         <KpiCard
           title="다음 구간 예측 수량"
-          value={loading ? "—" : latestForecastQty !== null ? latestForecastQty.toLocaleString() : "데이터 없음"}
+          value={
+            loading
+              ? "—"
+              : latestForecastQty !== null
+                ? latestForecastQty.toLocaleString()
+                : "데이터 없음"
+          }
           icon={<CalendarRange className="text-muted-foreground h-4 w-4" />}
           hint="forecasts 테이블 최신 1건"
         />
@@ -91,7 +98,13 @@ export default function ForecastDashboard() {
                 <YAxis fontSize={12} />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="units" name="판매수량" stroke="#2563eb" dot={false} />
+                <Line
+                  type="monotone"
+                  dataKey="units"
+                  name="판매수량"
+                  stroke="#2563eb"
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -116,7 +129,13 @@ export default function ForecastDashboard() {
                 <YAxis fontSize={12} />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="predicted" name="예측수량" stroke="#059669" dot={false} />
+                <Line
+                  type="monotone"
+                  dataKey="predicted"
+                  name="예측수량"
+                  stroke="#059669"
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -153,7 +172,9 @@ function KpiCard({
 
 function EmptyHint({ text }: { text: string }) {
   return (
-    <div className="text-muted-foreground flex h-full items-center justify-center text-sm">{text}</div>
+    <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
+      {text}
+    </div>
   );
 }
 
