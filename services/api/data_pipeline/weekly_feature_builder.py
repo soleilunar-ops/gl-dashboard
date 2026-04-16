@@ -44,8 +44,14 @@ class WeeklyFeatureConfig:
     # Supabase 'source' 필드로 ASOS/예보 구분
     asos_source: str = "asos"
     forecast_source: str = "ecmwf_open_meteo"
-    # 품절 마스킹 (coupang_logistics.is_stockout 기반). 기본 off — 데이터 커버리지 확인 후 켜기
+    # 품절 마스킹 — 기본 off. 데이터 커버리지 확인 후 켜기
     apply_stockout_mask: bool = False
+    # 품절 소스: "logistics" (coupang_logistics.is_stockout), "bi_box" (바이박스 CSV), "both" (둘 다)
+    stockout_source: str = "bi_box"
+    # bi_box 디렉토리 경로
+    bi_box_dir: str = "data/raw/coupang/bi_box"
+    # bi_box 피처를 weekly_df에 추가할지 (price, bi_box_share)
+    include_bi_box_features: bool = True
 
 
 # ────────────────────────────────────────────
@@ -236,11 +242,27 @@ def build_weekly_feature_table(
     sales_raw = _fetch_coupang_performance(client, cfg)
     weather_raw = _fetch_weather(client, cfg)
 
+    # 바이박스 로드 (품절 마스킹 + 추가 피처 용)
+    bi_box_weekly = pd.DataFrame()
+    bi_box_daily = pd.DataFrame()
+    if cfg.include_bi_box_features or (cfg.apply_stockout_mask and cfg.stockout_source in ("bi_box", "both")):
+        from .bi_box_loader import load_bi_box_all, aggregate_weekly_bi_box
+
+        bi_box_daily = load_bi_box_all(directory=cfg.bi_box_dir, skus=list(cfg.skus))
+        bi_box_weekly = aggregate_weekly_bi_box(bi_box_daily)
+
+    # 품절 마스킹
     stockout_masked_rows = 0
     if cfg.apply_stockout_mask:
-        stockout_df = _fetch_stockout_days(client, cfg)
         before = len(sales_raw)
-        sales_raw = _apply_stockout_mask(sales_raw, stockout_df)
+        if cfg.stockout_source in ("bi_box", "both") and not bi_box_daily.empty:
+            stockout_from_bibox = bi_box_daily.loc[
+                bi_box_daily["is_stockout"], ["date", "coupang_sku_id"]
+            ]
+            sales_raw = _apply_stockout_mask(sales_raw, stockout_from_bibox)
+        if cfg.stockout_source in ("logistics", "both"):
+            stockout_from_logistics = _fetch_stockout_days(client, cfg)
+            sales_raw = _apply_stockout_mask(sales_raw, stockout_from_logistics)
         stockout_masked_rows = before - len(sales_raw)
 
     sales_weekly = _aggregate_weekly_sales(sales_raw)
@@ -256,6 +278,14 @@ def build_weekly_feature_table(
 
     merged = sales_weekly.merge(weather_weekly, on="week_start", how="left")
 
+    # 바이박스 피처 병합 (price, bi_box_share, stockout_days)
+    if cfg.include_bi_box_features and not bi_box_weekly.empty:
+        merged = merged.merge(
+            bi_box_weekly.rename(columns={"coupang_sku_id": "sku"}),
+            on=["week_start", "sku"],
+            how="left",
+        )
+
     diagnostics = {
         "sales_rows": len(sales_raw),
         "weather_rows": len(weather_raw),
@@ -267,6 +297,9 @@ def build_weekly_feature_table(
         "weather_null_weeks": int(merged["temp_mean"].isna().sum()),
         "stockout_masked_rows": stockout_masked_rows,
         "stockout_mask_applied": cfg.apply_stockout_mask,
+        "stockout_source": cfg.stockout_source,
+        "bi_box_daily_rows": len(bi_box_daily),
+        "bi_box_weekly_rows": len(bi_box_weekly),
         "period": (
             f"{merged['week_start'].min().date()} ~ {merged['week_start'].max().date()}"
             if len(merged)
