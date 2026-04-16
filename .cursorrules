@@ -36,12 +36,12 @@ src/app/page.tsx, src/app/auth/, .claude/, .cursor/, .github/, scripts/, docs/
 
 ### 팀원 영역
 
-- 슬아: src/components/orders/, src/components/analytics/promotion/,
-  src/app/orders/, src/components/layout/nav-orders.ts
+- 슬아: src/components/orders/, src/components/analytics/cost/,
+  src/app/orders/, src/app/analytics/cost/, src/components/layout/nav-orders.ts
 - 정민: src/components/analytics/forecast/, services/api/routers/forecast.py,
   services/api/models/, src/app/analytics/forecast/, src/components/layout/nav-forecast.ts
-- 나경: src/components/analytics/reviews/, src/components/analytics/cost/,
-  src/app/analytics/reviews/, src/app/analytics/cost/, src/components/layout/nav-reviews.ts
+- 나경: src/components/analytics/reviews/, src/components/analytics/promotion/,
+  src/app/analytics/reviews/, src/app/analytics/promotion/, src/components/layout/nav-reviews.ts
 - 진희: src/components/logistics/, src/app/logistics/,
   src/components/layout/nav-logistics.ts
 
@@ -91,11 +91,11 @@ type: feat, fix, chore, docs, style, refactor
 
 main ← submain에서만 PR (배포용)
 submain ← 팀원 브랜치에서 PR (통합 테스트)
-feat/orders-슬아
-feat/forecast-정민
-feat/cost-나경
-feat/logistics-진희
-data/pm-지호
+team/슬아
+team/정민
+team/나경
+team/진희
+team/지호
 PR 병합: 하루 2회 (오전 11시, 오후 5시)
 
 ## 9. 작업 로그 규칙

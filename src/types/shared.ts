@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 export interface Column<T> {
   key: keyof T;
   label: string;
-  render?: (value: T[keyof T], row: T) => ReactNode;
+  render?: (_value: T[keyof T], _row: T) => ReactNode;
 }
 
 export interface DataTableProps<T> {

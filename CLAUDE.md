@@ -24,9 +24,9 @@ PM 승인 필요: react-query, SWR, Zustand, Jotai (사용 전 PM에게 확인)
 
 ## 팀원 영역
 
-- 슬아: components/orders/, components/analytics/promotion/
+- 슬아: components/orders/, components/analytics/cost/
 - 정민: components/analytics/forecast/, services/api/(routers/forecast.py, models/)
-- 나경: components/analytics/reviews/, components/analytics/cost/
+- 나경: components/analytics/reviews/, components/analytics/promotion/
 - 진희: components/logistics/
 
 ## 상세 규칙

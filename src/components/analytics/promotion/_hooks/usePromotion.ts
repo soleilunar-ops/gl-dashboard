@@ -6,15 +6,23 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
-// 원가 분석: products(unit_cost) + coupang_performance(cogs)
-type Product = Tables<"products">;
-type CostRow = Pick<
-  Product,
-  "id" | "name" | "category" | "unit_cost" | "erp_code" | "coupang_sku_id"
+// 프로모션 분석: coupang_performance에서 프로모션 관련 컬럼
+type CoupangPerformance = Tables<"coupang_performance">;
+type PromoRow = Pick<
+  CoupangPerformance,
+  | "coupang_sku_id"
+  | "sku_name"
+  | "date"
+  | "gmv"
+  | "promo_gmv"
+  | "promo_units"
+  | "coupon_discount"
+  | "instant_discount"
+  | "units_sold"
 >;
 
-export function useCost() {
-  const [data, setData] = useState<CostRow[]>([]);
+export function usePromotion() {
+  const [data, setData] = useState<PromoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
@@ -22,19 +30,21 @@ export function useCost() {
   useEffect(() => {
     const fetchData = async () => {
       const { data, error } = await supabase
-        .from("products")
-        .select("id, name, category, unit_cost, erp_code, coupang_sku_id")
-        .order("name", { ascending: true })
-        .limit(200);
+        .from("coupang_performance")
+        .select(
+          "coupang_sku_id, sku_name, date, gmv, promo_gmv, promo_units, coupon_discount, instant_discount, units_sold"
+        )
+        .order("date", { ascending: false })
+        .limit(100);
 
       if (error) {
-        console.error("원가 데이터 조회 실패:", error.message);
+        console.error("프로모션 데이터 조회 실패:", error.message);
         setError(error.message);
         setLoading(false);
         return;
       }
 
-      setData((data as CostRow[]) ?? []);
+      setData((data as PromoRow[]) ?? []);
       setLoading(false);
     };
 

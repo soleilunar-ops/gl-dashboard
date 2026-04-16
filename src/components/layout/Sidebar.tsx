@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Calculator,
   Package,
+  Megaphone,
   LogOut,
   LayoutDashboard,
 } from "lucide-react";
@@ -23,6 +24,7 @@ const iconMap: Record<string, LucideIcon> = {
   MessageSquare,
   Calculator,
   Package,
+  Megaphone,
 };
 
 export default function Sidebar() {
