@@ -30,12 +30,12 @@ from sklearn.metrics import mean_absolute_error
 
 @dataclass
 class ModelBConfig:
-    # 비율 모델에서 최근 N주 사용
-    ratio_lookback_weeks: int = 8
+    # 비율 모델에서 최근 N주 사용 [근거 D] model_b_tuning.py 결과: 4주 MAE 5,477 최저
+    ratio_lookback_weeks: int = 4
     # 안전계수 (1.0 = 그대로, 1.1 = 10% 여유)
     safety_factor: float = 1.0
-    # SKU 분배 시 직전 N주 판매 비율 사용
-    sku_distribute_weeks: int = 4
+    # SKU 분배 시 직전 N주 판매 비율 사용 [근거 D] tuning: 2주 MAE 180 최저
+    sku_distribute_weeks: int = 2
 
 
 # ────────────────────────────────────────────

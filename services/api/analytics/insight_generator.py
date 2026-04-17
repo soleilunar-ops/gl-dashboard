@@ -41,6 +41,40 @@ class InsightContext:
     season: str  # "비시즌(봄)" or "성수기(겨울)"
 
 
+def _compute_stockout_warn_threshold() -> float:
+    """바이박스 실데이터 주별 품절률 3사분위(Q75)를 동적 임계로 사용."""
+    from pathlib import Path as _P
+    try:
+        import sys
+        sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
+        from data_pipeline.bi_box_loader import load_bi_box_all
+        from data_pipeline.weekly_feature_builder import WARMER_SKUS
+        import pandas as _pd
+        bb = load_bi_box_all(skus=WARMER_SKUS)
+        if bb.empty:
+            return 0.3
+        weekly_rate = bb.groupby(bb["date"].dt.to_period("W"))["is_stockout"].mean()
+        return float(weekly_rate.quantile(0.75))
+    except Exception:
+        return 0.3  # fallback
+
+
+def _compute_confidence_range() -> str:
+    """val_mae를 최근 winter_validation 결과에서 읽어 동적으로 계산."""
+    import json
+    from pathlib import Path as _P
+    result_path = _P("data/processed/winter_validation_result.json")
+    val_mae = 636  # 합성 없는 기본 모델 MAE
+    if result_path.exists():
+        try:
+            data = json.loads(result_path.read_text(encoding="utf-8"))
+            val_mae = data.get("A_no_synthetic", {}).get("val_mae", val_mae)
+        except Exception:
+            pass
+    margin = int(round(val_mae * 1.645))  # [B] 정규분포 90% z값
+    return f"90% 신뢰구간 ±{margin:,}"
+
+
 def build_insight_context_from_local(
     forecast_csv: str = "data/processed/forecast_round4.csv",
     model_b_csv: str = "data/processed/model_b_category_forecast.csv",
@@ -140,7 +174,7 @@ def build_insight_context_from_local(
         weather_summary=weather_summary,
         model_b_order_qty=model_b_qty,
         stockout_rate=stockout_rate,
-        confidence_range="90% 신뢰구간 ±1,046",
+        confidence_range=_compute_confidence_range(),
         season=season,
     )
 
@@ -216,7 +250,9 @@ def _fallback_insight(ctx: InsightContext) -> str:
     if ctx.model_b_order_qty:
         lines.append(f"쿠팡 예상 발주요청량: {ctx.model_b_order_qty:,}개 (비율 모델 기준)")
 
-    if ctx.stockout_rate and ctx.stockout_rate > 0.3:
+    # [D] 실데이터 바이박스 품절률 3사분위(Q75) 기반 동적 임계
+    stockout_warn_threshold = _compute_stockout_warn_threshold()
+    if ctx.stockout_rate and ctx.stockout_rate > stockout_warn_threshold:
         lines.append(f"주의: 최근 품절률 {ctx.stockout_rate:.0%} — 재고 확보 시급")
 
     if ctx.top_skus:

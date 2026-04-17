@@ -101,7 +101,11 @@ def _aggregate_weekly_sales(df: pd.DataFrame) -> pd.DataFrame:
 # ────────────────────────────────────────────
 # 날씨 (ASOS API → 로컬 CSV 캐시)
 # ────────────────────────────────────────────
-def _fetch_or_load_asos(start: str = "2024-01-01", end: str = "2026-04-13") -> pd.DataFrame:
+def _fetch_or_load_asos(start: str = "2024-01-01", end: str | None = None) -> pd.DataFrame:
+    # 기본값: 오늘 기준 2일 전 (기상청 ASOS 반영 지연 고려)
+    if end is None:
+        from datetime import datetime, timedelta
+        end = (datetime.today() - timedelta(days=2)).strftime("%Y-%m-%d")
     """ASOS 캐시 CSV 있으면 재사용, 없으면 API 호출 후 저장."""
     _ensure_processed_dir()
     if ASOS_CACHE.exists():
