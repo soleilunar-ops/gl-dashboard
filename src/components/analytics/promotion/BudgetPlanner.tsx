@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   loadBudgetPlannerReference,
   type BudgetPlannerReference,
 } from "@/components/analytics/promotion/dataPreprocess";
@@ -124,28 +132,28 @@ export default function BudgetPlanner() {
       <Card size="sm">
         <CardContent className="pt-4">
           <div className="overflow-x-auto rounded border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40">
-                <tr>
-                  <th className="px-3 py-2 text-left">시즌 월차</th>
-                  <th className="px-3 py-2 text-left">쿠폰예산</th>
-                  <th className="px-3 py-2 text-left">광고예산</th>
-                  <th className="px-3 py-2 text-left">밀크런예산</th>
-                  <th className="px-3 py-2 text-left">월합계</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>시즌 월차</TableHead>
+                  <TableHead>쿠폰예산</TableHead>
+                  <TableHead>광고예산</TableHead>
+                  <TableHead>밀크런예산</TableHead>
+                  <TableHead>월합계</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((r) => (
-                  <tr key={r.label} className="border-t">
-                    <td className="px-3 py-2">{r.label}</td>
-                    <td className="px-3 py-2">{Math.round(r.coupon).toLocaleString()}원</td>
-                    <td className="px-3 py-2">{Math.round(r.ad).toLocaleString()}원</td>
-                    <td className="px-3 py-2">{Math.round(r.milkRun).toLocaleString()}원</td>
-                    <td className="px-3 py-2">{Math.round(r.total).toLocaleString()}원</td>
-                  </tr>
+                  <TableRow key={r.label}>
+                    <TableCell>{r.label}</TableCell>
+                    <TableCell>{Math.round(r.coupon).toLocaleString()}원</TableCell>
+                    <TableCell>{Math.round(r.ad).toLocaleString()}원</TableCell>
+                    <TableCell>{Math.round(r.milkRun).toLocaleString()}원</TableCell>
+                    <TableCell>{Math.round(r.total).toLocaleString()}원</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>

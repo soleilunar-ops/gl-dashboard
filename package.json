@@ -3,8 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -k -n next,dash -c cyan,magenta \"npm run dev:next\" \"node src/components/analytics/promotion/scripts/run-promotion-dash.cjs\"",
-    "dev:next": "next dev",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -40,7 +39,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@typescript-eslint/parser": "^8.58.1",
-    "concurrently": "^9.2.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "eslint-config-prettier": "^10.1.8",
