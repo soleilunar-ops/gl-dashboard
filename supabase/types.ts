@@ -268,6 +268,36 @@ export type Database = {
         }
         Relationships: []
       }
+      internal_entities: {
+        Row: {
+          created_at: string
+          entity_id: number
+          erp_system: string
+          is_active: boolean
+          match_type: string
+          note: string | null
+          pattern: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id?: number
+          erp_system: string
+          is_active?: boolean
+          match_type: string
+          note?: string | null
+          pattern: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: number
+          erp_system?: string
+          is_active?: boolean
+          match_type?: string
+          note?: string | null
+          pattern?: string
+        }
+        Relationships: []
+      }
       inventory_operation: {
         Row: {
           category_stockout_rate: number | null
@@ -648,8 +678,40 @@ export type Database = {
         }
         Relationships: []
       }
+      order_excel_upload_logs: {
+        Row: {
+          company_code: string
+          created_at: string
+          file_name: string
+          id: string
+          inserted_count: number
+          skipped_count: number
+          total_input: number
+        }
+        Insert: {
+          company_code: string
+          created_at?: string
+          file_name: string
+          id?: string
+          inserted_count?: number
+          skipped_count?: number
+          total_input?: number
+        }
+        Update: {
+          company_code?: string
+          created_at?: string
+          file_name?: string
+          id?: string
+          inserted_count?: number
+          skipped_count?: number
+          total_input?: number
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           counterparty: string | null
           crawled_at: string
           created_at: string
@@ -663,6 +725,8 @@ export type Database = {
           item_id: number
           memo: string | null
           quantity: number
+          rejected_reason: string | null
+          status: string
           supply_amount: number | null
           total_amount: number | null
           tx_date: string
@@ -671,6 +735,8 @@ export type Database = {
           vat: number | null
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           counterparty?: string | null
           crawled_at?: string
           created_at?: string
@@ -684,6 +750,8 @@ export type Database = {
           item_id: number
           memo?: string | null
           quantity: number
+          rejected_reason?: string | null
+          status?: string
           supply_amount?: number | null
           total_amount?: number | null
           tx_date: string
@@ -692,6 +760,8 @@ export type Database = {
           vat?: number | null
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           counterparty?: string | null
           crawled_at?: string
           created_at?: string
@@ -705,6 +775,8 @@ export type Database = {
           item_id?: number
           memo?: string | null
           quantity?: number
+          rejected_reason?: string | null
+          status?: string
           supply_amount?: number | null
           total_amount?: number | null
           tx_date?: string
@@ -1173,6 +1245,241 @@ export type Database = {
         }
         Relationships: []
       }
+      v_orders_approved: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          counterparty: string | null
+          erp_system: string | null
+          is_internal: boolean | null
+          item_id: number | null
+          item_name: string | null
+          order_id: number | null
+          quantity: number | null
+          quantity_delta: number | null
+          running_stock: number | null
+          stock_movement_id: number | null
+          total_amount: number | null
+          tx_date: string | null
+          tx_type: string | null
+          tx_type_label: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "item_master"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_coupang_daily_sales"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_coupang_daily_stock"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_current_stock"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_full"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_with_coupang_status"
+            referencedColumns: ["item_id"]
+          },
+        ]
+      }
+      v_orders_dashboard: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          category: string | null
+          counterparty: string | null
+          crawled_at: string | null
+          created_at: string | null
+          erp_code: string | null
+          erp_item_name_raw: string | null
+          erp_system: string | null
+          erp_tx_no: string | null
+          is_internal: boolean | null
+          is_return: boolean | null
+          item_id: number | null
+          item_name: string | null
+          item_name_raw: string | null
+          item_type: string | null
+          memo: string | null
+          order_id: number | null
+          quantity: number | null
+          quantity_delta: number | null
+          rejected_reason: string | null
+          seq_no: number | null
+          status: string | null
+          status_label: string | null
+          stock_after_this_tx: number | null
+          stock_direction: string | null
+          stock_movement_id: number | null
+          supply_amount: number | null
+          total_amount: number | null
+          tx_category: string | null
+          tx_category_label: string | null
+          tx_date: string | null
+          tx_type: string | null
+          tx_type_label: string | null
+          unit_price: number | null
+          vat: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "item_master"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_coupang_daily_sales"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_coupang_daily_stock"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_current_stock"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_full"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_with_coupang_status"
+            referencedColumns: ["item_id"]
+          },
+        ]
+      }
+      v_orders_pending: {
+        Row: {
+          category: string | null
+          counterparty: string | null
+          crawled_at: string | null
+          created_at: string | null
+          erp_item_name_raw: string | null
+          erp_system: string | null
+          erp_tx_no: string | null
+          is_internal: boolean | null
+          item_id: number | null
+          item_name: string | null
+          memo: string | null
+          order_id: number | null
+          quantity: number | null
+          stock_direction: string | null
+          supply_amount: number | null
+          total_amount: number | null
+          tx_date: string | null
+          tx_type: string | null
+          tx_type_label: string | null
+          unit_price: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "item_master"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_coupang_daily_sales"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_coupang_daily_stock"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_current_stock"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_full"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_with_coupang_status"
+            referencedColumns: ["item_id"]
+          },
+        ]
+      }
+      v_orders_summary: {
+        Row: {
+          approved_count: number | null
+          approved_today: number | null
+          pending_count: number | null
+          pending_purchase: number | null
+          pending_return: number | null
+          pending_sale: number | null
+          rejected_count: number | null
+          today_purchase: number | null
+          today_sale: number | null
+          total_count: number | null
+          week_purchase: number | null
+          week_purchase_amount: number | null
+          week_sale: number | null
+          week_sale_amount: number | null
+        }
+        Relationships: []
+      }
       v_promo_roi: {
         Row: {
           gmv: number | null
@@ -1280,17 +1587,21 @@ export type Database = {
       v_stock_history: {
         Row: {
           category: string | null
+          created_at: string | null
           erp_system: string | null
           item_id: number | null
+          item_name_norm: string | null
           item_name_raw: string | null
           memo: string | null
           movement_date: string | null
           movement_type: string | null
+          movement_type_label: string | null
           quantity_delta: number | null
           running_stock: number | null
           seq_no: number | null
           source_id: number | null
           source_table: string | null
+          stock_direction: string | null
         }
         Relationships: [
           {
