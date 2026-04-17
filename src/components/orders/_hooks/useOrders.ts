@@ -50,17 +50,21 @@ export function useOrders(opts: UseOrdersOptions): UseOrdersResult {
     setLoading(true);
     setError(null);
 
+    // 필터 토글이 모두 해제된 경우 = "배제" 의미 → 0건 반환 (쿼리 생략)
+    if (erpSystems.length === 0 || txTypes.length === 0) {
+      setRows([]);
+      setTotalCount(0);
+      setLoading(false);
+      return;
+    }
+
     let q = supabase.from("v_orders_dashboard").select("*", { count: "exact" });
 
     if (status !== "all") {
       q = q.eq("status", status);
     }
-    if (erpSystems.length > 0) {
-      q = q.in("erp_system", erpSystems);
-    }
-    if (txTypes.length > 0) {
-      q = q.in("tx_type", txTypes);
-    }
+    q = q.in("erp_system", erpSystems);
+    q = q.in("tx_type", txTypes);
     const searchTerm = itemSearch.trim();
     if (searchTerm) {
       // 품목명(item_name) + ERP 코드 통합 검색 (item_name_norm alias + erp_code)
