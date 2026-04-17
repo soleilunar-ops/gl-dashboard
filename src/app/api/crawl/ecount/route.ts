@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chromium, type Frame, type Page } from "playwright";
+import { chromium, type BrowserContext, type Download, type Frame, type Page } from "playwright";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/server";
 
-const COMPANY = process.env.ECOUNT_COMPANY_CODE!;
-const USER_ID = process.env.ECOUNT_USER_ID!;
-const PASSWORD = process.env.ECOUNT_PASSWORD!;
 const CRAWL_DRY_RUN = process.env.CRAWL_DRY_RUN === "true";
 
 type LocatorScope = Page | Frame;
@@ -65,9 +62,7 @@ async function collectFrameHints(page: Page): Promise<FrameHints[]> {
   return hints;
 }
 
-async function collectCookieHints(
-  context: Awaited<ReturnType<typeof chromium.newContext>>
-): Promise<CookieHint[]> {
+async function collectCookieHints(context: BrowserContext): Promise<CookieHint[]> {
   const cookies = await context.cookies();
   return cookies.slice(0, 30).map((c) => ({ name: c.name, domain: c.domain, path: c.path }));
 }
@@ -198,7 +193,34 @@ async function waitForContentFrame(page: Page, timeoutMs = 20000): Promise<Frame
 // POST 핸들러
 // ─────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const { item_id, item_code, date_from, date_to } = await req.json();
+  // 인증 체크 (대시보드 로그인 사용자만 호출 가능 — ERP 자격증명 보호)
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "인증이 필요합니다." }, { status: 401 });
+  }
+
+  // 환경변수 검증 (모듈 로드 시점이 아닌 요청 시점에 체크)
+  const COMPANY = process.env.ECOUNT_COMPANY_CODE;
+  const USER_ID = process.env.ECOUNT_USER_ID;
+  const PASSWORD = process.env.ECOUNT_PASSWORD;
+  if (!COMPANY || !USER_ID || !PASSWORD) {
+    return NextResponse.json(
+      {
+        error: "이카운트 자격증명 환경변수가 설정되지 않았습니다.",
+        missing: {
+          ECOUNT_COMPANY_CODE: !COMPANY,
+          ECOUNT_USER_ID: !USER_ID,
+          ECOUNT_PASSWORD: !PASSWORD,
+        },
+      },
+      { status: 500 }
+    );
+  }
+
+  const { item_code, date_from, date_to } = await req.json();
 
   if (!item_code) {
     return NextResponse.json({ error: "ERP 코드가 없어 크롤링할 수 없습니다." }, { status: 400 });
@@ -436,7 +458,7 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    let download: Awaited<ReturnType<typeof activePage.waitForEvent<"download">>> | null = null;
+    let download: Download | null = null;
     try {
       const [dl] = await Promise.all([
         activePage.waitForEvent("download", { timeout: 15000 }),
@@ -530,75 +552,99 @@ export async function POST(req: NextRequest) {
         stock_qty: Number(r["재고수량"] ?? 0) || 0,
       }));
 
-    // ── 9. txRows 생성 ─────────────────────────────────────
-    const txRows: Array<Record<string, unknown>> = [];
-    for (const row of parsed) {
+    // ── 9. Supabase upsert (신 스키마 — HANDOVER v6 정책 준수) ───────
+    // 구 items 자동 생성 로직 제거 → item_erp_mapping에서 item_id 조회 (144 불변 원칙)
+    // 구 transactions upsert 제거 → orders insert (UNIQUE: erp_system, erp_tx_no, erp_tx_line_no)
+    const supabase = await createClient();
+
+    // erp_code로 144 마스터의 item_id 역매칭 (HANDOVER v6 SQL 스니펫 참조)
+    const { data: mappingRow, error: mappingErr } = await supabase
+      .from("item_erp_mapping")
+      .select("item_id, erp_system")
+      .eq("erp_code", item_code)
+      .order("erp_system", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (mappingErr) throw new Error(`item_erp_mapping 조회 실패: ${mappingErr.message}`);
+
+    if (!mappingRow) {
+      return NextResponse.json(
+        {
+          error: `ERP 코드 "${item_code}"가 item_erp_mapping에 등록되지 않았습니다.`,
+          hint: "144개 마스터 품목에 매핑되지 않은 코드는 적재할 수 없습니다 (HANDOVER v6 원칙 3번). PM에게 매핑 등록을 요청하세요.",
+        },
+        { status: 422 }
+      );
+    }
+
+    const resolvedItemId = mappingRow.item_id;
+    const erpSystem = mappingRow.erp_system;
+
+    // orders 행 생성 — 같은 (date, counterparty)가 erp_tx_no, idx로 line_no 부여
+    type OrderInsert = {
+      item_id: number;
+      tx_date: string;
+      tx_type: string;
+      erp_system: string;
+      erp_code: string;
+      erp_tx_no: string;
+      erp_tx_line_no: number;
+      counterparty: string | null;
+      memo: string | null;
+      quantity: number;
+    };
+
+    const orderRows: OrderInsert[] = parsed.flatMap((row, idx) => {
+      const txNo = `ECOUNT_${row.date}_${row.counterparty || "UNKNOWN"}`;
+      const out: OrderInsert[] = [];
       if (row.in_qty > 0) {
-        txRows.push({
-          item_id, // 아래 8단계에서 items.id로 교체됨
+        out.push({
+          item_id: resolvedItemId,
           tx_date: row.date,
-          tx_type: "IN_IMPORT",
-          counterparty: row.counterparty,
-          note: row.note,
-          qty: row.in_qty,
-          source: "erp_crawl",
-          erp_synced: true,
+          tx_type: "purchase",
+          erp_system: erpSystem,
+          erp_code: item_code,
+          erp_tx_no: txNo,
+          erp_tx_line_no: idx * 2 + 1,
+          counterparty: row.counterparty || null,
+          memo: row.note || null,
+          quantity: row.in_qty,
         });
       }
       if (row.out_qty > 0) {
-        txRows.push({
-          item_id,
+        out.push({
+          item_id: resolvedItemId,
           tx_date: row.date,
-          tx_type: "OUT_SALE",
-          counterparty: row.counterparty,
-          note: row.note,
-          qty: row.out_qty,
-          source: "erp_crawl",
-          erp_synced: true,
+          tx_type: "sale",
+          erp_system: erpSystem,
+          erp_code: item_code,
+          erp_tx_no: txNo,
+          erp_tx_line_no: idx * 2 + 2,
+          counterparty: row.counterparty || null,
+          memo: row.note || null,
+          quantity: row.out_qty,
         });
       }
-    }
+      return out;
+    });
 
     if (CRAWL_DRY_RUN) {
       return NextResponse.json({
         success: true,
         dry_run: true,
         rows: parsed.slice(0, 20),
-        saved_count: txRows.length,
-        message: `DRY RUN 성공: ${txRows.length}건 추출됨 (DB 저장 안 함)`,
+        saved_count: orderRows.length,
+        item_id: resolvedItemId,
+        erp_system: erpSystem,
+        message: `DRY RUN 성공: ${orderRows.length}건 추출됨 (DB 저장 안 함)`,
       });
     }
 
-    // ── 10. Supabase upsert ────────────────────────────────
-    // transactions.item_id 는 items 테이블 FK
-    // → erp_code 로 items.id 먼저 조회 후 교체
-    const supabase = await createClient();
-
-    const { data: itemRow, error: itemErr } = await supabase
-      .from("items")
-      .select("id")
-      .eq("erp_code", item_code)
-      .maybeSingle();
-
-    if (itemErr) throw new Error(`items 조회 실패: ${itemErr.message}`);
-
-    // items에 없으면 자동 생성 (매번 수동 insert 불필요)
-    let itemId: number;
-    if (!itemRow) {
-      const { data: newItem, error: insertErr } = await supabase
-        .from("items")
-        .insert({ erp_code: item_code, item_name: item_code, is_active: true })
-        .select("id")
-        .single();
-      if (insertErr) throw new Error(`items 자동 생성 실패: ${insertErr.message}`);
-      itemId = newItem.id;
-    } else {
-      itemId = itemRow.id;
-    }
-
-    const finalRows = txRows.map((r) => ({ ...r, item_id: itemId }));
-
-    const { error: upsertErr } = await supabase.from("transactions").upsert(finalRows as never[]);
+    const { error: upsertErr } = await supabase.from("orders").upsert(orderRows, {
+      onConflict: "erp_system,erp_tx_no,erp_tx_line_no",
+      ignoreDuplicates: true,
+    });
 
     if (upsertErr) throw new Error(upsertErr.message);
 
@@ -606,8 +652,10 @@ export async function POST(req: NextRequest) {
       success: true,
       dry_run: false,
       rows: parsed,
-      saved_count: finalRows.length,
-      message: `${finalRows.length}건 저장 완료`,
+      saved_count: orderRows.length,
+      item_id: resolvedItemId,
+      erp_system: erpSystem,
+      message: `${orderRows.length}건 저장 완료 (item_id: ${resolvedItemId}, system: ${erpSystem})`,
     });
   } catch (e: unknown) {
     const url = page.url().slice(0, 300);

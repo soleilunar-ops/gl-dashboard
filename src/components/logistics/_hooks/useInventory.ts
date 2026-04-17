@@ -1,13 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/lib/supabase/types";
-import { openingStockByErpCode } from "../_data/openingStockByErpCode";
 
-/** PM이 supabase/types에 반영하기 전까지 훅에서 사용하는 물류 테이블 Row */
-type LogisticsItemRow = {
+/**
+ * 신 스키마(HANDOVER v6) 매핑 메모
+ * - 구 `items` → `item_master` (id→item_id, item_name→item_name_raw, cost_price→base_cost)
+ * - 구 `inventory_snapshots` → `v_current_stock` 뷰 (트리거로 자동 계산된 current_stock 사용)
+ * - 구 ERP 코드 → `item_erp_mapping`에서 별도 조회 (gl 시스템 우선)
+ * - 구 `scheduled_transactions` → 신 스키마 미지원, in_7days/out_7days = 0
+ * - erp_qty/diff: 신 스키마는 ERP 재고를 신뢰하지 않아 미수집 (HANDOVER v6 원칙 5번) → null
+ */
+
+export type InventoryItem = {
   id: number;
   seq_no: number;
   item_name: string;
@@ -17,65 +22,6 @@ type LogisticsItemRow = {
   coupang_sku_id: string | null;
   cost_price: number | null;
   is_active: boolean;
-};
-
-type InventorySnapshotRow = {
-  id: number;
-  item_id: number;
-  physical_qty: number;
-  erp_qty: number | null;
-  snapshot_at: string;
-};
-
-type LogisticsTransactionRow = {
-  id: number;
-  item_id: number;
-  tx_date: string;
-  tx_type: string;
-  qty: number;
-};
-
-type ScheduledTransactionRow = {
-  id: number;
-  item_id: number;
-  scheduled_date: string;
-  tx_type: string;
-  qty: number;
-  status: string;
-  counterparty?: string | null;
-  note?: string | null;
-};
-
-type LogisticsDatabase = {
-  public: {
-    Tables: Database["public"]["Tables"] & {
-      items: {
-        Row: LogisticsItemRow;
-        Insert: Omit<LogisticsItemRow, "id"> & { id?: number };
-        Update: Partial<LogisticsItemRow>;
-      };
-      inventory_snapshots: {
-        Row: InventorySnapshotRow;
-        Insert: Omit<InventorySnapshotRow, "id"> & { id?: number };
-        Update: Partial<InventorySnapshotRow>;
-      };
-      transactions: {
-        Row: LogisticsTransactionRow;
-        Insert: Omit<LogisticsTransactionRow, "id"> & { id?: number };
-        Update: Partial<LogisticsTransactionRow>;
-      };
-      scheduled_transactions: {
-        Row: ScheduledTransactionRow;
-        Insert: Omit<ScheduledTransactionRow, "id"> & { id?: number };
-        Update: Partial<ScheduledTransactionRow>;
-      };
-    };
-    Views: Database["public"]["Views"];
-    Functions: Database["public"]["Functions"];
-  };
-};
-
-export type InventoryItem = LogisticsItemRow & {
   current_qty: number;
   erp_qty: number | null;
   diff: number | null;
@@ -84,177 +30,89 @@ export type InventoryItem = LogisticsItemRow & {
   out_7days: number;
 };
 
-function formatLocalYmd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function addCalendarDays(d: Date, days: number): Date {
-  const next = new Date(d);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function isInboundType(txType: string): boolean {
-  return txType.startsWith("IN_");
-}
-
-function isOutboundType(txType: string): boolean {
-  return txType.startsWith("OUT_");
-}
-
-/** 스냅샷 시점 이후 거래에 대한 수량 변화 (입고 +, 출고 -) */
-function signedDeltaAfterSnapshot(
-  tx: LogisticsTransactionRow,
-  snapshotDateStr: string | null
-): number {
-  if (snapshotDateStr !== null && tx.tx_date <= snapshotDateStr) {
-    return 0;
-  }
-  if (isInboundType(tx.tx_type)) return tx.qty;
-  if (isOutboundType(tx.tx_type)) return -tx.qty;
-  return 0;
-}
-
 export function useInventory() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = useMemo(
-    () => createClient() as unknown as SupabaseClient<LogisticsDatabase>,
-    []
-  );
+  const supabase = useMemo(() => createClient(), []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    const { data: itemRows, error: itemsError } = await supabase
-      .from("items")
+    // 1. v_current_stock 뷰: 144 품목 + 현재 재고 + 베이스 정보
+    const { data: stockRows, error: stockError } = await supabase
+      .from("v_current_stock")
       .select("*")
       .eq("is_active", true)
       .order("seq_no", { ascending: true });
 
-    if (itemsError) {
-      console.error("품목 조회 실패:", itemsError.message);
-      setError(itemsError.message);
+    if (stockError) {
+      console.error("재고 조회 실패:", stockError.message);
+      setError(stockError.message);
       setItems([]);
       setLoading(false);
       return;
     }
 
-    const list = (itemRows ?? []) as LogisticsItemRow[];
-    if (list.length === 0) {
+    const stocks = stockRows ?? [];
+    if (stocks.length === 0) {
       setItems([]);
       setLoading(false);
       return;
     }
 
-    const itemIds = list.map((r) => r.id);
+    const itemIds = stocks.map((r) => r.item_id).filter((id): id is number => id !== null);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = formatLocalYmd(today);
-    const weekEndStr = formatLocalYmd(addCalendarDays(today, 7));
+    // 2. ERP 매핑 (gl 우선, 없으면 gl_pharm/hnb)
+    const { data: erpMappings } = await supabase
+      .from("item_erp_mapping")
+      .select("item_id, erp_system, erp_code")
+      .in("item_id", itemIds);
 
-    const [
-      { data: snapRows, error: snapError },
-      { data: txRows, error: txError },
-      { data: schedRows, error: schedError },
-    ] = await Promise.all([
-      supabase.from("inventory_snapshots").select("*").in("item_id", itemIds),
-      supabase.from("transactions").select("*").in("item_id", itemIds),
-      supabase
-        .from("scheduled_transactions")
-        .select("*")
-        .in("item_id", itemIds)
-        .in("status", ["pending", "confirmed"])
-        .gte("scheduled_date", todayStr)
-        .lte("scheduled_date", weekEndStr),
-    ]);
-
-    if (snapError) {
-      console.error("스냅샷 조회 실패:", snapError.message);
-      setError(snapError.message);
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-    if (txError) {
-      console.error("입출고 조회 실패:", txError.message);
-      setError(txError.message);
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-    if (schedError) {
-      console.error("예정 입출고 조회 실패:", schedError.message);
-      setError(schedError.message);
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-
-    const snaps = (snapRows ?? []) as InventorySnapshotRow[];
-    const txs = (txRows ?? []) as LogisticsTransactionRow[];
-    const sched = (schedRows ?? []) as ScheduledTransactionRow[];
-
-    const latestSnapByItem = new Map<number, InventorySnapshotRow>();
-    for (const s of snaps) {
-      const cur = latestSnapByItem.get(s.item_id);
-      if (!cur || s.snapshot_at > cur.snapshot_at) {
-        latestSnapByItem.set(s.item_id, s);
+    const erpCodeByItem = new Map<number, string>();
+    for (const m of erpMappings ?? []) {
+      if (!m.erp_code) continue;
+      const existing = erpCodeByItem.get(m.item_id);
+      if (!existing || m.erp_system === "gl") {
+        erpCodeByItem.set(m.item_id, m.erp_code);
       }
     }
 
-    const txsByItem = new Map<number, LogisticsTransactionRow[]>();
-    for (const t of txs) {
-      const arr = txsByItem.get(t.item_id) ?? [];
-      arr.push(t);
-      txsByItem.set(t.item_id, arr);
+    // 3. 쿠팡 매핑 (첫 번째 SKU만, 다중 매핑은 _data가 처리)
+    const { data: coupangMappings } = await supabase
+      .from("item_coupang_mapping")
+      .select("item_id, coupang_sku_id")
+      .in("item_id", itemIds);
+
+    const coupangSkuByItem = new Map<number, string>();
+    for (const m of coupangMappings ?? []) {
+      if (!coupangSkuByItem.has(m.item_id)) {
+        coupangSkuByItem.set(m.item_id, m.coupang_sku_id);
+      }
     }
 
-    const inTypes = new Set(["IN_IMPORT", "IN_DOMESTIC", "IN_RETURN"]);
-    const outTypes = new Set(["OUT_ORDER", "OUT_QUOTE"]);
-
-    const result: InventoryItem[] = list.map((item) => {
-      const snap = latestSnapByItem.get(item.id);
-      const snapDateStr = snap ? snap.snapshot_at.slice(0, 10) : null;
-      const code = (item.erp_code ?? "").trim();
-      const excelBase = code ? (openingStockByErpCode[code] ?? 0) : 0;
-      const physicalBase = snap ? snap.physical_qty : excelBase;
-      const itemTxs = txsByItem.get(item.id) ?? [];
-
-      let delta = 0;
-      for (const tx of itemTxs) {
-        delta += signedDeltaAfterSnapshot(tx, snapDateStr);
-      }
-
-      const current_qty = physicalBase + delta;
-      const erp_qty = snap ? snap.erp_qty : null;
-      const diff = erp_qty === null ? null : current_qty - erp_qty;
-      const cost = item.cost_price ?? 0;
-      const stock_amount = current_qty * cost;
-
-      let in_7days = 0;
-      let out_7days = 0;
-      for (const row of sched) {
-        if (row.item_id !== item.id) continue;
-        if (inTypes.has(row.tx_type)) in_7days += row.qty;
-        if (outTypes.has(row.tx_type)) out_7days += row.qty;
-      }
-
+    const result: InventoryItem[] = stocks.map((row) => {
+      const itemId = row.item_id ?? 0;
+      const currentQty = row.current_stock ?? row.base_stock_qty ?? 0;
+      const cost = row.base_cost ?? 0;
       return {
-        ...item,
-        current_qty,
-        erp_qty,
-        diff,
-        stock_amount,
-        in_7days,
-        out_7days,
+        id: itemId,
+        seq_no: row.seq_no ?? 0,
+        item_name: row.item_name_raw ?? "",
+        manufacture_year: row.manufacture_year,
+        production_type: row.item_type,
+        erp_code: erpCodeByItem.get(itemId) ?? null,
+        coupang_sku_id: coupangSkuByItem.get(itemId) ?? null,
+        cost_price: cost,
+        is_active: row.is_active ?? true,
+        current_qty: currentQty,
+        erp_qty: null,
+        diff: null,
+        stock_amount: currentQty * cost,
+        in_7days: 0,
+        out_7days: 0,
       };
     });
 

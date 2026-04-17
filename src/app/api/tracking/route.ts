@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * 유니패스: 화물통관진행정보 가이드 (retrieveCargCsclPrgsInfo, mblNo·blYy)
  * 해양수산부: DAT211 외항화물반출입정보 Info4 — XML, 파라미터 prtAgCd·etryptYear·etryptCo·clsgn
  * 호출부호(clsgn) 없으면 2차 조회 생략 → .env PUBLIC_DATA_DEFAULT_CLSGN 또는 ?clsgn=
  * 항만청코드(prtAgCd) 기본 020(가이드 샘플: 부산), 인천 등은 PUBLIC_DATA_PRT_AG_CD로 변경
+ *
+ * 보안 메모: 유니패스/공공데이터포털 API는 정책상 serviceKey/crkyCn을 URL 쿼리로만 받음.
+ * 헤더 인증 미지원 → URL 노출 위험 인지하되 우회 불가. Vercel/Next.js 기본 설정에선 URL 로그 미수집.
  */
 /** DAT211: 외항화물반출입정보 Info4 (XML). env로 전체 URL 교체 가능 */
 const DEFAULT_CARG_FRGHT_OUT_URL = "https://apis.data.go.kr/1192000/CargFrghtOut4/Info4";
@@ -204,6 +208,15 @@ function parseMaritimeItemXml(xml: string, mblNo: string) {
 }
 
 export async function GET(req: NextRequest) {
+  // 인증 체크 (대시보드 로그인 사용자만 호출 가능)
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "인증이 필요합니다." }, { status: 401 });
+  }
+
   const bl = req.nextUrl.searchParams.get("bl");
   const yearParam = req.nextUrl.searchParams.get("year");
   const currentYear = new Date().getFullYear();
@@ -301,6 +314,13 @@ export async function GET(req: NextRequest) {
 
     const publicDataKey = process.env.PUBLIC_DATA_API_KEY;
     const maritimeBase = process.env.PUBLIC_DATA_VESSEL_API_URL ?? DEFAULT_CARG_FRGHT_OUT_URL;
+
+    // 호출부호(clsgn)는 있는데 API 키가 없으면 2차 조회를 못 함 → 운영자가 인지 가능하게 경고
+    if (clsgn && !publicDataKey) {
+      console.warn(
+        "[tracking] PUBLIC_DATA_API_KEY 미설정 → 해양수산부 입항/ETA 2차 조회 생략 (유니패스 1차 결과만 반환)"
+      );
+    }
 
     if (clsgn && publicDataKey) {
       const etryptYear = selectedYear.slice(0, 4);

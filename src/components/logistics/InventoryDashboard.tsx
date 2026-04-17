@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/lib/supabase/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { dailyInventoryBase } from "./_data/dailyInventoryBase";
 import { FilterBar, type InventoryFilter } from "./FilterBar";
 import { InventoryTable } from "./InventoryTable";
@@ -16,25 +14,6 @@ function formatLocalYmd(d: Date): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
-
-type TodayTxRow = {
-  tx_type: string;
-  qty: number;
-};
-
-type TransactionsDayDb = {
-  public: {
-    Tables: Database["public"]["Tables"] & {
-      transactions: {
-        Row: TodayTxRow & { id: number; item_id: number; tx_date: string };
-        Insert: Record<string, unknown>;
-        Update: Record<string, unknown>;
-      };
-    };
-    Views: Database["public"]["Views"];
-    Functions: Database["public"]["Functions"];
-  };
-};
 
 interface InventoryDashboardProps {
   onItemClick?: (item: InventoryItem) => void;
@@ -54,17 +33,17 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
 
-  const supabaseToday = useMemo(
-    () => createClient() as unknown as SupabaseClient<TransactionsDayDb>,
-    []
-  );
+  const supabaseToday = useMemo(() => createClient(), []);
 
   const loadTodayMovement = useCallback(async () => {
     const today = formatLocalYmd(new Date());
+    // HANDOVER v6 매핑: transactions → orders, qty → quantity, IN/OUT → tx_type 기준
+    // 외부 거래만(is_internal=false), 당일 거래만 집계
     const { data, error: qErr } = await supabaseToday
-      .from("transactions")
-      .select("tx_type, qty")
-      .eq("tx_date", today);
+      .from("orders")
+      .select("tx_type, quantity")
+      .eq("tx_date", today)
+      .eq("is_internal", false);
 
     if (qErr) {
       console.error("당일 입출고 집계 실패:", qErr.message);
@@ -75,9 +54,12 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
 
     let incoming = 0;
     let outgoing = 0;
-    for (const row of (data ?? []) as TodayTxRow[]) {
-      if (row.tx_type.startsWith("IN_")) incoming += row.qty;
-      else if (row.tx_type.startsWith("OUT_")) outgoing += row.qty;
+    for (const row of data ?? []) {
+      if (row.tx_type === "purchase" || row.tx_type === "return_sale") {
+        incoming += row.quantity;
+      } else if (row.tx_type === "sale" || row.tx_type === "return_purchase") {
+        outgoing += row.quantity;
+      }
     }
     setTodayIncoming(incoming);
     setTodayOutgoing(outgoing);
