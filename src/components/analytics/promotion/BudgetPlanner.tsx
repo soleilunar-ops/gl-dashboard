@@ -166,7 +166,11 @@ export default function BudgetPlanner() {
                 <Cell key={d.name} fill={PIE_COLORS[i]} />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number) => `${Number(value).toFixed(2)}%`} />
+            <Tooltip
+              formatter={(value) =>
+                value === undefined || value === null ? "-" : `${Number(value).toFixed(2)}%`
+              }
+            />
           </PieChart>
         </CardContent>
       </Card>
