@@ -1,0 +1,94 @@
+{
+  "cookies": [
+    {
+      "name": "_gcl_au",
+      "value": "1.1.1747665243.1776357930",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": 1784133930,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "EcNewDeviceKey",
+      "value": "9595%262026-04-17%2001-45-31%26134",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "IDE",
+      "value": "AHWqTUnx0rsbU1vT01E55wYk7-PITXQZgwWkF8BE4V90LqXoymHKPSueXWbADfo_",
+      "domain": ".doubleclick.net",
+      "path": "/",
+      "expires": 1810917930.791659,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "SVID",
+      "value": "Login-LCA05_8815d|aeESL",
+      "domain": "login.ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ECOUNT_SessionId",
+      "value": "AB-ETNePOS_8tA9N=3635303431387c25656125623225386325656325386125613425656425386125623831",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "login_info_cookie",
+      "value": "%26check%3D",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SVID",
+      "value": "Login-LAB04_9e6bb|aeESL",
+      "domain": "loginab.ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://loginab.ecount.com",
+      "localStorage": [
+        { "name": "loglevel:ecount-global-logger", "value": "INFO" },
+        { "name": "ec_new_device_key", "value": "9595&2026-04-17 01-45-31&134" }
+      ]
+    },
+    {
+      "origin": "https://login.ecount.com",
+      "localStorage": [
+        {
+          "name": "_gcl_ls",
+          "value": "{\"schema\":\"gcl\",\"version\":1,\"gcl_ctr\":{\"value\":{\"value\":1,\"timeouts\":0,\"errors\":0,\"eopCount\":0,\"creationTimeMs\":1776357931268},\"expires\":1784133931268}}"
+        },
+        { "name": "ec_new_device_key", "value": "9595&2026-04-17 01-45-31&134" },
+        { "name": "loglevel:ecount-global-logger", "value": "INFO" }
+      ]
+    }
+  ]
+}

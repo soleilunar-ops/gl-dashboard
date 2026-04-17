@@ -21,3 +21,9 @@ __pycache__/
 # 로컬 캐시
 .cache/
 .cache.sqlite
+
+# Supabase CLI 로컬 캐시 (linked-project.json 등)
+supabase/.temp/
+
+# Next.js/TypeScript 빌드 캐시
+tsconfig.tsbuildinfo

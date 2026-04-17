@@ -24,33 +24,13 @@ const STRATEGIES = [
   { label: "공격적", margin: 0.05, colorClass: "text-amber-500", description: "아이템 위너 집중" },
 ] as const;
 
-interface MarginStrategyCardsProps extends Omit<MarginCalcInput, "targetMargin"> {
-  unitSizeG?: number;
-  competitorPrice?: number;
-}
+interface MarginStrategyCardsProps extends Omit<MarginCalcInput, "targetMargin"> {}
 
-export function MarginStrategyCards({
-  unitSizeG = 10,
-  competitorPrice,
-  ...baseInput
-}: MarginStrategyCardsProps) {
+export function MarginStrategyCards({ ...baseInput }: MarginStrategyCardsProps) {
   const results = STRATEGIES.map((strategy) => {
     const calculated = calcMargin({ ...baseInput, targetMargin: strategy.margin });
     return { ...strategy, ...calculated };
   });
-
-  const stableResult = results.find((result) => result.label === "안정적");
-  const winnerAnalysis =
-    stableResult && competitorPrice && competitorPrice > 0
-      ? {
-          myPricePer10g: (stableResult.suggestedPriceVAT / unitSizeG) * 10,
-          competitorPricePer10g: (competitorPrice / unitSizeG) * 10,
-        }
-      : null;
-
-  const canWin = winnerAnalysis
-    ? winnerAnalysis.myPricePer10g <= winnerAnalysis.competitorPricePer10g
-    : false;
 
   return (
     <div className="space-y-4">
@@ -99,22 +79,6 @@ export function MarginStrategyCards({
           </Card>
         ))}
       </div>
-
-      {winnerAnalysis ? (
-        <Card size="sm">
-          <CardHeader className="pb-0">
-            <CardTitle className="text-sm">아이템 위너 가능성 (안정적 전략 기준)</CardTitle>
-            <CardDescription>10g당 단가 비교</CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between pt-3 text-sm">
-            <span>우리 단가: {winnerAnalysis.myPricePer10g.toFixed(1)}원</span>
-            <span>경쟁사 단가: {winnerAnalysis.competitorPricePer10g.toFixed(1)}원</span>
-            <Badge variant={canWin ? "default" : "destructive"}>
-              {canWin ? "위너 확보 가능" : "가격 열위"}
-            </Badge>
-          </CardContent>
-        </Card>
-      ) : null}
     </div>
   );
 }
@@ -131,8 +95,15 @@ export function ChannelMarginTable(props: ChannelMarginTableProps) {
   return (
     <Card size="sm">
       <CardHeader className="pb-0">
-        <CardTitle className="text-sm">채널별 마진 비교</CardTitle>
-        <CardDescription>목표 마진 15% 기준 권장 판매가/실마진 비교</CardDescription>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="text-[10px]">
+            산출
+          </Badge>
+          <CardTitle className="text-sm">채널별 권장가·마진 비교</CardTitle>
+        </div>
+        <CardDescription>
+          입력 원가·물류 동일 · 채널만 바꿔 목표마진 15% 권장 VAT·실마진
+        </CardDescription>
       </CardHeader>
       <CardContent className="pt-3">
         <Table className="text-xs">
@@ -140,9 +111,9 @@ export function ChannelMarginTable(props: ChannelMarginTableProps) {
             <TableRow>
               <TableHead>채널</TableHead>
               <TableHead className="text-right">수수료율</TableHead>
-              <TableHead className="text-right">권장가(VAT)</TableHead>
-              <TableHead className="text-right">개당 순익</TableHead>
-              <TableHead className="text-right">실마진</TableHead>
+              <TableHead className="text-right">산출: 권장가(VAT)</TableHead>
+              <TableHead className="text-right">산출: 개당 순익</TableHead>
+              <TableHead className="text-right">산출: 실마진</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
