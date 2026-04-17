@@ -228,7 +228,7 @@ export type PurchaseRowForExport = {
   unit_price: number | null;
   amount: number | null;
   supplier_name: string | null;
-  /** 비고(erp_purchases에는 없음 — 수동/업로드 메타용) */
+  /** 비고 — 수동/업로드 메타용 (기업/출처) */
   remark?: string;
 };
 

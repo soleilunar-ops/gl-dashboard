@@ -4,55 +4,66 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
-type Movement = Pick<
-  Tables<"stock_movements">,
-  "product_id" | "movement_type" | "quantity" | "date"
+type MovementRow = Pick<
+  Tables<"stock_movement">,
+  "item_id" | "movement_type" | "quantity_delta" | "movement_date"
 >;
 
-/** 입고·반품 수량 집계 — 계약 상태·반품 패널용 (movement_date → 스키마 컬럼명 date) */
+/**
+ * 재고 입고·반품 집계 — 계약 이행 상태 패널용
+ *
+ * v6 2단 설계:
+ * - 입고(inbound): movement_type='purchase' (매입 승인 시 트리거가 +quantity_delta 기록)
+ * - 반품(return): movement_type='return_sale' (판매반품 승인 시 재고 복원)
+ * - stock_movement 행은 orders.status='approved' 트리거로만 생성되므로 실제 집행된 수량만 반영됨
+ */
 export function useStockMovementsInboundReturn() {
-  const [movements, setMovements] = useState<Movement[]>([]);
+  const [movements, setMovements] = useState<MovementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
+    let cancelled = false;
     const run = async () => {
-      const { data: rows, error: err } = await supabase
-        .from("stock_movements")
-        .select("product_id, movement_type, quantity, date")
-        .in("movement_type", ["입고", "반품"])
-        .order("date", { ascending: false })
+      const { data, error: err } = await supabase
+        .from("stock_movement")
+        .select("item_id, movement_type, quantity_delta, movement_date")
+        .in("movement_type", ["purchase", "return_sale"])
+        .order("movement_date", { ascending: false })
         .limit(5000);
 
+      if (cancelled) return;
       if (err) {
-        console.error("입고/반품 집계 조회 실패:", err.message);
         setError(err.message);
-        setLoading(false);
-        return;
+        setMovements([]);
+      } else {
+        setMovements(data ?? []);
+        setError(null);
       }
-
-      setMovements((rows as Movement[]) ?? []);
       setLoading(false);
     };
 
     void run();
+    return () => {
+      cancelled = true;
+    };
   }, [supabase]);
 
-  const { inboundTotalByProduct, returnTotalByProduct } = useMemo(() => {
-    const inbound: Record<string, number> = {};
-    const ret: Record<string, number> = {};
+  const { inboundTotalByItem, returnTotalByItem } = useMemo(() => {
+    const inbound: Record<number, number> = {};
+    const ret: Record<number, number> = {};
     for (const row of movements) {
-      const pid = row.product_id;
-      const q = row.quantity ?? 0;
-      if (row.movement_type === "입고") {
-        inbound[pid] = (inbound[pid] ?? 0) + q;
-      } else if (row.movement_type === "반품") {
-        ret[pid] = (ret[pid] ?? 0) + q;
+      const iid = row.item_id;
+      const q = Math.abs(row.quantity_delta ?? 0);
+      if (row.movement_type === "purchase") {
+        inbound[iid] = (inbound[iid] ?? 0) + q;
+      } else if (row.movement_type === "return_sale") {
+        ret[iid] = (ret[iid] ?? 0) + q;
       }
     }
-    return { inboundTotalByProduct: inbound, returnTotalByProduct: ret };
+    return { inboundTotalByItem: inbound, returnTotalByItem: ret };
   }, [movements]);
 
-  return { inboundTotalByProduct, returnTotalByProduct, movements, loading, error };
+  return { inboundTotalByItem, returnTotalByItem, movements, loading, error };
 }

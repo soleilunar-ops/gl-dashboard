@@ -13,7 +13,7 @@ import {
   sourceKindLabel,
   type OrderCompanyCode,
 } from "@/lib/orders/orderMeta";
-import type { ErpPurchaseWithProduct } from "./useErpPurchases";
+import type { PurchaseDashboardRow } from "./buildContractRows";
 
 const SAMPLE_URL = "/orders-sample/제출용-입출고자료.xlsx";
 
@@ -22,23 +22,24 @@ function remarkFromSource(source: string | null): string {
   return `${companyLabel(parsed.companyCode)} · ${sourceKindLabel(parsed.kind)}`;
 }
 
-export function purchasesToExportRows(list: ErpPurchaseWithProduct[]): PurchaseRowForExport[] {
+/** v_orders_dashboard purchase 행을 엑셀 export 포맷으로 변환 */
+export function purchasesToExportRows(list: PurchaseDashboardRow[]): PurchaseRowForExport[] {
   return list.map((p) => ({
-    erp_ref: p.erp_ref,
-    purchase_date: p.purchase_date,
-    erp_code: p.products?.erp_code ?? p.erp_code,
-    erp_product_name: p.products?.name ?? p.erp_product_name,
-    quantity: p.quantity,
-    unit_price: p.unit_price,
-    amount: p.amount,
-    supplier_name: p.supplier_name,
-    remark: remarkFromSource(p.source ?? null),
+    erp_ref: p.erp_tx_no ?? String(p.order_id ?? ""),
+    purchase_date: p.tx_date ?? "",
+    erp_code: p.erp_code ?? "",
+    erp_product_name: p.item_name ?? p.erp_item_name_raw ?? "",
+    quantity: p.quantity ?? 0,
+    unit_price: p.unit_price !== null && p.unit_price !== undefined ? Number(p.unit_price) : null,
+    amount: p.total_amount !== null && p.total_amount !== undefined ? Number(p.total_amount) : null,
+    supplier_name: p.counterparty,
+    remark: remarkFromSource(p.memo ?? null),
   }));
 }
 
 /** 제출용 구매현황 엑셀 — 미리보기 상태·가져오기·다운로드 (카드 내부 배치용) */
 export function useOrderExcelWorkspace(
-  purchases: ErpPurchaseWithProduct[],
+  purchases: PurchaseDashboardRow[],
   selectedCompanyCode: OrderCompanyCode | null,
   onImported: () => void
 ) {
@@ -81,9 +82,15 @@ export function useOrderExcelWorkspace(
     }
   }, [applyBuffer]);
 
+  // 마운트 시 1회만 샘플 로드 (loadSample 재생성 시 재로드 방지)
+  // loadSample을 ref로 안정화해 deps에서 제외
+  const loadSampleRef = useRef(loadSample);
   useEffect(() => {
-    void loadSample();
+    loadSampleRef.current = loadSample;
   }, [loadSample]);
+  useEffect(() => {
+    void loadSampleRef.current();
+  }, []);
 
   const onPickFile = async (file: File | null) => {
     if (!file) {
@@ -127,16 +134,21 @@ export function useOrderExcelWorkspace(
       });
       const payload = (await response.json()) as {
         message?: string;
+        error?: string;
         detail?: string;
         inserted?: number;
         skipped?: number;
+        unmapped?: number;
       };
       if (!response.ok) {
-        setStatusMessage(`저장 실패: ${payload.detail ?? payload.message ?? response.status}`);
+        const reason =
+          payload.error ?? payload.detail ?? payload.message ?? `HTTP ${response.status}`;
+        setStatusMessage(`저장 실패: ${reason}`);
         return;
       }
+      const extra = payload.unmapped ? ` · 품목매핑 누락 ${payload.unmapped}건` : "";
       setStatusMessage(
-        `${payload.message ?? "완료"} — 신규 ${payload.inserted ?? 0}건, 건너뜀(기존 전표) ${payload.skipped ?? 0}건`
+        `${payload.message ?? "완료"} — 신규 ${payload.inserted ?? 0}건, 건너뜀(기존 전표) ${payload.skipped ?? 0}건${extra}`
       );
       onImported();
     } catch (e) {

@@ -19,24 +19,37 @@ const DEFAULT_WEIGHT_G = 10;
 
 export interface ProductMarginPreset {
   erpCode: string;
+  /** item_master.item_id */
+  itemId: number | null;
   productName: string;
   displayLabel: string;
   pcsPerPallet: number;
   usedPalletFallback: boolean;
   weightGram: number;
   usedWeightFallback: boolean;
+  /** 최근 daily_performance.asp (매핑된 SKU 중 첫 번째) */
   recentAsp: number | null;
-  /** 최근 ERP 매입 단가(CNY) — 없으면 null, 화면에서 unitCostKrw/환율로 보강 */
+  /** 최근 orders purchase 단가(CNY) — tx_type='purchase' 최신 건 unit_price */
   purchaseCnyPerUnit: number | null;
+  /** item_master.base_cost (KRW 기준 원가) */
   unitCostKrw: number | null;
 }
 
-type ProductRow = Pick<
-  Tables<"products">,
-  "id" | "name" | "unit" | "erp_code" | "pcs_per_pallet" | "unit_cost" | "coupang_sku_id"
+type ItemFullRow = Pick<
+  Tables<"v_item_full">,
+  | "item_id"
+  | "item_name_norm"
+  | "item_name_raw"
+  | "channel_variant"
+  | "gl_erp_code"
+  | "gl_pharm_erp_code"
+  | "hnb_erp_code"
+  | "coupang_mappings"
 >;
 
-/** ERP 선택 시 DB 기반 프리셋만 조회(환율 변경과 무관) */
+type ItemMasterRow = Pick<Tables<"item_master">, "item_id" | "base_cost">;
+
+/** ERP 선택 시 DB 기반 프리셋 조회 (환율 변경과 무관) */
 export function useProductMarginPreset(erpCode: string | null | undefined) {
   const [preset, setPreset] = useState<ProductMarginPreset | null>(null);
   const [loading, setLoading] = useState(false);
@@ -54,96 +67,123 @@ export function useProductMarginPreset(erpCode: string | null | undefined) {
     }
     setLoading(true);
     setError(null);
-    try {
-      const { data: prodRaw, error: pErr } = await supabase
-        .from("products")
-        .select("id, name, unit, erp_code, pcs_per_pallet, unit_cost, coupang_sku_id")
-        .eq("erp_code", normalizedErp)
-        .maybeSingle();
 
-      if (pErr) {
-        setPreset(null);
-        setError(pErr.message);
-        return;
-      }
-      const prod = prodRaw as ProductRow | null;
-      if (!prod) {
-        setPreset(null);
-        setError("해당 ERP 품목을 찾을 수 없습니다.");
-        return;
-      }
+    // 1. v_item_full에서 해당 erp_code를 가진 품목 찾기 (3개 ERP 컬럼 중 어디든)
+    const { data: itemRaw, error: iErr } = await supabase
+      .from("v_item_full")
+      .select(
+        "item_id, item_name_norm, item_name_raw, channel_variant, gl_erp_code, gl_pharm_erp_code, hnb_erp_code, coupang_mappings"
+      )
+      .or(
+        `gl_erp_code.eq.${normalizedErp},gl_pharm_erp_code.eq.${normalizedErp},hnb_erp_code.eq.${normalizedErp}`
+      )
+      .limit(1)
+      .maybeSingle();
 
-      const inferred = inferWeightGramFromProductName(prod.name);
-      const usedWeightFallback = inferred === null;
-      const weightGram = inferred ?? DEFAULT_WEIGHT_G;
-
-      const rawPcs = prod.pcs_per_pallet;
-      const nPcs = rawPcs !== null && rawPcs !== undefined ? Number(rawPcs) : Number.NaN;
-      const usedPalletFallback = !(Number.isFinite(nPcs) && nPcs > 0);
-      const pcsPerPallet = usedPalletFallback ? DEFAULT_PCS_PER_PALLET : Math.round(nPcs);
-
-      const unit = prod.unit?.trim() ?? "";
-      const displayLabel = unit
-        ? `${prod.name} [${unit}] · ${prod.erp_code ?? normalizedErp}`
-        : `${prod.name} · ${prod.erp_code ?? normalizedErp}`;
-
-      let recentAsp: number | null = null;
-      const skuStr = prod.coupang_sku_id?.trim();
-      if (skuStr) {
-        const sid = Number(skuStr);
-        if (Number.isFinite(sid)) {
-          const { data: perfRow } = await supabase
-            .from("coupang_performance")
-            .select("asp, date")
-            .eq("coupang_sku_id", sid)
-            .order("date", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          type PerfAsp = Pick<Tables<"coupang_performance">, "asp">;
-          const asp = Number((perfRow as PerfAsp | null)?.asp);
-          if (Number.isFinite(asp) && asp > 0) recentAsp = Math.round(asp);
-        }
-      }
-
-      const { data: poRow } = await supabase
-        .from("erp_purchases")
-        .select("unit_price, purchase_date")
-        .eq("erp_code", normalizedErp)
-        .order("purchase_date", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      type PoPrice = Pick<Tables<"erp_purchases">, "unit_price">;
-      const poPrice = (poRow as PoPrice | null)?.unit_price;
-      const purchaseCnyPerUnit =
-        poPrice !== null &&
-        poPrice !== undefined &&
-        Number.isFinite(Number(poPrice)) &&
-        Number(poPrice) > 0
-          ? Number(poPrice)
-          : null;
-
-      const krw = prod.unit_cost !== null ? Number(prod.unit_cost) : Number.NaN;
-      const unitCostKrw = Number.isFinite(krw) && krw > 0 ? krw : null;
-
-      setPreset({
-        erpCode: normalizedErp,
-        productName: prod.name,
-        displayLabel,
-        pcsPerPallet,
-        usedPalletFallback,
-        weightGram,
-        usedWeightFallback,
-        recentAsp,
-        purchaseCnyPerUnit,
-        unitCostKrw,
-      });
-    } catch (e) {
+    if (iErr) {
       setPreset(null);
-      setError(e instanceof Error ? e.message : "프리셋 조회 오류");
-    } finally {
+      setError(iErr.message);
       setLoading(false);
+      return;
     }
+    const item = itemRaw as ItemFullRow | null;
+    if (!item || item.item_id === null || item.item_id === undefined) {
+      setPreset(null);
+      setError("해당 ERP 품목을 찾을 수 없습니다.");
+      setLoading(false);
+      return;
+    }
+
+    // 2. item_master.base_cost 조회 (v_item_full에는 base_cost가 없음)
+    const { data: masterRaw, error: mErr } = await supabase
+      .from("item_master")
+      .select("item_id, base_cost")
+      .eq("item_id", item.item_id)
+      .maybeSingle();
+    if (mErr) {
+      setPreset(null);
+      setError(mErr.message);
+      setLoading(false);
+      return;
+    }
+    const master = masterRaw as ItemMasterRow | null;
+
+    const itemName = item.item_name_norm ?? item.item_name_raw ?? "";
+    const inferred = inferWeightGramFromProductName(itemName);
+    const usedWeightFallback = inferred === null;
+    const weightGram = inferred ?? DEFAULT_WEIGHT_G;
+
+    // v6 item_master에 pcs_per_pallet 없음 → 항상 DEFAULT + fallback
+    const pcsPerPallet = DEFAULT_PCS_PER_PALLET;
+    const usedPalletFallback = true;
+
+    const variant =
+      item.channel_variant && item.channel_variant.trim()
+        ? ` [${item.channel_variant.trim()}]`
+        : "";
+    const displayLabel = `${itemName}${variant} · ${normalizedErp}`;
+
+    // 3. 매핑된 SKU의 최근 ASP
+    let recentAsp: number | null = null;
+    const mappingsRaw = item.coupang_mappings;
+    const mappedSkus: string[] = Array.isArray(mappingsRaw)
+      ? (mappingsRaw as Array<{ sku_id?: string }>)
+          .map((m) => (typeof m.sku_id === "string" ? m.sku_id : ""))
+          .filter(Boolean)
+      : [];
+
+    if (mappedSkus.length > 0) {
+      const { data: perfData } = await supabase
+        .from("daily_performance")
+        .select("sku_id, asp, sale_date")
+        .in("sku_id", mappedSkus)
+        .order("sale_date", { ascending: false })
+        .limit(1);
+      if (perfData && perfData.length > 0) {
+        const asp = Number(perfData[0].asp);
+        if (Number.isFinite(asp) && asp > 0) recentAsp = Math.round(asp);
+      }
+    }
+
+    // 4. 최근 orders purchase 단가 (tx_type='purchase' 최신, status 무관)
+    const { data: poRow } = await supabase
+      .from("orders")
+      .select("unit_price, tx_date")
+      .eq("item_id", item.item_id)
+      .eq("tx_type", "purchase")
+      .order("tx_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const poPrice = poRow?.unit_price;
+    const purchaseCnyPerUnit =
+      poPrice !== null &&
+      poPrice !== undefined &&
+      Number.isFinite(Number(poPrice)) &&
+      Number(poPrice) > 0
+        ? Number(poPrice)
+        : null;
+
+    const krw =
+      master?.base_cost !== null && master?.base_cost !== undefined
+        ? Number(master.base_cost)
+        : Number.NaN;
+    const unitCostKrw = Number.isFinite(krw) && krw > 0 ? krw : null;
+
+    setPreset({
+      erpCode: normalizedErp,
+      itemId: item.item_id,
+      productName: itemName,
+      displayLabel,
+      pcsPerPallet,
+      usedPalletFallback,
+      weightGram,
+      usedWeightFallback,
+      recentAsp,
+      purchaseCnyPerUnit,
+      unitCostKrw,
+    });
+    setLoading(false);
   }, [normalizedErp, supabase]);
 
   useEffect(() => {
@@ -153,7 +193,7 @@ export function useProductMarginPreset(erpCode: string | null | undefined) {
   return { preset, loading, error, refetch: fetchPreset };
 }
 
-/** 매입 CNY 없을 때 products.unit_cost(원) ÷ 환율로 CNY 단가 추정 */
+/** 매입 CNY 없을 때 item_master.base_cost(원) ÷ 환율로 CNY 단가 추정 */
 export function deriveCnyFromKrw(unitCostKrw: number | null, exKrwPerCny: number): number | null {
   if (unitCostKrw === null || exKrwPerCny <= 0) return null;
   return Math.round((unitCostKrw / exKrwPerCny) * 1000) / 1000;
