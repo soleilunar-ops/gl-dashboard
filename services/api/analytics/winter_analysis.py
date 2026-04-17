@@ -38,6 +38,7 @@ def run_winter_deep_analysis() -> dict:
             "temp_mean", "temp_min", "temp_max", "rain_mm", "snow_cm", "wind_mean",
             "cold_days_7d", "temp_range", "promotion_flag",
             "weekly_min_price", "weekly_bi_box_share_mean", "weekly_stockout_flag",
+            "first_snow_flag",
         ),
     )
 

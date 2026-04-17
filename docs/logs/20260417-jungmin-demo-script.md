@@ -188,7 +188,7 @@ python services/api/analytics/winter_analysis.py
 **Q1. "합성 데이터를 쓴다고 했는데, 학습에만 쓰고 검증엔 안 쓴 게 맞나요?"**
 A: 네, `load_combined_training_data()`에서 `is_synthetic=1` 플래그로 분리. 검증 데이터는 `is_synthetic=0`인 실데이터만 사용.
 
-**Q2. "MAE 2,163이 좋은 건가요?"**
+**Q2. "MAE 2,143이 좋은 건가요?"**
 A: 절대값보단 **SKU별 해석**이 중요. 상위 SKU(주 15,000개 판매)는 36% 오차 — 의사결정에 쓸 만한 수준. 소량 SKU는 MAE 자체가 의미 없음.
 
 **Q3. "기온 구간별 민감도 13,114개/℃는 어디서 왔나요?"**
