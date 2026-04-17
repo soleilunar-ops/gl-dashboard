@@ -665,16 +665,20 @@ PM이 침범 파일 20개를 submain 버전으로 복구하여 슬아/나경/PM 
 
 #### 🔴 PM 영역 침범 — 항목별 판정
 
-| 경로                                           | 변경                                                                                                                            | 판정 제안                                                                                                                                                          | 사유                                                                                          |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `src/app/api/orders/transfer-records/route.ts` | 신규 +149                                                                                                                       | ⚠️ **사후 수용 후보** (진희 `/api/crawl/ecount` 선례와 동일 패턴). 단, 코드 품질/보안 검토 필요 (인증 체크, env 검증)                                              | 외부 API 연동·서버 액션은 PM 영역에 둘 수밖에 없음. 진희 때와 동일하게 보안 수정 후 수용 가능 |
-| `src/lib/margin/`                              | 신규 6개 파일(`breakeven-margin`, `calc-margin`, `constants`, `index`, `profit-helpers`, `types`) + `useMarginCalc.ts` 재구조화 | ⚠️ **사후 수용 후보** — 4-14에 PM이 한 번 수용 결정한 영역이고, orders/cost 양쪽에서 공유하는 엔진이라 `src/lib/` 위치 합리적. 단 파일 6개 분화가 과한지 구조 검토 | 4-14 결정 "orders와 cost 양쪽에서 공유하는 엔진이므로 src/lib/에 두는 것이 합리적" 선례 연장  |
-| `src/lib/orders/`                              | **신규 폴더** + `orderMeta.ts` (+70) + `purchaseExcel.ts` (+298)                                                                | ⚠️ **사후 수용 후보** — `src/lib/margin/` 패턴 확장. orders 전용 유틸로 분리한 것 합리적. 단 "PM 요청 없이 lib 하위 새 폴더 추가"는 절차 위반                      | `purchaseExcel` 같은 SheetJS 래퍼는 재사용성 있는 유틸이므로 lib 위치 타당                    |
-| `supabase/types.ts`                            | 수동 편집 +56줄                                                                                                                 | ❌ **원복 완료** (머지 시 submain v6 버전 채택). 자동 생성 파일이라 수동 편집 금지. 슬아가 추가한 타입 정의는 v6 재생성 시 자연 흡수돼야 함                        | `supabase gen types`로만 갱신. PM이 4-17에 재생성한 v6 반영본이 정본                          |
-| `supabase/migrations/010~014`                  | 5개 마이그레이션 파일 추가                                                                                                      | 🔴 **충돌 조정 필요** (아래 상세 참조)                                                                                                                             | 명명 규칙(`010_*`) 구식 + v6 baseline과 동일 테이블 재정의 가능성                             |
-| `supabase/.temp/*` 9개 파일                    | 신규                                                                                                                            | 🔴 **추적 해제 + .gitignore 추가** 필수                                                                                                                            | Supabase CLI 로컬 캐시. gitignore 누락으로 실수 커밋된 것                                     |
-| `tsconfig.tsbuildinfo`                         | 수정                                                                                                                            | ✅ **자동 처리됨** — submain이 이미 추적 해제 + .gitignore 추가 상태라 머지 시 흡수됨                                                                              | 나경 PR 정리에서 구조적 해결 완료                                                             |
-| `src/components/layout/nav-orders.ts`          | ±4                                                                                                                              | ✅ **수용** — 슬아 본인 nav 파일 (CLAUDE.md 명시 허용)                                                                                                             | 슬아 영역 권한 범위                                                                           |
+| 경로                                                     | 변경                                                                                                                            | 판정 제안                                                                                                                                                          | 사유                                                                                         |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `src/app/api/orders/bulk-import-purchase-excel/route.ts` | 신규 +282                                                                                                                       | ⚠️ **사후 수용 후보** — 엑셀 대량 업로드 POST (`useOrderExcelWorkspace.ts:110` 호출). 보안 검토 필요 (인증 체크, env 검증)                                         | 서버 액션 + SheetJS 파싱 필요로 PM 영역 불가피                                               |
+| `src/app/api/orders/excel-upload-history/route.ts`       | 신규 +54                                                                                                                        | ⚠️ **사후 수용 후보** — 업로드 이력 GET (`OrderDashboard.tsx:421` 호출, companyCode 쿼리). 보안 검토 필요                                                          | 이력 조회 서버 엔드포인트                                                                    |
+| `src/app/api/orders/manual-erp-purchase/route.ts`        | 신규 +198                                                                                                                       | ⚠️ **사후 수용 후보** — 수동 ERP 매입 등록 POST (`OrderContractAddForm.tsx:146` 호출). 보안 검토 필요                                                              | 계약 추가 폼 서버 액션                                                                       |
+| `src/app/api/orders/sync-erp-purchases/route.ts`         | 신규 +372                                                                                                                       | ⚠️ **사후 수용 후보** — ERP 매입 동기화 POST (`OrderDashboard.tsx:465` 호출, 최근 30일). 보안 검토 필요                                                            | 외부 ERP 동기화 서버 액션                                                                    |
+| `src/app/api/orders/transfer-records/route.ts`           | 신규 +149                                                                                                                       | ⚠️ **사후 수용 후보** — 이체 기록 GET/POST (`OrderDashboard.tsx:147, 531` 2곳 호출). 보안 검토 필요                                                                | 진희 `/api/crawl/ecount` 선례와 동일 패턴                                                    |
+| `src/lib/margin/`                                        | 신규 6개 파일(`breakeven-margin`, `calc-margin`, `constants`, `index`, `profit-helpers`, `types`) + `useMarginCalc.ts` 재구조화 | ⚠️ **사후 수용 후보** — 4-14에 PM이 한 번 수용 결정한 영역이고, orders/cost 양쪽에서 공유하는 엔진이라 `src/lib/` 위치 합리적. 단 파일 6개 분화가 과한지 구조 검토 | 4-14 결정 "orders와 cost 양쪽에서 공유하는 엔진이므로 src/lib/에 두는 것이 합리적" 선례 연장 |
+| `src/lib/orders/`                                        | **신규 폴더** + `orderMeta.ts` (+70) + `purchaseExcel.ts` (+298)                                                                | ⚠️ **사후 수용 후보** — `src/lib/margin/` 패턴 확장. orders 전용 유틸로 분리한 것 합리적. 단 "PM 요청 없이 lib 하위 새 폴더 추가"는 절차 위반                      | `purchaseExcel` 같은 SheetJS 래퍼는 재사용성 있는 유틸이므로 lib 위치 타당                   |
+| `supabase/types.ts`                                      | 수동 편집 +56줄                                                                                                                 | ❌ **원복 완료** (머지 시 submain v6 버전 채택). 자동 생성 파일이라 수동 편집 금지. 슬아가 추가한 타입 정의는 v6 재생성 시 자연 흡수돼야 함                        | `supabase gen types`로만 갱신. PM이 4-17에 재생성한 v6 반영본이 정본                         |
+| `supabase/migrations/010~014`                            | 5개 마이그레이션 파일 추가                                                                                                      | 🔴 **충돌 조정 필요** (아래 상세 참조)                                                                                                                             | 명명 규칙(`010_*`) 구식 + v6 baseline과 동일 테이블 재정의 가능성                            |
+| `supabase/.temp/*` 9개 파일                              | 신규                                                                                                                            | 🔴 **추적 해제 + .gitignore 추가** 필수                                                                                                                            | Supabase CLI 로컬 캐시. gitignore 누락으로 실수 커밋된 것                                    |
+| `tsconfig.tsbuildinfo`                                   | 수정                                                                                                                            | ✅ **자동 처리됨** — submain이 이미 추적 해제 + .gitignore 추가 상태라 머지 시 흡수됨                                                                              | 나경 PR 정리에서 구조적 해결 완료                                                            |
+| `src/components/layout/nav-orders.ts`                    | ±4                                                                                                                              | ✅ **수용** — 슬아 본인 nav 파일 (CLAUDE.md 명시 허용)                                                                                                             | 슬아 영역 권한 범위                                                                          |
 
 ---
 
@@ -682,12 +686,12 @@ PM이 침범 파일 20개를 submain 버전으로 복구하여 슬아/나경/PM 
 
 **슬아 hooks의 구 스키마 참조 (4개 파일, 14건 타입 에러 예상)**
 
-| 파일                                       | 구 참조                             | 필요 매핑                             |
-| ------------------------------------------ | ----------------------------------- | ------------------------------------- |
-| `_hooks/useOrders.ts`                      | `stock_movements`(복수), `products` | `stock_movement`(단수), `item_master` |
-| `_hooks/useCost.ts`                        | `products`                          | `item_master` 또는 `v_item_full` 뷰   |
-| `_hooks/useErpPurchases.ts`                | (미확인 — 확인 필요)                | —                                     |
-| `_hooks/useStockMovementsInboundReturn.ts` | `stock_movements` 추정              | `stock_movement`                      |
+| 파일                                       | 구 참조                                                                           | 필요 매핑                                                                                          |
+| ------------------------------------------ | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `_hooks/useOrders.ts`                      | `stock_movements`(복수), `products`                                               | `stock_movement`(단수), `item_master`                                                              |
+| `_hooks/useCost.ts`                        | `products`                                                                        | `item_master` 또는 `v_item_full` 뷰                                                                |
+| `_hooks/useErpPurchases.ts`                | `erp_purchases` (v6 DB에 없음, 슬아 `010_orders_schema_compat.sql`에서 신규 생성) | 🔴 v6 `orders` 테이블로 마이그레이션 (orders가 이미 8,797행 보유, GL/지엘팜/HNB 3개 ERP 통합 저장) |
+| `_hooks/useStockMovementsInboundReturn.ts` | `stock_movements` 추정                                                            | `stock_movement`                                                                                   |
 
 **자세한 매핑 가이드:** `database.md` [v6 스키마 변경 영향 분석] 슬아 섹션 참조.
 
@@ -755,7 +759,12 @@ PM이 침범 파일 20개를 submain 버전으로 복구하여 슬아/나경/PM 
 
 **Step 3 — PM 영역 침범 개별 판정 (PM 결정 필요)**
 
-- `src/app/api/orders/transfer-records/route.ts` 코드 품질 검토 (진희 보안 패턴 적용: auth.getUser() + env 검증)
+- `src/app/api/orders/` 5개 신규 라우트 (총 +1,055줄) 코드 품질 검토 (진희 보안 패턴 적용: auth.getUser() + env 검증)
+  - `bulk-import-purchase-excel/route.ts` +282
+  - `excel-upload-history/route.ts` +54
+  - `manual-erp-purchase/route.ts` +198
+  - `sync-erp-purchases/route.ts` +372
+  - `transfer-records/route.ts` +149
 - `src/lib/margin/` 신규 6개 + `src/lib/orders/` 신규 폴더 수용 여부
 - 수용하면: 그대로 유지 + 미결 기록. 거절하면: 슬아에게 위치 이동 요청
 
@@ -789,7 +798,7 @@ PM이 침범 파일 20개를 submain 버전으로 복구하여 슬아/나경/PM 
 
 - 슬아 supabase/.temp/ 9개 파일 추적 해제 완료
 - `.gitignore`에 `supabase/.temp/` 추가됨
-- PM 영역 신규 파일 2개 영역(`src/lib/orders/`, `/api/orders/transfer-records/`) 사후 수용 결정 완료 (혹은 이동 요청)
+- PM 영역 신규 파일 3개 영역(`src/lib/orders/`, `src/lib/margin/` 확장, `src/app/api/orders/` 5개 라우트) 사후 수용 결정 완료 (혹은 이동 요청)
 - 슬아 마이그레이션 010~014 중 유효한 것만 선별 리네임 or 전부 폐기
 
 **Step 5 전(슬아 v6 마이그 미완) 상태로 submain 머지 시:**
@@ -808,6 +817,167 @@ PM이 침범 파일 20개를 submain 버전으로 복구하여 슬아/나경/PM 
 
 - dev DB에 apply 시 PG 에러 (DROP/CREATE/ALTER 순서 꼬임)
 - Supabase MCP로 DDL 적용 전 dry-run 검증 필수
+
+---
+
+#### 🚀 B안 확정 — PM 주도 재작업 후 머지 파이프라인 (2026-04-17 결정)
+
+**결정 근거:** 슬아 PR #20 심층 검토 결과 v6 스키마 비호환 + 코드 품질 블로커 5건 발견. 슬아 본인 대신 PM이 직접 재작업하여 머지 전 CI GREEN 확보하기로 결정.
+
+**추가 발견 (v6 스키마 외 코드 품질 블로커 5건):**
+
+1. 🔴 **CLAUDE.md 명시 규칙 위반** — `OrderExcelPreviewTable.tsx:91` `<table>`, `OrderContractAddForm.tsx:287` `<option>` 네이티브 HTML 사용 (shadcn/ui 필수)
+2. 🔴 **타입 단언 남발** — `useStockMovementsInboundReturn.ts:35`, `useSkuApproximateMap.ts:40` `(rows as X[]) ?? []` 패턴
+3. 🔴 **Supabase 에러 체크 누락** — `useErpPurchases.ts:52`, `useSkuApproximateMap.ts:40` error 변수 무시
+4. 🔴 **useEffect 무한 로드** — `useOrderExcelWorkspace.ts:86` deps `[loadSample]` + loadSample이 `[applyBuffer]` 의존 → 재로드 루프
+5. 🔴 **죽은 분기** — `MarginCalculator.tsx:114` `|| "" || null` (`""` 뒤 `|| null`은 도달 불가)
+
+**그 외 확인 결과 (무문제):**
+
+- 금지 라이브러리 없음 (axios/MUI/Redux/Prisma/react-query/SWR/Zustand 전부 부재)
+- `xlsx` (SheetJS) 신규 의존성 — 엑셀 파싱용, 금지 목록 외 일반 유틸이라 허용
+- TODO/FIXME/console.log 잔재 없음 (console.error 2건은 개선 제안 수준)
+- cost/ 영역 네이티브 HTML 없음
+- 한국어 주석 준수
+
+---
+
+**B안 작업 순서 (총 11단계, 예상 4시간):**
+
+| #       | 작업                                            | 예상 소요 | 주요 산출물                                                                              |
+| ------- | ----------------------------------------------- | --------- | ---------------------------------------------------------------------------------------- |
+| 1       | submain → team/슬아 머지                        | 10분      | 충돌 3건 해결 (types.ts, .env.example, tsbuildinfo)                                      |
+| 2       | supabase/.temp/ 추적 해제 + .gitignore          | 5분       | 9개 파일 캐시에서 제거                                                                   |
+| 3       | migrations 010/013/014 폐기 + 011/012 호환 검토 | 20분      | 011/012 유효 시 `20260417XXXXXX_*` 리네임 + apply                                        |
+| 4       | supabase/types.ts v6 원복                       | 5분       | 머지로 자동 + gen types 재생성                                                           |
+| 5       | 슬아 기본 hooks v6 대응                         | 40분      | `products→item_master`, `stock_movements→stock_movement` 치환 (4개 hook)                 |
+| 6       | `erp_purchases → orders` 전환                   | 90분      | hook 3개 + API 5개 + purchaseExcel 주석 (가장 큰 작업)                                   |
+| **6.5** | **슬아 코드 품질 정리 (블로커 5건)**            | **30분**  | **네이티브 HTML→shadcn, 타입 단언 제거, 에러 체크 추가, 무한 로드 수정, 죽은 분기 제거** |
+| 7       | API routes 보안 검토 (진희 선례)                | 30분      | 5개 라우트에 `auth.getUser()` + env 검증                                                 |
+| 8       | `npx tsc --noEmit` 통과 확인                    | 10분      | 슬아 영역 타입 에러 0건                                                                  |
+| 9       | 브라우저 기능 검증                              | 20분      | `/orders`, `/analytics/cost` 페이지 + CRUD + 엑셀 업로드                                 |
+| 10      | 로그 기록 + push + PR #20 머지                  | 15분      | frontend.md/database.md 업데이트, CI GREEN 상태 머지                                     |
+
+---
+
+#### 🔮 B안 파이프라인 단계별 예상 결과
+
+**Step 1~3 완료 직후 (머지 베이스 + 위생 정리):**
+
+- team/슬아 브랜치가 최신 submain(v6) 베이스 위에 정렬됨
+- supabase/.temp/ 9개 git 추적 해제, .gitignore 1줄 추가
+- migrations 010/013/014 파일 3개 삭제, 011/012는 v6 호환 판정 후 리네임 적용 or 폐기
+- dev DB: 011(order_transfer_states), 012(order_excel_upload_logs) 신규 테이블 2개 추가 (호환 시)
+
+**Step 4~6 완료 직후 (스키마 대응):**
+
+- 슬아 hooks 11개 파일(orders/_hooks/_ 3개 + analytics/cost/_hooks/_ 1개 + erp 관련 3개) 전부 v6 스키마 참조로 전환
+- API routes 5개가 `orders` 테이블로 INSERT/SELECT (erp_system='gl/gl_pharm/hnb', tx_type='purchase' 필수 지정)
+- `erp_purchases` 의존 0건, `products` 참조 0건, `stock_movements`(복수) 0건
+- types.ts는 submain v6 정본 그대로
+
+**Step 6.5~7 완료 직후 (품질 + 보안):**
+
+- 네이티브 `<table>`/`<option>` 0건 (shadcn Table/SelectItem으로 전환)
+- `as X[]` 타입 단언 제거, Supabase 반환 타입 그대로 사용
+- Supabase 호출부 전부 `if (error) { ... }` 체크 존재
+- useEffect 의존성 배열 정합성 (exhaustive-deps 경고 0건)
+- API routes 5개에 `auth.getUser()` 세션 검증 + env 누락 시 500 응답
+
+**Step 8 완료 시 (타입체크):**
+
+- `npx tsc --noEmit` 슬아 영역 에러 0건
+- 잔여 에러: 정민 `forecast.py`/hooks의 `forecasts` 테이블 부재 관련 소수만 (슬아 PR 머지 판정과 무관 — 정민 본인이 별도 처리)
+
+**Step 9 완료 시 (브라우저 검증):**
+
+- `/orders` 페이지: 발주/계약/엑셀 업로드 탭 전부 로드, `orders` 테이블 8,797행 중 tx_type='purchase' 필터 결과 표시
+- `/analytics/cost` 페이지: MarginCalculator 상품 드롭다운(item_master 144건), 환율 시뮬레이션, 센터 순이익 차트 정상
+- 엑셀 업로드: `bulk-import-purchase-excel` 성공 시 `orders`에 INSERT, `excel-upload-history` 이력 조회 동작
+
+**Step 10 완료 시 (최종):**
+
+- CI Lint & Build: 🟢 PASS (슬아 영역)
+- CI 파일 경계 검사: 🟢 PASS (PM이 직접 수정했으므로 경계 예외 기록됨)
+- PR #20 base `submain`으로 머지 가능, admin bypass 불필요
+- `docs/logs/pm/frontend.md`, `database.md`에 최종 상태 기록
+
+---
+
+#### ⚠️ B안 리스크 시나리오
+
+**[시나리오 1] migrations 011/012가 v6와 충돌**
+
+- 예상 대응: 파일 내용 재작성 (v6 테이블명/타입 맞춰) 또는 폐기 후 PM이 정식 v6 스키마로 재작성
+- 영향: Step 3 소요 20분 → 60분으로 증가
+
+**[시나리오 2] orders 테이블 INSERT 시 item_id 매핑 실패**
+
+- 예상 대응: UI의 상품 선택 시 item_master에서 직접 `seq_no` 또는 `item_id`로 조회하도록 UI 수정 필요
+- 영향: Step 6 소요 90분 → 150분으로 증가
+
+**[시나리오 3] 슬아 본인이 수동 병합 중 PM 재작업과 충돌**
+
+- 예상 대응: team/슬아 브랜치 작업 전 슬아에게 "일시 중지" 통지. 재작업 완료 후 슬아는 rebase 또는 새 PR 기반 작업
+- 영향: 팀 커뮤니케이션 필요 (Slack/팀 채널)
+
+**[시나리오 4] 브라우저 검증에서 기능 회귀 발견**
+
+- 예상 대응: 회귀 원인 디버깅 후 재수정. 최악의 경우 Step 6 범위 확대
+- 영향: Step 9 소요 20분 → 60~120분
+
+**최악 시나리오 합산 소요:** 4시간 → 7~8시간 (하루 안에 완료 가능 범위 유지)
+
+---
+
+#### 📐 1단/2단 분리 결정 (2026-04-17)
+
+**배경:** 사용자가 orders 테이블 중심 승인 워크플로우(재고등록/거절/미처리 상태) + 필터 UI + LLM 채팅 + 크롤링 파이프라인까지 포함한 확장 설계를 제안. 슬아 PR #20 원안 범위를 크게 상회.
+
+**결정: 1단 접근 확정 — 슬아 PR #20을 원안 최소 호환 선에서 먼저 머지, 재고등록 워크플로우는 후속 PR.**
+
+**1단 (이번 B안 파이프라인, 4시간):**
+
+- 슬아 erp_purchases 원안 존중 (orders 테이블과 분리 유지, 트리거 없음)
+- PM이 v6 호환 erp_purchases 스키마 재작성 (bigint id, item_id FK)
+- 010/013/014 폐기, 011/012 호환 정리
+- 슬아 코드의 `products → item_master` 치환
+- v6 트리거/orders 구조 **건드리지 않음**
+
+**2단 (후속 PR, 별도 1~2일 작업):**
+
+DB 변경:
+
+- `orders` 테이블에 `approval_status TEXT CHECK ('pending', 'approved', 'rejected')` + `reviewed_by` + `reviewed_at` + `reject_reason` 컬럼 추가
+- `trg_orders_to_stock_movement` 트리거 수정: INSERT 시 자동 생성 제거, `UPDATE status='approved'` 시점에만 stock_movement 생성
+- 또는 트리거 제거 후 "승인" API가 stock_movement 직접 INSERT
+
+UI 변경 (슬아 영역 재구축):
+
+- 좌측 패널: 기존 송금 진행도(`order_transfer_states`)와 동일 스타일로 재고등록 상태 아이콘
+- 메인 테이블 컬럼: 거래유형(구매/판매/반품), 품목명, 품목코드, 규격, 수량, 거래처, 비고
+- 액션: "입고(구매)", "출고(판매)", "등록 X"(거부 공통) 버튼
+- 거부 시 비고 입력 창 팝업 (reject_reason 기록)
+- 다중 필터: 거래유형, 거래처, 품목명/품목코드
+- 하단 LLM 채팅 (범위 미정)
+
+크롤링 (n8n + Playwright, 별도 인프라 작업):
+
+- 지엘팜 구매현황 (필수)
+- 지엘 생산입고 (필수)
+- 지엘 구매/판매 기록 (필수, 기술적 어려우면 축소)
+- **HNB 구매/판매 데이터 (필수)** — 가능 시 아님
+- 자사 내부거래는 필터링 (`is_internal=true` 플래그)
+
+**개념 구분 (향후 설계 기준):**
+
+| 개념       | 객체                  | 역할                                                   |
+| ---------- | --------------------- | ------------------------------------------------------ |
+| 재고흐름표 | `stock_movement`      | 시계열 변동 로그 (승인된 것만) — 분석/감사/과거 비교용 |
+| 현재재고   | `v_current_stock`     | 계산 뷰 (base + 최신 running_stock) — 운영 화면용      |
+| 쿠팡 재고  | `inventory_operation` | 일별 스냅샷 — 로켓배송 풀필먼트 기준, 자사와 별개      |
+
+둘 중 선택 아님 — 용도가 달라서 둘 다 유지.
 
 ---
 
@@ -863,3 +1033,41 @@ PM이 침범 파일 20개를 submain 버전으로 복구하여 슬아/나경/PM 
 - **(2026-04-17)** 010 마이그레이션 정식 채택 시 기존 명명(`010_*.sql`) → 새 명명 규칙(`20260417...`)으로 리네임 일관성 유지
 - **(2026-04-17)** `tracking/route.ts` 유니패스 API 키 URL 노출 — 우회 불가 (외부 API 한계). 향후 유니패스 API 정책 변경 시 헤더 인증으로 마이그레이션
 - **(2026-04-17)** 슬아 — `calcProfitWithVatPrice` `settlementRatio` 필수 파라미터화로 호출부 누락 시 타입 에러. 신규 호출 추가 시 채널 정산율 전달 필수
+
+---
+
+### [2026-04-18] [슬아 PR #20 재구축 Step 0~11 완료 — PR 머지 대기]
+
+**요청:** B안 파이프라인 (슬아.md 2026-04-18 섹션) Step 0~11 실행. Step 12(PR 머지)는 사용자 수동 예정.
+
+**변경 파일:**
+
+- **마이그레이션:** `supabase/migrations/010_orders_schema_compat.sql` (삭제), `011_order_transfer_states.sql` (삭제), `013_item_erp_mapping.sql` (삭제), `014_products_pcs_per_pallet.sql` (삭제), `012_order_excel_upload_logs.sql` → `20260417183508_create_excel_upload_logs.sql` (리네임 + 2단 RLS 정책 일관 재작성)
+- **.temp/ 정리:** 9파일 추적 해제, `.gitignore`에 `supabase/.temp/` + `tsconfig.tsbuildinfo` 추가
+- **타입:** `supabase/types.ts` (1,884줄 재생성), `src/lib/supabase/types.ts` (헬퍼 확장 — `Tables<>`가 Views 커버, `TablesInsert`/`TablesUpdate` alias)
+- **hooks 재작성:** `src/components/orders/_hooks/{useOrders, useStockMovementsInboundReturn, useSkuMapping, useSkuApproximateMap, useContractFormOptions, useOrderExcelWorkspace, buildContractRows, useCompetitorPrice}.ts`, `src/components/analytics/cost/_hooks/{useCost, useMarginProductOptions, useProductMarginPreset}.ts`, `src/components/orders/_hooks/useErpPurchases.ts` (삭제), `src/lib/orders/{orderMeta, purchaseExcel}.ts`
+- **API routes 재작성:** `src/app/api/orders/{sync-erp-purchases, transfer-records}/` (폴더 삭제), `bulk-import-purchase-excel`, `manual-erp-purchase`, `excel-upload-history` (전면 재작성 + auth 체크), `approve`, `reject` (신규 생성)
+- **UI 분해:** `src/components/orders/{OrderTable, BatchProfitSidebar}.tsx` (삭제), `{OrdersHeader, OrdersTable, OrdersActionPanel, OrdersRejectPopover, OrdersExcelUploadDialog, OrdersStockSidebar}.tsx` (신규), `{OrderDashboard, OrderContractAddForm, OrderExcelPreviewTable}.tsx` (재작성)
+- **최소 수정:** `src/components/analytics/cost/{MarginCalculator, CostAnalyticsDashboard}.tsx` (필드 이름 v6 대응), `src/app/(dashboard)/page.tsx` (텍스트 업데이트)
+- **shadcn 6개 신규 설치:** `src/components/ui/{popover, checkbox, toggle, toggle-group, pagination, calendar}.tsx`
+- **package.json/lock:** `xlsx` 0.18.5 (슬아 원본 추가, 유지) + shadcn 신규 deps
+
+**변경 내용:**
+
+- 슬아 원안의 `erp_purchases` 중심 설계를 v6+2단 `orders` 테이블(status='pending'/'approved'/'rejected')로 일원화
+- 승인/거절/승인취소 UI 추가 (단건 행 버튼 + 체크박스 일괄)
+- DB 트리거 `after_orders_status_change`가 status UPDATE 시 `stock_movement` 자동 생성/삭제 → 진희 재고흐름표 자동 연동
+- 모든 API route에 `auth.getUser()` 체크 + env 검증 (진희 `/api/crawl/ecount` 선례 준수)
+- shadcn Popover(거절 사유), Checkbox(선택), ToggleGroup(기업/거래유형 필터), Pagination(50/페이지), Calendar(날짜 Picker) 신규 활용
+- 금지 라이브러리 0, 네이티브 HTML 0, `any`/`as unknown as` 0, console.log 0, `erp_purchases`/`stock_movements`(복수)/`products` 참조 0
+
+**주의사항:**
+
+- 슬아.md 2026-04-18 섹션에 **알려진 이슈 4건** 기록:
+  - [1] `MarginCalculator` 상품 드롭다운 React duplicate-key 경고 39건 (기능 정확성 잠재 버그 2차) — 후속 PR (나) 정확 수정 권장
+  - [2] `useSkuMapping`의 `pcs_per_pallet` 항상 DEFAULT 14400 — `item_master.pcs_per_pallet` 컬럼 추가 후속 PR
+  - [3] 정민 `useForecast.ts` 기존 타입 에러 (본 PR 무관, 정민 별도 처리)
+  - [4] `.next/types/validator.ts` reviews 캐시 stale — 빌드 재실행 시 자동 해소
+- **Step 12 (PR 머지):** 사용자가 직접 PR #20 base를 `main`→`submain` 전환 후 머지 예정. AI는 push/merge 실행 안 함.
+- **커밋 분할:** 7개 논리 단위 (마이그 / .temp / types / hooks / API / UI / docs)
+- **다른 팀원 영역 수정 없음:** logistics/forecast/reviews/promotion 경로 무수정 확인
