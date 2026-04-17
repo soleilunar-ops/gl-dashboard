@@ -3,7 +3,7 @@ import OrderDashboard from "@/components/orders/OrderDashboard";
 
 export default function OrdersPage() {
   return (
-    <PageWrapper title="주문 현황">
+    <PageWrapper title="주문 관리">
       <OrderDashboard />
     </PageWrapper>
   );

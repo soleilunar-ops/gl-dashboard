@@ -1,12 +1,11 @@
 "use client";
 
-// 이 파일은 패턴 참조용 스켈레톤입니다. 기능 구현 시 select 컬럼, 필터, 정렬을 자유롭게 수정하세요.
+// 출고 전용 조회가 필요할 때 사용. 수입 계약 화면은 useErpPurchases + useStockMovementsInboundReturn 참고.
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
-// 주문(출고) = stock_movements에서 movement_type='출고' 기준
 type StockMovement = Tables<"stock_movements">;
 type Product = Tables<"products">;
 type OrderRow = StockMovement & { products: Pick<Product, "name" | "erp_code"> | null };

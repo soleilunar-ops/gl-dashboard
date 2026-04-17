@@ -18,6 +18,7 @@ export interface Database {
           name: string;
           unit: string;
           unit_cost: number | null;
+          pcs_per_pallet: number | null;
           erp_code: string | null;
           erp_name: string | null;
           coupang_sku_id: string | null;
@@ -39,6 +40,7 @@ export interface Database {
           name: string;
           unit?: string;
           unit_cost?: number | null;
+          pcs_per_pallet?: number | null;
           erp_code?: string | null;
           erp_name?: string | null;
           coupang_sku_id?: string | null;
@@ -269,6 +271,60 @@ export interface Database {
           model_name?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["forecasts"]["Insert"]>;
+      };
+      item_erp_mapping: {
+        Row: {
+          id: string;
+          product_id: string;
+          erp_code: string;
+          erp_system: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          erp_code: string;
+          erp_system: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["item_erp_mapping"]["Insert"]>;
+      };
+      /** GL팜 구매현황 동기화 — 문서상 erp_purchase_orders 대응 테이블 */
+      erp_purchases: {
+        Row: {
+          id: string;
+          product_id: string | null;
+          erp_code: string | null;
+          erp_product_name: string | null;
+          supplier_id: string | null;
+          supplier_name: string | null;
+          purchase_date: string;
+          erp_date: string | null;
+          quantity: number | null;
+          unit_price: number | null;
+          amount: number | null;
+          erp_ref: string | null;
+          source: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id?: string | null;
+          erp_code?: string | null;
+          erp_product_name?: string | null;
+          supplier_id?: string | null;
+          supplier_name?: string | null;
+          purchase_date: string;
+          erp_date?: string | null;
+          quantity?: number | null;
+          unit_price?: number | null;
+          amount?: number | null;
+          erp_ref?: string | null;
+          source?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["erp_purchases"]["Insert"]>;
       };
     };
     Views: {
