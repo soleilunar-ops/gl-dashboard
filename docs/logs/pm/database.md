@@ -444,7 +444,9 @@ await supabase
 - **정민 (2026-04-17)** v6 스키마 마이그레이션 (위 [정민 영역] 가이드 참조)
   - `useForecast.ts`: `coupang_performance` → `daily_performance` (테이블명만 + `date` → `sale_date`)
   - 예측 결과 저장 위치는 PM 결정 대기 중 (위 [PM 결정 대기] 참조)
-- **나경 (2026-04-17)** ✅ 해결됨 (2026-04-17): `usePromotion.ts` 삭제 + 리뷰 기능 제거로 v6 스키마 영향 자연 해소. 후속으로 `dataPreprocess.ts` xlsx → Supabase 마이그레이션 필요 (아래 [데이터 / 외부 의존성] 참조).
+- **나경 (2026-04-17)** v6 스키마 마이그레이션 (위 [나경 영역] 가이드 참조)
+  - `usePromotion.ts`: `coupang_performance` → `daily_performance` 또는 `v_promo_roi` 뷰 권장
+  - `useReviews.ts`: `coupang_performance` → `daily_performance` (review_count/avg_rating 그대로 존재)
 - **진희 (2026-04-17)** 010 마이그레이션 처리 결정 후 LeadTimeTracker 동작 확인
 
 ### [데이터 / 외부 의존성]
@@ -454,8 +456,6 @@ await supabase
 - **(2026-04-15 이월)** 정민 — `services/api/` 폴더는 PM 전용. 정민님 코드 이동 시 PM이 폴더 생성 후 이관
 - **(2026-04-15 이월)** 정민 — `docs/logs/정민.md` 미작성. 작성 요청
 - **(2026-04-15 이월)** 나경 — `docs/logs/나경.md` 미작성. 작성 요청
-- **(2026-04-17)** 나경 — `dataPreprocess.ts` xlsx 파싱(광고비/판매납품/프로모션 3개 엑셀) → Supabase 마이그레이션. `v_promo_roi` 뷰 + 광고비/판매납품 신규 테이블 설계 필요. 현재 임시 허용.
-- **(2026-04-17)** 나경 — `promotion_dashboard/` Python Dash 정식 통합 결정 대기. 레포 미커밋 상태(나경 로컬 only). 팀 통합 시 폴더 commit + Python 환경 표준화 + 안전한 dev 스크립트 분리 필요.
 - **(2026-04-17)** GL 본사 판매 103건 (`sales_gl_no_code.csv`) — 품목코드 없음, item_master.item_name_raw와 fuzzy 매칭 후 `erp_system='gl'`로 orders INSERT 필요
 - **(2026-04-17)** 판매 미매칭 59개 코드 리뷰 (HNB 240400002 하루온손난로 63건, HNB 241200004 뉴하루온팩 47건, gl_farm 00062/00070/00053)
 - **(2026-04-17)** 판매 0건 66개 품목 최종 조사 (GL 적재 후 데드스톡 사장님 보고 대상)
