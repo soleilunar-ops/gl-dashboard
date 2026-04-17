@@ -8,4 +8,16 @@ data/embeddings/
 .venv/
 __pycache__/
 *.pyc
+*.py[cod]
 .mcp.json
+
+# 대용량 기상 데이터 (ECMWF/KMA GRIB 포맷)
+*.grib
+*.grib2
+
+# ECMWF API 인증 토큰
+.ecmwfapirc
+
+# 로컬 캐시
+.cache/
+.cache.sqlite

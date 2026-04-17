@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr:*)",
+      "Bash(git fetch:*)",
+      "Bash(git diff:*)",
+      "Read(//c/Program Files/GitHub CLI/**)",
+      "Read(//c/Program Files \\(x86\\)/GitHub CLI/**)",
+      "Read(//c/Users/solei/AppData/**)",
+      "Bash(export PATH=\"/c/Program Files/GitHub CLI:$PATH\")",
+      "Bash(gh --version)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash('/c/Program Files/GitHub CLI/gh.exe' pr create --base submain --head team/나경 --title '[PM] refactor: 나경님 리뷰/프로모션 페이지 구조 개선' --body ':*)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" pr list --state all --head team/나경)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" pr view 9 --json baseRefName,headRefName,title,state)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" pr list --state all --head team/정민)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" pr view 13 --json baseRefName,headRefName,title,state)",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(npm install *)",
+      "Bash(grep -nE \"^      [a-z_]+: \\\\{$|^      \\(Row|Insert|Update\\):\" /c/final_project/gl/gl-dashboard/supabase/types.ts)",
+      "mcp__claude_ai_Supabase__generate_typescript_types",
+      "Bash(node *)",
+      "Bash(grep -nE \"^      [a-z_]+: \\\\{$\" /c/final_project/gl/gl-dashboard/supabase/types.ts)"
+    ]
+  }
+}
