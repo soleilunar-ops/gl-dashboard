@@ -28,10 +28,15 @@
 ### 정민
 
 - src/components/analytics/forecast/ (컴포넌트 추가/수정)
-- services/api/routers/forecast.py (FastAPI 라우터)
-- services/api/models/prophet_model.py, xgboost_model.py
-- src/app/analytics/forecast/ (page.tsx — 배치만)
+- src/app/(dashboard)/analytics/forecast/ (page.tsx — 배치만)
 - src/components/layout/nav-forecast.ts (네비게이션 메뉴)
+- services/api/routers/forecast.py (FastAPI 라우터)
+- services/api/analytics/ (수요 예측 모델/인사이트 — Model A LightGBM, Model B 발주반응, OpenAI 인사이트)
+- services/api/data_pipeline/ (데이터 수집/피처 빌드)
+- services/api/data_sources/ (외부 API 연동 — ASOS, ECMWF)
+- services/api/schemas/ (Pydantic 응답 스키마)
+- services/api/run_pipeline.py (CLI 통합 진입점)
+- services/api/requirements.txt (Python 의존성, 추가만 가능 — 삭제는 PM 승인)
 
 ### 나경
 
