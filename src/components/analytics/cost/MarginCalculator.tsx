@@ -111,7 +111,7 @@ export default function MarginCalculator({
 
   const { options: productOptions, loading: productOptionsLoading } = useMarginProductOptions();
 
-  const effectiveErp = selectedErpCode.trim() || selectedOrder?.erpCode?.trim() || "" || null;
+  const effectiveErp = selectedErpCode.trim() || selectedOrder?.erpCode?.trim() || null;
   const {
     preset,
     loading: presetLoading,

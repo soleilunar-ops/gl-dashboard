@@ -43,9 +43,9 @@ function heatmapToCsv(rows: CostHeatmapRow[]): string {
   ].join(",");
   const lines = rows.map((row) => {
     const cells = [
-      `"${row.product.name.replace(/"/g, '""')}"`,
-      row.product.erp_code ?? "",
-      row.product.unit_cost ?? "",
+      `"${(row.product.item_name_norm ?? row.product.item_name_raw ?? "").replace(/"/g, '""')}"`,
+      row.product.category ?? "",
+      row.product.base_cost ?? "",
       row.referenceVatPrice ?? "",
       String(row.gmv90d),
       ...CHANNEL_KEYS.map((ch) => {
@@ -195,19 +195,19 @@ export default function CostAnalyticsDashboard() {
               </TableHeader>
               <TableBody>
                 {displayRows.map((row) => (
-                  <TableRow key={row.product.id}>
+                  <TableRow key={row.product.item_id}>
                     <TableCell className="bg-background sticky left-0 z-10 max-w-[200px] truncate font-medium">
-                      {row.product.name}
+                      {row.product.item_name_norm ?? row.product.item_name_raw ?? ""}
                     </TableCell>
                     <TableCell className="bg-background sticky left-0 z-10 font-mono text-[11px]">
-                      {row.product.erp_code ?? "—"}
+                      {row.product.category ?? "—"}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {row.gmv90d > 0 ? row.gmv90d.toLocaleString("ko-KR") : "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {row.product.unit_cost !== null && row.product.unit_cost !== undefined
-                        ? Number(row.product.unit_cost).toLocaleString("ko-KR")
+                      {row.product.base_cost !== null && row.product.base_cost !== undefined
+                        ? Number(row.product.base_cost).toLocaleString("ko-KR")
                         : "—"}
                     </TableCell>
                     <TableCell className="text-right">

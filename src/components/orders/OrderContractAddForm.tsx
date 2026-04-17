@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -30,173 +31,146 @@ function toIsoDate(y: number, m: number, d: number): string {
   return `${y}-${pad2(m)}-${pad2(d)}`;
 }
 
-function clampDay(year: number, month: number, day: number, maxDay: number): number {
-  return Math.min(day, maxDay);
-}
-
 const YEAR_START = 2020;
-type CurrencyCode = "CNY" | "USD" | "KRW";
 
-type Props = {
+interface Props {
   onAdded: () => void;
   selectedCompanyCode: OrderCompanyCode | null;
-};
+}
 
-/** 수입 계약 수동 추가 — 일자(년·월·일), 품목 Select, 수량·단가, 합계 기준 부가세 분해 표시, 거래처 Select */
+/** 수동 구매 계약 추가 — orders 테이블에 status='pending', tx_type='purchase'로 INSERT */
 export default function OrderContractAddForm({ onAdded, selectedCompanyCode }: Props) {
-  const { products, suppliers, loading: loadingOpts, error: optsError } = useContractFormOptions();
+  const {
+    items,
+    suppliers,
+    loading: loadingOpts,
+    error: optsError,
+  } = useContractFormOptions(selectedCompanyCode);
   const today = useMemo(() => todayParts(), []);
 
   const [year, setYear] = useState(today.y);
   const [month, setMonth] = useState(today.m);
   const [day, setDay] = useState(today.d);
 
-  const [productId, setProductId] = useState("");
+  const [itemId, setItemId] = useState<number | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [quantityInput, setQuantityInput] = useState("");
   const [unitPriceInput, setUnitPriceInput] = useState("");
-  const [currencyCode, setCurrencyCode] = useState<CurrencyCode>("CNY");
 
   const [submitting, setSubmitting] = useState(false);
-  const [formMessage, setFormMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const maxYear = today.y;
-  const monthMax = year === today.y ? today.m : 12;
-
-  const dim = daysInMonth(year, month);
-  const dayMax = year === today.y && month === today.m ? Math.min(today.d, dim) : dim;
-
+  // 날짜 보정 (월 바뀌면 일수 제한)
   useEffect(() => {
-    if (month > monthMax) {
-      setMonth(monthMax);
-    }
-  }, [month, monthMax]);
+    const maxDay = daysInMonth(year, month);
+    if (day > maxDay) setDay(maxDay);
+  }, [year, month, day]);
 
+  // 기업 바뀌면 품목/거래처 초기화
   useEffect(() => {
-    const nextDay = clampDay(year, month, day, dayMax);
-    if (nextDay !== day) {
-      setDay(nextDay);
-    }
-  }, [year, month, day, dayMax]);
-
-  const quantity = useMemo(() => {
-    const n = Number(quantityInput);
-    if (!Number.isFinite(n) || n <= 0) {
-      return null;
-    }
-    return Math.floor(n);
-  }, [quantityInput]);
-
-  const unitPrice = useMemo(() => {
-    const n = Number(unitPriceInput);
-    if (!Number.isFinite(n) || n < 0) {
-      return null;
-    }
-    return n;
-  }, [unitPriceInput]);
-
-  const grossTotal =
-    quantity !== null && unitPrice !== null ? Math.round(quantity * unitPrice * 100) / 100 : null;
-
-  const supplyAmount = grossTotal !== null ? Math.round((grossTotal / 1.1) * 100) / 100 : null;
-  const vatAmount =
-    grossTotal !== null && supplyAmount !== null
-      ? Math.round((grossTotal - supplyAmount) * 100) / 100
-      : null;
-
-  const purchaseDateIso = toIsoDate(year, month, day);
+    setItemId(null);
+    setSupplierName("");
+  }, [selectedCompanyCode]);
 
   const yearOptions = useMemo(() => {
-    const list: number[] = [];
-    for (let y = YEAR_START; y <= maxYear; y += 1) {
-      list.push(y);
-    }
-    return list;
-  }, [maxYear]);
+    const out: number[] = [];
+    for (let y = today.y; y >= YEAR_START; y -= 1) out.push(y);
+    return out;
+  }, [today.y]);
+
+  const dayOptions = useMemo(() => {
+    const max = daysInMonth(year, month);
+    return Array.from({ length: max }, (_, i) => i + 1);
+  }, [year, month]);
+
+  const selectedItem = useMemo(
+    () => items.find((o) => o.itemId === itemId) ?? null,
+    [items, itemId]
+  );
+
+  const quantity = Number(quantityInput);
+  const unitPrice = Number(unitPriceInput);
+  const grossTotal =
+    Number.isFinite(quantity) && Number.isFinite(unitPrice) && quantity > 0 && unitPrice >= 0
+      ? Math.round(quantity * unitPrice * 100) / 100
+      : null;
+
+  const canSubmit =
+    selectedCompanyCode !== null &&
+    itemId !== null &&
+    supplierName.trim() !== "" &&
+    Number.isInteger(quantity) &&
+    quantity > 0 &&
+    Number.isFinite(unitPrice) &&
+    unitPrice >= 0 &&
+    grossTotal !== null;
 
   const handleSubmit = async () => {
-    setFormMessage(null);
-    if (!productId) {
-      setFormMessage("품목을 선택하세요.");
+    if (!canSubmit || selectedCompanyCode === null || itemId === null || grossTotal === null)
       return;
-    }
-    if (selectedCompanyCode === null) {
-      setFormMessage("상단에서 기업을 먼저 선택하세요.");
-      return;
-    }
-    if (!supplierName) {
-      setFormMessage("거래처를 선택하세요.");
-      return;
-    }
-    if (quantity === null) {
-      setFormMessage("수량은 1 이상의 정수로 입력하세요.");
-      return;
-    }
-    if (unitPrice === null) {
-      setFormMessage("단가(CNY)를 입력하세요.");
-      return;
-    }
-    if (grossTotal === null) {
-      setFormMessage("합계를 계산할 수 없습니다.");
-      return;
-    }
-
     setSubmitting(true);
+    setMessage(null);
+    setError(null);
     try {
-      const response = await fetch("/api/orders/manual-erp-purchase", {
+      const res = await fetch("/api/orders/manual-erp-purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           companyCode: selectedCompanyCode,
-          currencyCode,
-          productId,
-          purchaseDate: purchaseDateIso,
+          itemId,
+          erpCode: selectedItem?.erpCode ?? null,
+          productName: selectedItem?.name ?? null,
+          purchaseDate: toIsoDate(year, month, day),
           quantity,
           unitPrice,
           grossTotal,
-          supplierName,
+          supplierName: supplierName.trim(),
         }),
       });
-      const payload = (await response.json()) as { message?: string; detail?: string };
-      if (!response.ok) {
-        const reason = payload.detail ?? payload.message ?? `HTTP ${response.status}`;
-        setFormMessage(`저장 실패: ${reason}`);
+      const payload = (await res.json()) as { error?: string; message?: string };
+      if (!res.ok) {
+        setError(payload.error ?? payload.message ?? `HTTP ${res.status}`);
         return;
       }
-      setFormMessage(payload.message ?? "저장되었습니다.");
+      setMessage("저장되었습니다. (승인대기 상태)");
       setQuantityInput("");
       setUnitPriceInput("");
       onAdded();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "네트워크 오류";
-      setFormMessage(`저장 실패: ${msg}`);
+      setError(e instanceof Error ? e.message : "네트워크 오류");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const fmt = (n: number | null) =>
-    n === null
-      ? "—"
-      : n.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (selectedCompanyCode === null) {
+    return (
+      <div className="border-border rounded-lg border p-3">
+        <p className="text-muted-foreground text-sm">
+          기업을 먼저 선택하면 수동 계약 입력이 활성화됩니다.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="border-border mb-4 rounded-lg border p-3">
-      <p className="mb-3 text-sm font-medium">신규 주문건 입력</p>
+    <div className="border-border rounded-lg border p-3">
+      <p className="mb-3 text-sm font-medium">
+        수동 계약 추가 · {companyLabel(selectedCompanyCode)}
+      </p>
       {optsError ? (
         <p className="text-destructive mb-2 text-xs">옵션 로드 오류: {optsError}</p>
       ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {/* 날짜 */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">일자</label>
-          <div className="flex flex-wrap gap-1">
-            <Select
-              value={String(year)}
-              onValueChange={(v) => setYear(Number(v))}
-              disabled={loadingOpts}
-            >
-              <SelectTrigger className="h-8 w-[88px]">
-                <SelectValue placeholder="년" />
+          <Label className="text-xs">거래일</Label>
+          <div className="flex gap-1">
+            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+              <SelectTrigger className="h-9 w-[88px]">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {yearOptions.map((y) => (
@@ -206,32 +180,24 @@ export default function OrderContractAddForm({ onAdded, selectedCompanyCode }: P
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value={String(month)}
-              onValueChange={(v) => setMonth(Number(v))}
-              disabled={loadingOpts}
-            >
-              <SelectTrigger className="h-8 w-[72px]">
-                <SelectValue placeholder="월" />
+            <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+              <SelectTrigger className="h-9 w-[72px]">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Array.from({ length: monthMax }, (_, i) => i + 1).map((m) => (
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                   <SelectItem key={m} value={String(m)}>
                     {m}월
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value={String(day)}
-              onValueChange={(v) => setDay(Number(v))}
-              disabled={loadingOpts}
-            >
-              <SelectTrigger className="h-8 w-[72px]">
-                <SelectValue placeholder="일" />
+            <Select value={String(day)} onValueChange={(v) => setDay(Number(v))}>
+              <SelectTrigger className="h-9 w-[72px]">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Array.from({ length: dayMax }, (_, i) => i + 1).map((d) => (
+                {dayOptions.map((d) => (
                   <SelectItem key={d} value={String(d)}>
                     {d}일
                   </SelectItem>
@@ -239,122 +205,112 @@ export default function OrderContractAddForm({ onAdded, selectedCompanyCode }: P
               </SelectContent>
             </Select>
           </div>
-          <p className="text-muted-foreground text-[10px]">오늘 이후 날짜는 선택할 수 없습니다.</p>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium">기업(상단 선택)</label>
-          <Input
-            className="bg-muted h-8"
-            readOnly
-            disabled
-            value={selectedCompanyCode ? companyLabel(selectedCompanyCode) : "미선택"}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium">품목코드 · 품목명(규격)</label>
+        {/* 품목 — shadcn Select (네이티브 option 금지 규칙 준수) */}
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-2">
+          <Label className="text-xs">품목</Label>
           <Select
-            value={productId || undefined}
-            onValueChange={setProductId}
-            disabled={loadingOpts || products.length === 0}
+            value={itemId !== null ? String(itemId) : ""}
+            onValueChange={(v) => setItemId(v ? Number(v) : null)}
+            disabled={loadingOpts || items.length === 0}
           >
-            <SelectTrigger className="h-8">
-              <SelectValue placeholder={products.length === 0 ? "등록된 품목 없음" : "품목 선택"} />
+            <SelectTrigger className="h-9 w-full">
+              <SelectValue placeholder={loadingOpts ? "로딩 중…" : "품목 선택"} />
             </SelectTrigger>
             <SelectContent>
-              {products.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.label}
+              {items.map((opt) => (
+                <SelectItem key={opt.itemId} value={String(opt.itemId)}>
+                  {opt.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
 
+        {/* 거래처 */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">거래처명</label>
-          <input
-            className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-8 w-full rounded-md border px-3 py-1 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-            list="order-suppliers"
-            value={supplierName}
-            onChange={(e) => setSupplierName(e.target.value)}
-            placeholder={suppliers.length === 0 ? "거래처 직접 입력" : "선택 또는 직접 입력"}
-            disabled={loadingOpts}
-          />
-          <datalist id="order-suppliers">
-            {suppliers.map((s) => (
-              <option key={s} value={s} />
-            ))}
-          </datalist>
+          <Label className="text-xs">거래처</Label>
+          {suppliers.length > 0 ? (
+            <Select
+              value={supplierName}
+              onValueChange={(v) => setSupplierName(v === "__custom__" ? "" : v)}
+            >
+              <SelectTrigger className="h-9 w-full">
+                <SelectValue placeholder="거래처 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                {suppliers.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+                <SelectItem value="__custom__">직접 입력</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              value={supplierName}
+              onChange={(e) => setSupplierName(e.target.value)}
+              placeholder="거래처명"
+            />
+          )}
+          {suppliers.length > 0 && supplierName === "" ? (
+            <Input
+              value={supplierName}
+              onChange={(e) => setSupplierName(e.target.value)}
+              placeholder="거래처명 직접 입력"
+            />
+          ) : null}
         </div>
 
+        {/* 수량 */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">수량</label>
+          <Label className="text-xs">수량</Label>
           <Input
-            className="h-8"
             type="number"
-            min={1}
-            step={1}
             inputMode="numeric"
             value={quantityInput}
             onChange={(e) => setQuantityInput(e.target.value)}
-            disabled={loadingOpts}
+            placeholder="0"
           />
         </div>
 
+        {/* 단가 */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">단가</label>
-          <div className="flex gap-1">
-            <Input
-              className="h-8"
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              value={unitPriceInput}
-              onChange={(e) => setUnitPriceInput(e.target.value)}
-              disabled={loadingOpts}
-            />
-            <Select value={currencyCode} onValueChange={(v) => setCurrencyCode(v as CurrencyCode)}>
-              <SelectTrigger className="h-8 w-[96px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CNY">CNY</SelectItem>
-                <SelectItem value="USD">USD</SelectItem>
-                <SelectItem value="KRW">KRW</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <Label className="text-xs">단가(CNY)</Label>
+          <Input
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            value={unitPriceInput}
+            onChange={(e) => setUnitPriceInput(e.target.value)}
+            placeholder="0.00"
+          />
         </div>
 
+        {/* 합계 */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">공급가액 ({currencyCode}, 자동)</label>
-          <Input className="bg-muted h-8" readOnly disabled value={fmt(supplyAmount)} />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium">부가세 ({currencyCode}, 자동)</label>
-          <Input className="bg-muted h-8" readOnly disabled value={fmt(vatAmount)} />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium">합계 ({currencyCode}, 자동)</label>
-          <Input className="bg-muted h-8" readOnly disabled value={fmt(grossTotal)} />
+          <Label className="text-xs">합계(CNY)</Label>
+          <div className="bg-muted flex h-9 items-center justify-end rounded-md border px-3 text-sm tabular-nums">
+            {grossTotal !== null
+              ? grossTotal.toLocaleString("ko-KR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })
+              : "—"}
+          </div>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => {
-            void handleSubmit();
-          }}
-          disabled={submitting || loadingOpts || selectedCompanyCode === null}
-        >
-          {submitting ? "저장 중…" : "계약건 저장"}
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="text-xs">
+          {error ? <span className="text-destructive">{error}</span> : null}
+          {message ? <span className="text-emerald-600">{message}</span> : null}
+        </div>
+        <Button size="sm" disabled={!canSubmit || submitting} onClick={handleSubmit}>
+          {submitting ? "저장 중…" : "계약 추가 (승인대기)"}
         </Button>
-        {formMessage ? <span className="text-muted-foreground text-xs">{formMessage}</span> : null}
       </div>
     </div>
   );
