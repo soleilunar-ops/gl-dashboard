@@ -465,3 +465,38 @@ await supabase
 - **(2026-04-17)** 4/9 이후 ERP 거래 Playwright 크롤링 파이프라인 설계 개시 (현재 ERP 재고수불부 크롤링은 `/api/crawl/ecount` 1회성, 정기 스케줄러 필요)
 - **(2026-04-17)** 진희 PR 머지 후 010 명명(`010_*.sql`) → 새 명명 규칙(`20260417...`)으로 리네임 일관성 유지
 - **(2026-04-17)** weather/route.ts 좌표 하드코딩 → 환경변수화, 타임존 명시 (frontend.md 미결과 중복 — 코드 위치는 PM 영역이라 양쪽 기록)
+
+---
+
+### [2026-04-18] [order_excel_upload_logs 테이블 생성 — 슬아 PR #20 재구축 Step 1]
+
+**요청:** 슬아 원본 `012_order_excel_upload_logs.sql`(dev DB 미적용)을 v6+2단 RLS 정책과 일관되게 리네임 + 적용.
+
+**변경 파일:**
+
+- 삭제(로컬): `supabase/migrations/010_orders_schema_compat.sql`, `011_order_transfer_states.sql`, `013_item_erp_mapping.sql`, `014_products_pcs_per_pallet.sql`
+- 리네임+재작성: `012_order_excel_upload_logs.sql` → `20260417183508_create_excel_upload_logs.sql` (서버 버전명 일치)
+- 적용(dev DB): Supabase MCP `apply_migration name=create_excel_upload_logs` 1회
+
+**변경 내용:**
+
+- **신규 테이블** `public.order_excel_upload_logs` (id UUID, company_code TEXT, file_name TEXT, total_input/inserted_count/skipped_count INTEGER, created_at TIMESTAMPTZ)
+- 인덱스 `idx_order_excel_upload_logs_company_created` (company_code, created_at DESC)
+- RLS 활성 + 정책 `Allow all for authenticated users` (2단 전 테이블 공통 정책 일관)
+- 슬아 원본 `012`의 anon `select_all` 정책 → `ALL` + `authenticated`로 변경 (anon 차단)
+
+**주의사항:**
+
+- 테이블 행수 0 (신규). `/api/orders/bulk-import-purchase-excel`이 엑셀 업로드 시 INSERT, `/api/orders/excel-upload-history`가 팝업에서 GET
+- 서버 버전(20260417183508)과 로컬 파일명 일치 — `supabase migration list` 동기화 안전
+- 010/011/013/014 폐기 이유:
+  - **010** erp_purchases 생성: v6 `orders` 테이블로 일원화
+  - **011** order_transfer_states: 송금 진행률 기능 보류 (2단 후속)
+  - **013** item_erp_mapping: v6에 이미 432행 존재 (UNIQUE `(erp_system, erp_code)` 제약)
+  - **014** products.pcs_per_pallet: `products` 테이블 없음 — 후속으로 `item_master.pcs_per_pallet` 컬럼 추가 필요 (후속 PR)
+
+**연쇄 영향:**
+
+- `supabase/types.ts` MCP로 재생성 (34개 마이그 반영, 1,884줄)
+- `src/lib/supabase/types.ts` 헬퍼 확장 (`Tables<>`가 Views도 커버, `TablesInsert`/`TablesUpdate` alias 추가)
+- 슬아 영역 hooks가 `v_orders_dashboard`/`v_item_full` 뷰 참조로 v6 인프라 활용
