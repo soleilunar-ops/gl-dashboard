@@ -163,6 +163,20 @@ def _aggregate_weekly_weather(df: pd.DataFrame) -> pd.DataFrame:
         cold_days_7d=("cold_wave_alert", "sum"),
     )
     weekly["temp_range"] = weekly["temp_max"] - weekly["temp_min"]
+
+    # first_snow_flag: 시즌(10월~4월) 내 첫 눈 주 = 1
+    # [근거: 심층 분석 9번] 시즌 전환점 과소 예측 개선용
+    weekly = weekly.sort_values("week_start").reset_index(drop=True)
+    weekly["season_year"] = weekly["week_start"].apply(
+        lambda d: d.year if d.month >= 10 else d.year - 1
+    )
+    weekly["first_snow_flag"] = 0
+    for sy, grp in weekly.groupby("season_year"):
+        snow_weeks = grp[grp["snow_cm"] > 0]
+        if not snow_weeks.empty:
+            first_idx = snow_weeks.index[0]
+            weekly.loc[first_idx, "first_snow_flag"] = 1
+    weekly = weekly.drop(columns=["season_year"])
     return weekly
 
 

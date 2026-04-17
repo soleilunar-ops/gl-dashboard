@@ -33,6 +33,19 @@ def load_combined_training_data() -> pd.DataFrame:
     for c in missing_cols:
         synth[c] = np.nan
 
+    # first_snow_flag: 합성에 자동 부여 (시즌 내 첫 snow>0 주)
+    if "first_snow_flag" in synth.columns:
+        synth["first_snow_flag"] = 0
+        synth["season_year"] = synth["week_start"].apply(
+            lambda d: d.year if d.month >= 10 else d.year - 1
+        )
+        for (sku, sy), grp in synth.groupby(["sku", "season_year"]):
+            snow_rows = grp[grp["snow_cm"] > 0]
+            if not snow_rows.empty:
+                first_idx = snow_rows.index[0]
+                synth.loc[first_idx, "first_snow_flag"] = 1
+        synth = synth.drop(columns=["season_year"])
+
     # NaN 채우기 — 실데이터의 통계량을 합성에도 동일 적용 (합성 전체 NaN인 컬럼 대응)
     real_price_median = real["weekly_min_price"].median() if "weekly_min_price" in real.columns else 0
 
@@ -94,6 +107,7 @@ def run_winter_validation_comparison() -> dict:
             "temp_mean", "temp_min", "temp_max", "rain_mm", "snow_cm", "wind_mean",
             "cold_days_7d", "temp_range", "promotion_flag",
             "weekly_min_price", "weekly_bi_box_share_mean", "weekly_stockout_flag",
+            "first_snow_flag",
         ),
     )
 

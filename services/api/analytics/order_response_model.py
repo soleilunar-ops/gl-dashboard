@@ -171,13 +171,35 @@ def distribute_to_skus(
     """
     cfg = cfg or ModelBConfig()
 
+    # [개선] 비시즌엔 직전 4주 판매 0인 SKU가 21/34 → 분배 불가
+    # 해결: 최근 sku_distribute_weeks × 3 까지 점진 확장하여 활성 SKU 확보
     last_week = weekly_sales_df["week_start"].max()
+
+    # 1차: 최근 N주
     cutoff = last_week - pd.Timedelta(weeks=cfg.sku_distribute_weeks)
     recent = weekly_sales_df[weekly_sales_df["week_start"] > cutoff]
-
     sku_totals = recent.groupby("sku")["weekly_sales_qty"].sum()
+    active_skus = (sku_totals > 0).sum()
+
+    # 활성 SKU가 전체의 50% 미만이면 기간 확장
+    all_skus = weekly_sales_df["sku"].nunique()
+    if active_skus < all_skus * 0.5:
+        # 2차: 최근 N×3 주로 확장
+        ext_cutoff = last_week - pd.Timedelta(weeks=cfg.sku_distribute_weeks * 3)
+        ext_recent = weekly_sales_df[weekly_sales_df["week_start"] > ext_cutoff]
+        ext_totals = ext_recent.groupby("sku")["weekly_sales_qty"].sum()
+        ext_active = (ext_totals > 0).sum()
+        if ext_active > active_skus:
+            sku_totals = ext_totals
+
+    # 3차: 여전히 부족하면 전체 기간 판매 누적 비율 사용
+    all_time_totals = weekly_sales_df.groupby("sku")["weekly_sales_qty"].sum()
+    if (sku_totals > 0).sum() < all_skus * 0.5:
+        sku_totals = all_time_totals
+
     total = sku_totals.sum()
     if total == 0:
+        # 균등 분배 (fallback)
         sku_ratios = sku_totals * 0 + 1.0 / len(sku_totals) if len(sku_totals) else sku_totals
     else:
         sku_ratios = sku_totals / total
