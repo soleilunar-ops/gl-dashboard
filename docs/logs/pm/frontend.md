@@ -550,6 +550,67 @@ PM이 침범 파일 20개를 submain 버전으로 복구하여 슬아/나경/PM 
 2. 또는 팀원에게 "submain pull/rebase 후 push" 알림 (CI는 push 시 자동 재실행)
 3. 미결사항에 등록 (아래 섹션 참조)
 
+### [2026-04-17] [나경 PR 정리·정민/PM 영역 8개 파일 복구]
+
+**요청:** team/나경 → submain 머지 준비 중 origin/submain 머지 시 정민/PM 영역 파일이 삭제 상태로 남는 현상 발견. PM 권한으로 복구.
+
+**원인:**
+
+- 나경 첫 커밋 `5323d4ee feat: 프로모션 수정과 리뷰 분석 수정`에서 `services/api/` 하위 10개 파일을 명시적으로 `git rm`함 (정민/PM 영역 침범)
+- merge-base(공통 조상 `f86e53c4`)에는 파일 존재 → HEAD가 삭제로 기록 → submain이 수정 안 한 8개는 자동 머지 결과 "HEAD 삭제 적용"
+- requirements.txt, forecast.py 2개만 submain이 수정해서 modify/delete 충돌로 노출되어 수동 복구. 나머지 8개는 충돌 없이 사라짐
+
+**복구 파일 (submain 버전 채택):**
+
+- `services/api/main.py` (FastAPI 엔트리포인트 — 이게 없으면 서버 자체가 안 뜸)
+- `services/api/.env.example`
+- `services/api/rag/.gitkeep`
+- `services/api/routers/__init__.py` (패키지 마커)
+- `services/api/routers/{logistics,rag,reviews,triggers}.py` (PM 스켈레톤 4개)
+
+**파일 경계 판정:** 나경이 PM/정민 영역 파일을 삭제한 것은 권한 위반. PM이 submain 버전으로 원복 정당. 정민 forecast 인프라 정상 작동 보장.
+
+**검증:** `git ls-tree HEAD services/api/` 확인 — 27개 파일 (analytics/ 9 + data_pipeline/ 11 + data_sources/ 3 + main.py + requirements.txt + routers/ 3 + rag/.gitkeep) 모두 존재 ✓
+
+### [2026-04-17] [나경 PR 정리·dev 스크립트 원복 + 죽은 코드 제거 + 코드 스타일]
+
+**요청:** 나경 PR 코드 리뷰 후 발견된 Critical 이슈 정리.
+
+**Critical 이슈 4건:**
+
+1. **`npm run dev` 변경이 팀 dev 서버 전체 깨뜨림 🔴**
+   - 변경 전: `"dev": "next dev"`
+   - 나경 변경: `"dev": "concurrently -k -n next,dash -c cyan,magenta \"npm run dev:next\" \"node src/components/analytics/promotion/scripts/run-promotion-dash.cjs\""`
+   - 래퍼 스크립트가 참조하는 `src/components/analytics/promotion_dashboard/app.py` 폴더가 **레포 어느 커밋에도 없음** (나경 로컬 only)
+   - 결과: Python spawn 에러 → `concurrently -k` kill-others로 next dev도 종료 → 진희/슬아/정민/PM 4명 전원 dev 서버 안 뜸
+   - 처리: PM이 `"dev": "next dev"` 원복, `dev:next` 제거, `concurrently` devDependency 제거, `run-promotion-dash.cjs` 삭제, scripts/ 폴더도 정리. 나경 본인 Python Dash는 본인 로컬에서 별도 터미널로 (`cd promotion_dashboard && python app.py`) 실행.
+2. **`_hooks/usePromotion.ts` 죽은 코드 + 구 스키마 참조**
+   - 컴포넌트들이 모두 `dataPreprocess.ts`의 `loadXxxDataset()` 함수 사용 — usePromotion 훅 참조 0건
+   - 훅 내부에서 v6 폐기 테이블 `coupang_performance` 참조 → 빌드 시 73개 타입 에러 카운트에 포함
+   - 처리: 파일 삭제, `_hooks/` 빈 폴더도 제거. 향후 Supabase 전환 시 `daily_performance`/`v_promo_roi` 뷰 기반으로 신규 작성 권장 (database.md 미결사항 참조).
+3. **`BudgetPlanner.tsx:127` 네이티브 `<table>` 사용**
+   - CLAUDE.md "shadcn/ui 매핑" 규칙 위반
+   - 처리: `Table/TableHeader/TableHead/TableBody/TableRow/TableCell`로 교체. UI 동작 100% 동일.
+4. **`xlsx` 데이터 파일 3개 (assets/) + dataPreprocess.ts XLSX 파싱 로직**
+   - 데이터를 Supabase 대신 엑셀에 박아놓고 런타임 파싱하는 구조
+   - 평가: (B) 임시 허용 — 현재 기능 작동 우선, v6 마이그레이션은 미결사항으로 등록. database.md 참조.
+
+**변경 파일:**
+
+- 수정: `package.json` (-2줄), `package-lock.json` (-75줄), `src/components/analytics/promotion/BudgetPlanner.tsx` (table 교체)
+- 삭제: `src/components/analytics/promotion/_hooks/usePromotion.ts`, `src/components/analytics/promotion/scripts/run-promotion-dash.cjs`
+
+**나경 핵심 기능 보존 확인 (사용자 시점):**
+
+- ✅ 리뷰 분석 페이지 삭제 (사용자 결정)
+- ✅ 프로모션 7개 컴포넌트 (PromotionDashboard + BudgetPlanner + PromotionSalesOverlay + ROICalculator + SeasonAlertMonitor + SeasonCompare + TimingOptimizer) 모두 동작
+- ✅ xlsx 데이터 파싱 (`dataPreprocess.ts`, 3개 엑셀)
+- ✅ 네비게이션 (리뷰 메뉴 제거 + 프로모션 메뉴 분리)
+- ✅ shadcn `progress.tsx` 컴포넌트
+- ✅ 환경변수 (ANTHROPIC/COUPANG/WING) — 진희 KMA/이카운트와 통합
+
+**검증:** promotion 영역 타입체크 에러 0건. 다른 팀원 영역 73개 타입 에러는 v6 마이그레이션 후속 작업으로 잔존(별개 트랙).
+
 ---
 
 ## 🔴 미결 / 확인 필요 사항 (지속 갱신)
@@ -577,10 +638,9 @@ PM이 침범 파일 20개를 submain 버전으로 복구하여 슬아/나경/PM 
   - **4-15 재구현 가이드(forecasts/weather_data 테이블) 무효** — 신 스키마에 해당 테이블 없음. 예측 결과 저장/날씨 저장 위치는 PM과 재협의 필요.
   - 상세 매핑: `database.md` 정민 섹션 참조
 
-- **나경 (2026-04-17)** v6 스키마 변경 영향:
-  - `usePromotion.ts` `coupang_performance` → `v_promo_roi`
-  - `useReviews.ts` `coupang_performance(review_count, avg_rating)` → 신 스키마에 `review_count`/`avg_rating` 컬럼 미존재. **데이터 소스 PM과 재협의 필요** (sku_master에 추가 또는 별도 테이블 생성 결정)
-  - 상세 매핑: `database.md` 나경 섹션 참조
+- **나경 (2026-04-17)** ✅ 해결됨 (2026-04-17): `usePromotion.ts` 삭제(죽은 코드)로 자연 해소. 리뷰 기능 제거로 `useReviews.ts`도 미해당.
+- **나경 (2026-04-17)** `dataPreprocess.ts` xlsx 파싱 → Supabase 마이그레이션 후속 필요. 현재 엑셀 파일 3개(`src/components/analytics/promotion/assets/`) 런타임 파싱. 신 스키마 `v_promo_roi` 뷰 + 광고비/판매납품 신규 테이블 설계 필요. database.md 참조.
+- **나경 (2026-04-17)** `promotion_dashboard/` Python Dash 정식 통합 결정 대기. 현재 나경 로컬에만 존재(레포 미커밋). 팀 dev 서버에 통합하려면 별도 절차 필요(폴더 commit + Python 환경 표준화 + 안전한 dev 스크립트 분리).
 
 - **진희 (2026-04-17)** 010 마이그레이션 처리 PM 결정 후 본인 LeadTimeTracker 동작 확인 필요. MOCK 모드 해제 시 실제 BL 데이터 흐름 검증.
 
