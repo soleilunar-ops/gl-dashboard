@@ -1,44 +1,118 @@
 "use client";
 
-// 이 파일은 패턴 참조용 스켈레톤입니다. 기능 구현 시 select 컬럼, 필터, 정렬을 자유롭게 수정하세요.
-
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
-// 주문(출고) = stock_movements에서 movement_type='출고' 기준
-type StockMovement = Tables<"stock_movements">;
-type Product = Tables<"products">;
-type OrderRow = StockMovement & { products: Pick<Product, "name" | "erp_code"> | null };
+/** v_orders_dashboard: orders + item_master + stock_movement 조인 한글 라벨 포함 통합 뷰 */
+export type OrderDashboardRow = Tables<"v_orders_dashboard">;
 
-export function useOrders() {
-  const [data, setData] = useState<OrderRow[]>([]);
-  const [loading, setLoading] = useState(true);
+export type OrderStatus = "pending" | "approved" | "rejected" | "all";
+export type OrderErpSystem = "gl" | "gl_pharm" | "hnb";
+export type OrderTxType = "purchase" | "sale" | "return_sale" | "return_purchase";
+
+export interface UseOrdersOptions {
+  /** 'all'이면 상태 필터 미적용(pending 우선 정렬) */
+  status: OrderStatus;
+  /** 빈 배열이면 기업 필터 미적용(전체 노출) */
+  erpSystems: OrderErpSystem[];
+  /** 빈 배열이면 거래유형 필터 미적용(전체 노출) */
+  txTypes: OrderTxType[];
+  /** 공백 허용, trim 후 ilike 검색에 쓰임 */
+  itemSearch: string;
+  /** YYYY-MM-DD 문자열. null이면 필터 미적용 */
+  dateFrom: string | null;
+  dateTo: string | null;
+  /** 0-base 페이지 인덱스 */
+  page: number;
+  pageSize: number;
+}
+
+export interface UseOrdersResult {
+  rows: OrderDashboardRow[];
+  totalCount: number;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+}
+
+/** 승인 워크플로우 메인 훅 — v_orders_dashboard 기반 서버 사이드 페이징 */
+export function useOrders(opts: UseOrdersOptions): UseOrdersResult {
+  const [rows, setRows] = useState<OrderDashboardRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const { data, error } = await supabase
-        .from("stock_movements")
-        .select("*, products(name, erp_code)")
-        .eq("movement_type", "출고")
-        .order("created_at", { ascending: false })
-        .limit(200);
+  const { status, erpSystems, txTypes, itemSearch, dateFrom, dateTo, page, pageSize } = opts;
 
-      if (error) {
-        console.error("출고 내역 조회 실패:", error.message);
-        setError(error.message);
-        setLoading(false);
-        return;
-      }
+  const fetchRows = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-      setData((data as unknown as OrderRow[]) ?? []);
+    // 필터 토글이 모두 해제된 경우 = "배제" 의미 → 0건 반환 (쿼리 생략)
+    if (erpSystems.length === 0 || txTypes.length === 0) {
+      setRows([]);
+      setTotalCount(0);
       setLoading(false);
-    };
+      return;
+    }
 
-    fetchData();
-  }, [supabase]);
+    let q = supabase.from("v_orders_dashboard").select("*", { count: "exact" });
 
-  return { data, loading, error };
+    if (status !== "all") {
+      q = q.eq("status", status);
+    }
+    q = q.in("erp_system", erpSystems);
+    q = q.in("tx_type", txTypes);
+    const searchTerm = itemSearch.trim();
+    if (searchTerm) {
+      // 품목명(item_name) + ERP 코드 통합 검색 (item_name_norm alias + erp_code)
+      q = q.or(`item_name.ilike.%${searchTerm}%,erp_code.ilike.%${searchTerm}%`);
+    }
+    if (dateFrom) {
+      q = q.gte("tx_date", dateFrom);
+    }
+    if (dateTo) {
+      q = q.lte("tx_date", dateTo);
+    }
+
+    // 정렬: 전체 탭에서는 pending 먼저, 그 외 탭은 날짜 DESC만
+    if (status === "all") {
+      // 클라이언트 사이드 정렬로 pending 우선 — supabase .or() 직후 order 제약 회피
+      // DB 측 정렬: tx_date DESC, order_id DESC (pending 우선은 후처리)
+    }
+    q = q.order("tx_date", { ascending: false }).order("order_id", { ascending: false });
+
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    q = q.range(from, to);
+
+    const { data, count, error: err } = await q;
+    if (err) {
+      setError(err.message);
+      setRows([]);
+      setTotalCount(0);
+    } else {
+      let ordered = data ?? [];
+      if (status === "all") {
+        // pending 우선 (같은 date 내에서)
+        ordered = [...ordered].sort((a, b) => {
+          const ap = a.status === "pending" ? 0 : 1;
+          const bp = b.status === "pending" ? 0 : 1;
+          if (ap !== bp) return ap - bp;
+          return 0;
+        });
+      }
+      setRows(ordered);
+      setTotalCount(count ?? 0);
+    }
+    setLoading(false);
+  }, [supabase, status, erpSystems, txTypes, itemSearch, dateFrom, dateTo, page, pageSize]);
+
+  useEffect(() => {
+    void fetchRows();
+  }, [fetchRows]);
+
+  return { rows, totalCount, loading, error, refetch: fetchRows };
 }

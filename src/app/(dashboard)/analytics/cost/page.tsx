@@ -3,7 +3,7 @@ import CostAnalyticsDashboard from "@/components/analytics/cost/CostAnalyticsDas
 
 export default function CostPage() {
   return (
-    <PageWrapper title="마진-판매가 분석">
+    <PageWrapper title="마진 산출">
       <CostAnalyticsDashboard />
     </PageWrapper>
   );

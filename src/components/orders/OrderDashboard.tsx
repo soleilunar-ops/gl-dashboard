@@ -1,224 +1,200 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { FileUp, RefreshCw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import OrderTable from "./OrderTable";
-import BatchProfitSidebar from "./BatchProfitSidebar";
-import { useExchangeRate } from "./_hooks/useExchangeRate";
-import { calcMargin, type ChannelKey } from "@/lib/margin/useMarginCalc";
+import { createClient } from "@/lib/supabase/client";
+import { ORDER_COMPANIES, type OrderCompanyCode } from "@/lib/orders/orderMeta";
+import { OrdersMarginProvider } from "@/components/analytics/cost/OrdersMarginContext";
+import { OrdersHeader } from "./OrdersHeader";
+import { OrdersTable } from "./OrdersTable";
+import { OrdersActionPanel } from "./OrdersActionPanel";
+import { OrdersStockSidebar } from "./OrdersStockSidebar";
+import { OrdersExcelUploadDialog } from "./OrdersExcelUploadDialog";
+import OrderContractAddForm from "./OrderContractAddForm";
+import {
+  useOrders,
+  type OrderDashboardRow,
+  type OrderErpSystem,
+  type OrderStatus,
+  type OrderTxType,
+} from "./_hooks/useOrders";
+import type { PurchaseDashboardRow } from "./_hooks/buildContractRows";
 
-interface OrderBatch {
-  id: string;
-  sku: string;
-  name: string;
-  qtyOrdered: number;
-  qtyShipped: number;
-  qtyTotal: number;
-  eta: string;
-  status: "대기" | "선적중" | "통관" | "입고완료" | "출고대기";
-  center: string;
-  cnyCost: number;
-  exPI: number;
-  rework: number;
-  pcsPerPallet: number;
-  channel: ChannelKey;
-}
+const DEFAULT_ERP_SYSTEMS: OrderErpSystem[] = ["gl", "gl_pharm", "hnb"];
+const DEFAULT_TX_TYPES: OrderTxType[] = ["purchase", "sale", "return_sale", "return_purchase"];
+const PAGE_SIZE = 50;
 
-const MOCK_ORDERS: OrderBatch[] = [
-  {
-    id: "PO-2026-041",
-    sku: "GL-HAR-10",
-    name: "붙이는하루온팩 10매입",
-    qtyOrdered: 585600,
-    qtyShipped: 292800,
-    qtyTotal: 585600,
-    eta: "2026-04-22",
-    status: "선적중",
-    center: "이천1(36)",
-    cnyCost: 1.42,
-    exPI: 193.5,
-    rework: 25000,
-    pcsPerPallet: 14400,
-    channel: "coupang_rocket",
-  },
-  {
-    id: "PO-2026-038",
-    sku: "GL-HAR-40",
-    name: "붙이는하루온팩 40매입",
-    qtyOrdered: 43200,
-    qtyShipped: 43200,
-    qtyTotal: 43200,
-    eta: "2026-04-18",
-    status: "출고대기",
-    center: "안성4(14)",
-    cnyCost: 5.2,
-    exPI: 191,
-    rework: 25000,
-    pcsPerPallet: 14400,
-    channel: "coupang_rocket",
-  },
-  {
-    id: "PO-2026-035",
-    sku: "GL-MINI-30",
-    name: "하루온미니 붙이는 30매입",
-    qtyOrdered: 76800,
-    qtyShipped: 76800,
-    qtyTotal: 76800,
-    eta: "2026-04-16",
-    status: "통관",
-    center: "이천2(05)",
-    cnyCost: 3.85,
-    exPI: 190.2,
-    rework: 25000,
-    pcsPerPallet: 19200,
-    channel: "coupang_rocket",
-  },
-];
-
+/**
+ * 주문 관리 대시보드 (승인 워크플로우 기반)
+ *
+ * - 데이터 소스: v_orders_dashboard (orders + item_master + stock_movement 조인 뷰)
+ * - 상태 흐름: pending → approved(DB 트리거가 stock_movement 생성) / rejected(사유 기록)
+ * - 사이드: OrdersMarginContext로 cost/MarginCalculator에 선택 주문 정보 전달 (현재는 null — 후속 PR에서 연동)
+ */
 export default function OrderDashboard() {
-  const [batches] = useState<OrderBatch[]>(MOCK_ORDERS);
-  const { exCurrent, setExCurrent, usdKrwRate, rateStatus, isRateLoading, fetchExchangeRate } =
-    useExchangeRate();
-  const [shipmentInputMap, setShipmentInputMap] = useState<Record<string, number>>(
-    MOCK_ORDERS.reduce<Record<string, number>>((acc, batch) => {
-      acc[batch.id] = batch.qtyShipped;
-      return acc;
-    }, {})
-  );
-  const [uploadMessage, setUploadMessage] = useState("CSV 업로드 대기 중");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // 엑셀 업로드/수동 입력의 대상 기업 (필터와 별개)
+  const [uploadCompany, setUploadCompany] = useState<OrderCompanyCode | null>("gl_pharm");
 
-  const profitabilityRows = useMemo(
-    () =>
-      batches.map((batch) => {
-        const shipmentQty = shipmentInputMap[batch.id] ?? 0;
-        const result = calcMargin({
-          cnyCostPerUnit: batch.cnyCost,
-          exPI: batch.exPI,
-          exCurrent,
-          qShip: shipmentQty,
-          qTotal: batch.qtyTotal,
-          palletReworkCost: batch.rework,
-          centerName: batch.center,
-          pcsPerPallet: batch.pcsPerPallet,
-          targetMargin: 0.15,
-          channel: batch.channel,
-        });
+  // 필터 상태
+  const [status, setStatus] = useState<OrderStatus>("pending");
+  const [erpSystems, setErpSystems] = useState<OrderErpSystem[]>(DEFAULT_ERP_SYSTEMS);
+  const [txTypes, setTxTypes] = useState<OrderTxType[]>(DEFAULT_TX_TYPES);
+  const [itemSearch, setItemSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
-        return {
-          ...batch,
-          shipmentQty,
-          exFinal: result.exFinal,
-          totalUnitCost: result.totalCostPerUnit,
-          expectedRevenue: result.suggestedPriceVAT * shipmentQty,
-          expectedProfit: result.profitPerUnit * shipmentQty,
-          marginRate: result.actualMargin,
-        };
-      }),
-    [batches, exCurrent, shipmentInputMap]
-  );
+  // 선택/포커스 상태
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [focusedItemId, setFocusedItemId] = useState<number | null>(null);
 
-  const totalExpectedRevenue = useMemo(
-    () => profitabilityRows.reduce((sum, row) => sum + row.expectedRevenue, 0),
-    [profitabilityRows]
-  );
+  const { rows, totalCount, loading, error, refetch } = useOrders({
+    status,
+    erpSystems,
+    txTypes,
+    itemSearch,
+    dateFrom,
+    dateTo,
+    page,
+    pageSize: PAGE_SIZE,
+  });
 
-  const handleCsvUpload = async (file: File) => {
-    const text = await file.text();
-    const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    const uploadedRows = lines.length > 1 ? lines.length - 1 : 0;
-    setUploadMessage(`CSV 업로드 완료: ${uploadedRows.toLocaleString()}개 행 감지`);
-  };
+  const handleActionComplete = useCallback(() => {
+    setSelected(new Set());
+    void refetch();
+  }, [refetch]);
 
-  const handleShipmentChange = (id: string, qty: number) => {
-    setShipmentInputMap((prev) => ({ ...prev, [id]: qty }));
-  };
+  // 엑셀 다운로드용 purchase 조회 (uploadCompany 기준)
+  const [purchases, setPurchases] = useState<PurchaseDashboardRow[]>([]);
+  const supabase = useMemo(() => createClient(), []);
+  useEffect(() => {
+    if (!uploadCompany) {
+      setPurchases([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("v_orders_dashboard")
+        .select(
+          "order_id, tx_date, item_id, item_name, item_name_raw, erp_code, erp_tx_no, erp_item_name_raw, counterparty, erp_system, quantity, unit_price, total_amount, supply_amount, vat, memo, status, tx_type"
+        )
+        .eq("erp_system", uploadCompany)
+        .eq("tx_type", "purchase")
+        .order("tx_date", { ascending: false })
+        .limit(5000);
+      if (cancelled) return;
+      setPurchases((data ?? []) as PurchaseDashboardRow[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, uploadCompany]);
+
+  const selectedIds = useMemo(() => [...selected], [selected]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-muted-foreground text-sm">
-          Claude ORDERS 대시보드 기준 Mock 데이터가 적용되며, 출고 예정 수량 입력 시 기대 수익이
-          즉시 반영됩니다.
-        </p>
-        <div className="flex items-center gap-2">
-          <Input
-            type="number"
-            className="w-28"
-            step="0.1"
-            value={exCurrent}
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              setExCurrent(Number.isFinite(value) ? value : 0);
-            }}
+    <OrdersMarginProvider value={null}>
+      <div className="flex flex-col gap-4">
+        {/* 업로드/입력 대상 기업 선택 */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">기업 선택 (엑셀 업로드 / 수동 입력용)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label className="mb-1.5 block text-xs">대상 기업</Label>
+              <Select
+                value={uploadCompany ?? ""}
+                onValueChange={(v) => setUploadCompany(v as OrderCompanyCode)}
+              >
+                <SelectTrigger className="h-9 w-[200px]">
+                  <SelectValue placeholder="기업 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ORDER_COMPANIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <OrdersExcelUploadDialog
+              companyCode={uploadCompany}
+              purchases={purchases}
+              onImported={refetch}
+            />
+            <Button variant="ghost" size="sm" onClick={() => void refetch()}>
+              새로고침
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* 수동 입력 폼 */}
+        <OrderContractAddForm selectedCompanyCode={uploadCompany} onAdded={refetch} />
+
+        {/* 필터 + 카운트 카드 */}
+        <OrdersHeader
+          status={status}
+          onStatusChange={(s) => {
+            setStatus(s);
+            setPage(0);
+          }}
+          erpSystems={erpSystems}
+          onErpSystemsChange={(v) => {
+            setErpSystems(v);
+            setPage(0);
+          }}
+          txTypes={txTypes}
+          onTxTypesChange={(v) => {
+            setTxTypes(v);
+            setPage(0);
+          }}
+          itemSearch={itemSearch}
+          onItemSearchChange={(v) => {
+            setItemSearch(v);
+            setPage(0);
+          }}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateChange={(from, to) => {
+            setDateFrom(from);
+            setDateTo(to);
+            setPage(0);
+          }}
+        />
+
+        {/* 일괄 액션 */}
+        <OrdersActionPanel selectedIds={selectedIds} onActionComplete={handleActionComplete} />
+
+        {/* 테이블 + 사이드바 */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+          <OrdersTable
+            rows={rows satisfies OrderDashboardRow[]}
+            totalCount={totalCount}
+            loading={loading}
+            error={error}
+            page={page}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            selected={selected}
+            onSelectedChange={setSelected}
+            onRowFocus={setFocusedItemId}
+            onActionComplete={handleActionComplete}
           />
-          <Badge variant="outline" className="font-mono">
-            USD/KRW {usdKrwRate > 0 ? usdKrwRate.toFixed(2) : "-"}
-          </Badge>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              void fetchExchangeRate();
-            }}
-            disabled={isRateLoading}
-          >
-            <RefreshCw className={`mr-1 h-4 w-4 ${isRateLoading ? "animate-spin" : ""}`} />
-            환율 조회
-          </Button>
-          <input
-            ref={fileInputRef}
-            className="hidden"
-            type="file"
-            accept=".csv"
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              if (!file) {
-                return;
-              }
-              await handleCsvUpload(file);
-              event.target.value = "";
-            }}
-          />
-          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-            <FileUp className="mr-1 h-4 w-4" /> CSV 업로드 (CSV Dropzone)
-          </Button>
+          <OrdersStockSidebar itemId={focusedItemId} />
         </div>
       </div>
-      <p className="text-muted-foreground text-xs">{rateStatus}</p>
-      <p className="text-muted-foreground text-xs">{uploadMessage}</p>
-
-      <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
-        <Card size="sm">
-          <CardHeader className="pb-0">
-            <CardTitle>실시간 출고 대기 테이블</CardTitle>
-            <CardDescription>
-              Net 정산액(56%) 기반 순마진 계산 후 최종 수익을 집계합니다.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-3">
-            <OrderTable rows={profitabilityRows} onShipmentChange={handleShipmentChange} />
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardHeader className="pb-0">
-            <CardTitle>배치별 기대 수익</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 pt-3">
-            <BatchProfitSidebar
-              rows={profitabilityRows}
-              totalExpectedRevenue={totalExpectedRevenue}
-              exCurrent={exCurrent}
-            />
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    </OrdersMarginProvider>
   );
 }

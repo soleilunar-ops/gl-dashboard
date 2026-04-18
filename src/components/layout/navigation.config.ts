@@ -1,6 +1,6 @@
 import { navOrders } from "./nav-orders";
 import { navForecast } from "./nav-forecast";
-import { navReviews } from "./nav-reviews";
+import { navPromotion } from "./nav-promotion";
 import { navLogistics } from "./nav-logistics";
 
 export interface NavItem {
@@ -16,6 +16,6 @@ export interface NavGroup {
 
 export const navigation: NavGroup[] = [
   { title: "주문", items: navOrders },
-  { title: "분석", items: [...navForecast, ...navReviews] },
+  { title: "분석", items: [...navForecast, ...navPromotion] },
   { title: "물류", items: navLogistics },
 ];
