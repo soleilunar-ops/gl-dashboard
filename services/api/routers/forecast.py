@@ -104,6 +104,8 @@ class PackDistributionItem(BaseModel):
 def _get_supabase_client() -> Any:
     """
     supabase-py 클라이언트를 SUPABASE_URL/SERVICE_ROLE_KEY 로 초기화.
+    Next.js 공유 .env.local 호환 위해 NEXT_PUBLIC_SUPABASE_URL fallback 지원
+    (bi_box_supabase_uploader.py 등 다른 모듈과 동일 패턴).
     환경변수 미설정 시 503 오류로 변환하여 호출부에 명확히 전달한다.
     """
     try:
@@ -114,12 +116,12 @@ def _get_supabase_client() -> Any:
             detail="supabase-py 패키지가 설치되지 않았습니다.",
         ) from exc
 
-    url = os.getenv("SUPABASE_URL", "").strip()
+    url = (os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL") or "").strip()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     if not url or not key:
         raise HTTPException(
             status_code=503,
-            detail="SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 환경변수가 설정되지 않았습니다.",
+            detail="SUPABASE_URL(or NEXT_PUBLIC_SUPABASE_URL) / SUPABASE_SERVICE_ROLE_KEY 환경변수가 설정되지 않았습니다.",
         )
     return create_client(url, key)
 
