@@ -1,13 +1,15 @@
 """
 로컬 모드 주단위 피처 빌더.
 
-Supabase 테이블 상태에 의존하지 않고:
-- daily_performance (유일 Supabase 테이블) → 판매
-- ASOS API → 날씨 (로컬 CSV 캐시)
-- 바이박스 CSV → 품절 + 가격 + 점유율
+판매:
+- daily_performance (Supabase)
 
-로 weekly_df 생성. 결과는 data/processed/에 CSV 저장.
-PM 테이블 복구 시 Supabase insert 연결만 하면 됨.
+날씨:
+- v_weather_hybrid (Supabase 뷰, ASOS+ERA5 조인) ← 기본
+- data/processed/asos_weather_cache.csv ← fallback
+
+바이박스:
+- bi_box_daily (Supabase) or data/raw/coupang/bi_box/*.csv (fallback)
 """
 from __future__ import annotations
 
@@ -19,6 +21,10 @@ import pandas as pd
 
 PROCESSED_DIR = Path("data/processed")
 ASOS_CACHE = PROCESSED_DIR / "asos_weather_cache.csv"
+
+# 기상청 관측소 한글명 ↔ KMA ID ↔ 지역 코드 (로컬 CSV 스키마와 맞춤)
+STATION_KR_TO_ID = {"서울": 108, "수원": 119, "대전": 133, "광주": 156, "부산": 159}
+STATION_ID_TO_REGION = {108: "seoul", 119: "gyeonggi", 133: "daejeon", 156: "gwangju", 159: "busan"}
 
 # 34 핫팩 SKU
 WARMER_SKUS: tuple[int, ...] = (
@@ -101,13 +107,86 @@ def _aggregate_weekly_sales(df: pd.DataFrame) -> pd.DataFrame:
 # ────────────────────────────────────────────
 # 날씨 (ASOS API → 로컬 CSV 캐시)
 # ────────────────────────────────────────────
-def _fetch_or_load_asos(start: str = "2024-01-01", end: str | None = None) -> pd.DataFrame:
-    # 기본값: 오늘 기준 2일 전 (기상청 ASOS 반영 지연 고려)
+def _fetch_weather_from_supabase(
+    client, start: str, end: str, page_size: int = 1000
+) -> pd.DataFrame:
+    """
+    v_weather_hybrid 뷰에서 날씨 로드.
+
+    반환 스키마는 ASOS 캐시 CSV와 동일하도록 매핑:
+      date, station_id, region, temp_mean, temp_min, temp_max,
+      rain_mm, wind_mean, snow_cm, cold_wave_alert, source
+    """
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        res = (
+            client.table("v_weather_hybrid")
+            .select(
+                "weather_date,station,temp_avg,temp_min,temp_max,"
+                "wind_avg,rain,snowfall"
+            )
+            .gte("weather_date", start)
+            .lte("weather_date", end)
+            .order("weather_date")
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = res.data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows).rename(columns={
+        "weather_date": "date",
+        "temp_avg": "temp_mean",
+        "wind_avg": "wind_mean",
+        "rain": "rain_mm",
+        "snowfall": "snow_cm",
+    })
+    df["date"] = pd.to_datetime(df["date"])
+    df["station_id"] = df["station"].map(STATION_KR_TO_ID)
+    df["region"] = df["station_id"].map(STATION_ID_TO_REGION)
+    # 기상청 한파주의보 근사: 일 최저 ≤ -12℃ (2일 연속 조건은 주간 집계 단계에서 cold_days_7d로 반영)
+    df["cold_wave_alert"] = df["temp_min"] <= -12
+    df["source"] = "supabase_v_weather_hybrid"
+    df = df.drop(columns=["station"])
+    return df[["date", "station_id", "region", "temp_mean", "temp_min", "temp_max",
+               "rain_mm", "wind_mean", "snow_cm", "cold_wave_alert", "source"]]
+
+
+def _fetch_or_load_asos(
+    start: str = "2024-01-01",
+    end: str | None = None,
+    *,
+    client=None,
+    prefer_supabase: bool = True,
+) -> pd.DataFrame:
+    """
+    날씨 로드. Supabase v_weather_hybrid 우선, 실패 시 ASOS CSV 캐시 fallback.
+
+    Args:
+        client: supabase client (prefer_supabase=True일 때 필요)
+        prefer_supabase: True면 Supabase 먼저, 실패·빈 응답 시 CSV 캐시
+    """
     if end is None:
         from datetime import datetime, timedelta
         end = (datetime.today() - timedelta(days=2)).strftime("%Y-%m-%d")
-    """ASOS 캐시 CSV 있으면 재사용, 없으면 API 호출 후 저장."""
     _ensure_processed_dir()
+
+    if prefer_supabase and client is not None:
+        try:
+            df = _fetch_weather_from_supabase(client, start, end)
+            if not df.empty:
+                print(f"  v_weather_hybrid 로드: {len(df)}행 ({start}~{end})")
+                return df
+            print("  v_weather_hybrid 빈 응답, CSV 캐시로 fallback")
+        except Exception as ex:
+            print(f"  v_weather_hybrid 조회 실패({ex}), CSV 캐시로 fallback")
+
     if ASOS_CACHE.exists():
         df = pd.read_csv(ASOS_CACHE, parse_dates=["date"])
         print(f"  ASOS 캐시 로드: {len(df)}행 ({ASOS_CACHE})")
@@ -187,11 +266,13 @@ def _load_bi_box_and_mask(
     sales_raw: pd.DataFrame,
     skus: tuple[int, ...],
     apply_mask: bool = True,
+    *,
+    client=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, int]:
-    """바이박스 CSV → 품절 마스킹 + 주단위 피처 반환."""
+    """바이박스 (Supabase bi_box_daily 우선, CSV fallback) → 품절 마스킹 + 주단위 피처."""
     from data_pipeline.bi_box_loader import load_bi_box_all, aggregate_weekly_bi_box
 
-    bi_box_daily = load_bi_box_all(skus=skus)
+    bi_box_daily = load_bi_box_all(skus=skus, client=client)
     bi_box_weekly = aggregate_weekly_bi_box(bi_box_daily)
 
     masked_rows = 0
@@ -233,9 +314,9 @@ def build_local_weekly_df(
     sales_raw = _fetch_daily_performance(client, WARMER_SKUS)
     print(f"  {len(sales_raw)}행")
 
-    # 날씨
-    print("[2/4] ASOS 날씨...")
-    weather_raw = _fetch_or_load_asos()
+    # 날씨 (Supabase v_weather_hybrid 우선, CSV fallback)
+    print("[2/4] 날씨 로드...")
+    weather_raw = _fetch_or_load_asos(client=client)
 
     # 바이박스 + 마스킹
     print("[3/4] 바이박스 + 품절 마스킹...")
@@ -243,7 +324,7 @@ def build_local_weekly_df(
     masked_rows = 0
     if apply_stockout_mask or include_bi_box_features:
         sales_raw, bi_box_weekly, masked_rows = _load_bi_box_and_mask(
-            sales_raw, WARMER_SKUS, apply_mask=apply_stockout_mask,
+            sales_raw, WARMER_SKUS, apply_mask=apply_stockout_mask, client=client,
         )
     print(f"  품절 마스킹: {masked_rows}행 제거")
 

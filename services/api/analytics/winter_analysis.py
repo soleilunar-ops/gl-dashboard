@@ -25,7 +25,7 @@ import pandas as pd
 PROCESSED = _root / "data" / "processed"
 
 
-def run_winter_deep_analysis() -> dict:
+def run_winter_deep_analysis(client=None, used_synthetic: bool = True) -> dict:
     from analytics.weekly_demand_forecast import (
         WeeklyForecastConfig,
         prepare_training_matrix,
@@ -159,6 +159,45 @@ def run_winter_deep_analysis() -> dict:
     summary_out = PROCESSED / "winter_analysis_summary.json"
     with open(summary_out, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
+
+    # 선택적 Supabase 저장 (winter_validation 3 grain)
+    if client is not None:
+        try:
+            from services.api.data_pipeline.supabase_uploader import save_winter_validation
+
+            # bias는 numeric 필드 → error 값(actual-predicted) 사용. 엔드포인트에서 과대/과소 라벨링
+            weekly_for_db = weekly.copy()
+            weekly_for_db["bias"] = weekly_for_db["error"]
+
+            sku_grain_df = sku.rename(columns={
+                "actual_total": "actual",
+                "predicted_total": "predicted",
+                "mae": "abs_error",
+            })[["sku", "actual", "predicted", "abs_error"]]
+
+            try:
+                val_mae_no_synth = float(
+                    json.loads((PROCESSED / "winter_validation_result.json").read_text(encoding="utf-8"))
+                    .get("A_no_synthetic", {}).get("val_mae", 0) or 0
+                )
+            except Exception:
+                val_mae_no_synth = None
+
+            run_id = save_winter_validation(
+                client,
+                weekly_df=weekly_for_db,
+                sku_df=sku_grain_df,
+                summary={
+                    "overall_mae": summary.get("overall_mae"),
+                    "winter_mae": summary.get("winter_mae"),
+                    "val_mae_no_synthetic": val_mae_no_synth,
+                },
+                used_synthetic=used_synthetic,
+                notes="run_winter_deep_analysis 자동 저장",
+            )
+            summary["supabase_run_id"] = run_id
+        except Exception as ex:
+            summary["supabase_error"] = str(ex)
 
     return summary
 

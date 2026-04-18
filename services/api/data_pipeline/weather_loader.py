@@ -51,6 +51,57 @@ def fetch_open_meteo_ecmwf_daily(
     return fetch_ecmwf_daily_forecast(om)
 
 
+def fetch_forecast_from_supabase(
+    client,
+    *,
+    issued_date: str | None = None,
+    horizon_days: int = 15,
+    page_size: int = 1000,
+) -> pd.DataFrame:
+    """
+    Supabase weather_unified(source='forecast')에서 미래 예보 로드.
+
+    Args:
+        client: supabase client
+        issued_date: 예보 발표일 (YYYY-MM-DD). None이면 가장 최근 issued_date 사용
+        horizon_days: 오늘 기준 앞으로 며칠까지 가져올지
+
+    Returns:
+        DataFrame: weather_date, station, temp_avg, temp_min, temp_max,
+                   wind_avg, rain, precipitation, snowfall, issued_date, forecast_day
+    """
+    from datetime import date, timedelta
+    today = date.today()
+    end = today + timedelta(days=horizon_days)
+
+    query = client.table("weather_unified").select(
+        "weather_date,station,temp_avg,temp_min,temp_max,wind_avg,"
+        "rain,precipitation,snowfall,issued_date,forecast_day"
+    ).eq("source", "forecast").gte("weather_date", today.isoformat()).lte(
+        "weather_date", end.isoformat()
+    )
+    if issued_date:
+        query = query.eq("issued_date", issued_date)
+    query = query.order("weather_date")
+
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        res = query.range(offset, offset + page_size - 1).execute()
+        batch = res.data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    df["weather_date"] = pd.to_datetime(df["weather_date"])
+    return df
+
+
 def fetch_cds_era5_temperature(
     *,
     personal_token: str,
@@ -64,6 +115,7 @@ def fetch_cds_era5_temperature(
 __all__ = [
     "WeatherLoaderConfig",
     "fetch_open_meteo_ecmwf_daily",
+    "fetch_forecast_from_supabase",
     "fetch_kma_midterm_forecast",
     "fetch_kma_weather_alerts",
     "fetch_cds_era5_temperature",

@@ -225,6 +225,11 @@ def run_model_b_pipeline(
     delivery_df: pd.DataFrame,
     model_a_forecast_df: pd.DataFrame,
     cfg: ModelBConfig | None = None,
+    *,
+    client=None,
+    model_version: str = "v1",
+    product_category: str = "Home",
+    used_synthetic: bool = False,
 ) -> dict[str, Any]:
     """
     Model B 전체 실행.
@@ -303,6 +308,26 @@ def run_model_b_pipeline(
         ),
         "sku_count": sku_dist["sku"].nunique() if not sku_dist.empty else 0,
     }
+
+    # 선택적 Supabase 저장 (forecast_model_b)
+    fmb_rows = 0
+    if client is not None:
+        try:
+            from services.api.data_pipeline.supabase_uploader import save_forecast_model_b
+            sku_for_upload = sku_dist.rename(columns={"predicted_order_qty": "distributed_qty"})
+            fmb_rows = save_forecast_model_b(
+                client,
+                category_df=cat_forecast[["week_start", "pred_ratio", "pred_linear"]],
+                sku_df=sku_for_upload[["week_start", "sku", "distributed_qty"]],
+                model_version=model_version,
+                product_category=product_category,
+                used_synthetic=used_synthetic,
+                lookback_weeks=cfg.ratio_lookback_weeks,
+                distribute_weeks=cfg.sku_distribute_weeks,
+            )
+            diagnostics["forecast_model_b_rows"] = fmb_rows
+        except Exception as ex:
+            diagnostics["forecast_model_b_error"] = str(ex)
 
     return {
         "training_data": training_data,

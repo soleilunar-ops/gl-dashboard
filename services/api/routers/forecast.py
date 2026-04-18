@@ -175,26 +175,44 @@ def get_forecast_insight(
     """
     Model A/B 예측 + 날씨 데이터 기반 발주 인사이트 생성 (3~5줄).
 
+    컨텍스트 소스 우선순위:
+      1) Supabase (forecast_model_a/b, v_weather_hybrid, bi_box_daily)
+      2) 로컬 CSV (forecast_round4.csv, model_b_category_forecast.csv, asos_weather_cache.csv, bi_box/)
+
     OpenAI API 키 없으면 룰 기반 fallback 반환.
     """
     try:
         from analytics.insight_generator import (
             build_insight_context_from_local,
+            build_insight_context_from_supabase,
             generate_forecast_insight,
         )
     except ImportError:
         from services.api.analytics.insight_generator import (
             build_insight_context_from_local,
+            build_insight_context_from_supabase,
             generate_forecast_insight,
         )
 
     KST = timezone(timedelta(hours=9))
-    ctx = build_insight_context_from_local(
-        forecast_csv=str(PROCESSED_DIR / "forecast_round4.csv"),
-        model_b_csv=str(PROCESSED_DIR / "model_b_category_forecast.csv"),
-        weather_cache=str(PROCESSED_DIR / "asos_weather_cache.csv"),
-        bi_box_dir=str(PROJECT_ROOT / "data" / "raw" / "coupang" / "bi_box"),
-    )
+
+    # 1순위: Supabase 컨텍스트
+    ctx = None
+    try:
+        sb = _get_supabase_client()
+        ctx = build_insight_context_from_supabase(sb)
+    except Exception:
+        ctx = None
+
+    # 2순위: 로컬 CSV fallback
+    if ctx is None:
+        ctx = build_insight_context_from_local(
+            forecast_csv=str(PROCESSED_DIR / "forecast_round4.csv"),
+            model_b_csv=str(PROCESSED_DIR / "model_b_category_forecast.csv"),
+            weather_cache=str(PROCESSED_DIR / "asos_weather_cache.csv"),
+            bi_box_dir=str(PROJECT_ROOT / "data" / "raw" / "coupang" / "bi_box"),
+        )
+
     insight = generate_forecast_insight(ctx, model=model)
     source = "fallback" if "[" in insight and "OpenAI" in insight else "openai"
     if not os.getenv("OPENAI_API_KEY", "").strip():
@@ -210,23 +228,13 @@ def get_forecast_insight(
 @router.get("/order-simulation", response_model=list[OrderSimulationItem])
 def get_order_simulation() -> list[OrderSimulationItem]:
     """
-    Model B 발주 시뮬레이션 결과 (로컬 CSV 기반).
+    Model B 발주 시뮬레이션.
 
-    data/processed/model_b_sku_distribution.csv에서 미래 주차만 반환.
+    우선순위:
+      1순위 — Supabase forecast_model_b (sku_id IS NOT NULL, 최신 model_version)
+      2순위 — 로컬 data/processed/model_b_sku_distribution.csv
     """
-    csv_path = PROCESSED_DIR / "model_b_sku_distribution.csv"
-    if not csv_path.exists():
-        return []
-
     import pandas as pd
-
-    df = pd.read_csv(csv_path, parse_dates=["week_start"])
-    KST = timezone(timedelta(hours=9))
-    today = datetime.now(KST).date()
-    df = df[df["week_start"].dt.date >= today]
-
-    if df.empty:
-        return []
 
     try:
         from data_pipeline.bi_box_loader import build_sku_name_map
@@ -236,10 +244,70 @@ def get_order_simulation() -> list[OrderSimulationItem]:
         from services.api.data_pipeline.weekly_feature_builder import WARMER_SKUS
 
     bi_box_dir = PROJECT_ROOT / "data" / "raw" / "coupang" / "bi_box"
+    # Supabase 우선으로 SKU 이름 매핑 (실패 시 CSV)
     try:
-        name_map = build_sku_name_map(directory=bi_box_dir, skus=WARMER_SKUS)
+        sb_for_names = _get_supabase_client()
+    except Exception:
+        sb_for_names = None
+    try:
+        name_map = build_sku_name_map(directory=bi_box_dir, skus=WARMER_SKUS, client=sb_for_names)
     except Exception:
         name_map = {}
+
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).date()
+
+    # ── 1순위: Supabase forecast_model_b ──
+    try:
+        sb = _get_supabase_client()
+        latest = (
+            sb.table("forecast_model_b").select("model_version,generated_at")
+            .order("generated_at", desc=True).limit(1).execute()
+        )
+        if latest.data:
+            mv = latest.data[0]["model_version"]
+            res = (
+                sb.table("forecast_model_b")
+                .select("week_start,sku_id,distributed_qty")
+                .eq("model_version", mv)
+                .not_.is_("sku_id", "null")
+                .gte("week_start", today.isoformat())
+                .order("week_start").order("distributed_qty", desc=True)
+                .limit(500).execute()
+            )
+            rows = []
+            # 주차 × SKU별 비중 재계산 (동일 week_start 내 합 대비)
+            df = pd.DataFrame(res.data or [])
+            if not df.empty:
+                df["distributed_qty"] = df["distributed_qty"].astype(float)
+                total_by_week = df.groupby("week_start")["distributed_qty"].transform("sum")
+                df["sku_ratio"] = (df["distributed_qty"] / total_by_week).round(4)
+                for _, r in df.iterrows():
+                    qty = int(round(r["distributed_qty"]))
+                    if qty <= 0:
+                        continue
+                    sku = int(r["sku_id"])
+                    rows.append(OrderSimulationItem(
+                        week_start=r["week_start"][:10],
+                        sku=sku,
+                        name=name_map.get(sku, f"SKU {sku}"),
+                        predicted_order_qty=qty,
+                        sku_ratio=float(r["sku_ratio"]) if pd.notna(r["sku_ratio"]) else 0.0,
+                    ))
+                if rows:
+                    return rows[:50]
+    except Exception:
+        pass
+
+    # ── 2순위: CSV fallback ──
+    csv_path = PROCESSED_DIR / "model_b_sku_distribution.csv"
+    if not csv_path.exists():
+        return []
+
+    df = pd.read_csv(csv_path, parse_dates=["week_start"])
+    df = df[df["week_start"].dt.date >= today]
+    if df.empty:
+        return []
 
     rows = []
     for _, r in df.sort_values(["week_start", "predicted_order_qty"], ascending=[True, False]).iterrows():
@@ -262,31 +330,62 @@ def get_weekly_prediction() -> list[WeeklyPredictionItem]:
     """
     주별 예측치 (34 SKU 합산 스케일).
 
-    - 과거 구간(검증): winter_analysis_weekly.csv의 predicted (Model A+B 결합)
-    - 미래 구간: model_b_category_forecast.csv의 pred_linear > 0인 주차
-    두 소스를 week_start 기준으로 병합. 미래가 과거 max 주차보다 큰 것만 채택.
+    우선순위:
+      1순위 — Supabase winter_validation(grain=weekly 최신 run) + forecast_model_b(카테고리 미래)
+      2순위 — 로컬 CSV (winter_analysis_weekly.csv + model_b_category_forecast.csv)
     """
     import pandas as pd
 
     rows: dict[pd.Timestamp, tuple[int, str]] = {}
 
-    # 1) 과거: winter_analysis_weekly.csv (검증 구간 예측)
-    winter_path = PROCESSED_DIR / "winter_analysis_weekly.csv"
-    winter_max: pd.Timestamp | None = None
-    if winter_path.exists():
-        w = pd.read_csv(winter_path, parse_dates=["week_start"])
-        for _, r in w.iterrows():
-            qty = int(round(float(r["predicted"])))
-            rows[r["week_start"]] = (qty, "winter_validation")
-        winter_max = w["week_start"].max()
+    # ── 1순위: Supabase ──
+    try:
+        sb = _get_supabase_client()
+        latest = (
+            sb.table("winter_validation").select("run_id")
+            .eq("grain", "summary").order("generated_at", desc=True).limit(1).execute()
+        )
+        if latest.data:
+            run_id = latest.data[0]["run_id"]
+            wv = (
+                sb.table("winter_validation").select("week_start,predicted")
+                .eq("grain", "weekly").eq("run_id", run_id)
+                .order("week_start").execute()
+            )
+            for r in wv.data or []:
+                ts = pd.Timestamp(r["week_start"])
+                rows[ts] = (int(round(float(r["predicted"] or 0))), "supabase_winter_validation")
 
-    # 2) 미래: model_b_category_forecast.csv pred_linear (winter_max 이후만)
-    b_path = PROCESSED_DIR / "model_b_category_forecast.csv"
-    if b_path.exists():
-        b = pd.read_csv(b_path, parse_dates=["week_start"])
-        b = b[(b["pred_linear"] > 0) & (b["week_start"] > (winter_max or pd.Timestamp.min))]
-        for _, r in b.iterrows():
-            rows[r["week_start"]] = (int(round(float(r["pred_linear"]))), "model_b_future")
+        winter_max = max(rows.keys()) if rows else pd.Timestamp.min
+        fmb = (
+            sb.table("forecast_model_b")
+            .select("week_start,pred_linear,model_version,generated_at")
+            .is_("sku_id", "null").gt("pred_linear", 0)
+            .order("generated_at", desc=True).limit(500).execute()
+        )
+        for r in fmb.data or []:
+            ts = pd.Timestamp(r["week_start"])
+            if ts > winter_max and ts not in rows:
+                rows[ts] = (int(round(float(r["pred_linear"]))), "supabase_forecast_model_b")
+    except Exception:
+        pass
+
+    # ── 2순위: CSV fallback (Supabase 응답이 비어 있었을 때만) ──
+    if not rows:
+        winter_path = PROCESSED_DIR / "winter_analysis_weekly.csv"
+        winter_max = pd.Timestamp.min
+        if winter_path.exists():
+            w = pd.read_csv(winter_path, parse_dates=["week_start"])
+            for _, r in w.iterrows():
+                rows[r["week_start"]] = (int(round(float(r["predicted"]))), "csv_winter_validation")
+            winter_max = w["week_start"].max() if not w.empty else winter_max
+
+        b_path = PROCESSED_DIR / "model_b_category_forecast.csv"
+        if b_path.exists():
+            b = pd.read_csv(b_path, parse_dates=["week_start"])
+            b = b[(b["pred_linear"] > 0) & (b["week_start"] > winter_max)]
+            for _, r in b.iterrows():
+                rows[r["week_start"]] = (int(round(float(r["pred_linear"]))), "csv_model_b_future")
 
     return [
         WeeklyPredictionItem(
@@ -302,10 +401,55 @@ def get_weekly_prediction() -> list[WeeklyPredictionItem]:
 def get_winter_analysis() -> list[WinterAnalysisItem]:
     """
     겨울 검증 결과 (실측 vs 예측, 주차별).
-    data/processed/winter_analysis_weekly.csv에서 반환.
+
+    우선순위:
+      1순위 — Supabase winter_validation (grain='weekly', 최신 run_id)
+      2순위 — 로컬 CSV (winter_analysis_weekly.csv)
     """
     import pandas as pd
 
+    # ── 1순위: Supabase ──
+    try:
+        sb = _get_supabase_client()
+        latest = (
+            sb.table("winter_validation").select("run_id")
+            .eq("grain", "summary").order("generated_at", desc=True).limit(1).execute()
+        )
+        if latest.data:
+            run_id = latest.data[0]["run_id"]
+            wv = (
+                sb.table("winter_validation")
+                .select("week_start,actual,predicted,abs_error,error_pct,bias")
+                .eq("grain", "weekly").eq("run_id", run_id)
+                .order("week_start").execute()
+            )
+            if wv.data:
+                def _label(bias_num):
+                    try:
+                        v = float(bias_num)
+                    except (TypeError, ValueError):
+                        return ""
+                    if v > 0:
+                        return "과소"
+                    if v < 0:
+                        return "과대"
+                    return "일치"
+
+                return [
+                    WinterAnalysisItem(
+                        week_start=r["week_start"],
+                        actual=int(round(float(r["actual"] or 0))),
+                        predicted=int(round(float(r["predicted"] or 0))),
+                        abs_error=int(round(float(r["abs_error"] or 0))),
+                        error_pct=round(float(r["error_pct"] or 0), 1),
+                        bias=_label(r.get("bias")),
+                    )
+                    for r in wv.data
+                ]
+    except Exception:
+        pass
+
+    # ── 2순위: CSV fallback ──
     csv_path = PROCESSED_DIR / "winter_analysis_weekly.csv"
     if not csv_path.exists():
         return []

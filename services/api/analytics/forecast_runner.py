@@ -151,6 +151,9 @@ def run_forecast_pipeline(
     val_weeks: int = 8,
     forecast_horizon: int = 4,
     apply_stockout_mask: bool = False,
+    save_to_forecast_model_a: bool = True,
+    model_version: str = "round4",
+    used_synthetic: bool = False,
 ) -> RunResult:
     """
     전체 예측 파이프라인 실행 + Supabase forecasts insert.
@@ -202,6 +205,24 @@ def run_forecast_pipeline(
             res = client.table("forecasts").insert(batch).execute()
             inserted += len(res.data or [])
 
+    # 병행 저장: 신규 forecast_model_a 테이블 (PM v2 스키마, sku_id 직접)
+    fma_rows = 0
+    if save_to_forecast_model_a and not forecast_df.empty:
+        try:
+            from services.api.data_pipeline.supabase_uploader import save_forecast_model_a
+            today = pd.Timestamp.today().normalize()
+            future_fc = forecast_df[forecast_df["week_start"] >= today]
+            fma_rows = save_forecast_model_a(
+                client,
+                future_fc,
+                model_version=model_version,
+                used_synthetic=used_synthetic,
+                features_used=list(feature_cols) if feature_cols is not None else None,
+                val_mae=metrics.get("val_mae"),
+            )
+        except Exception as ex:
+            print(f"  forecast_model_a 저장 실패(무시): {ex}")
+
     return RunResult(
         status="ok",
         metrics=metrics,
@@ -209,5 +230,8 @@ def run_forecast_pipeline(
         skipped_skus=unmatched,
         forecast_rows=len(forecast_df),
         period=training_period,
-        message=f"missing_exog={missing_exog}" if missing_exog else "",
+        message=(
+            (f"missing_exog={missing_exog}; " if missing_exog else "")
+            + f"forecast_model_a={fma_rows}"
+        ),
     )

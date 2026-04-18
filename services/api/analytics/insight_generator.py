@@ -280,6 +280,146 @@ def build_insight_context_from_local(
     )
 
 
+def build_insight_context_from_supabase(client) -> InsightContext | None:
+    """
+    Supabase 테이블들에서 인사이트 컨텍스트 조립.
+
+    소스:
+      - forecast_model_a : Model A 미래 예측 (상위 SKU)
+      - forecast_model_b : Model B 카테고리 총량 (sku_id NULL)
+      - v_weather_hybrid : 최근 7일 날씨
+      - bi_box_daily     : 제품명 + 품절률
+
+    Returns:
+        InsightContext, 또는 필수 데이터 부족 시 None (호출부에서 CSV로 fallback)
+    """
+    today = pd.Timestamp.today().normalize()
+
+    # Model A 미래 예측
+    res = (
+        client.table("forecast_model_a")
+        .select("sku_id,week_start,weekly_sales_qty_forecast")
+        .gte("week_start", today.date().isoformat())
+        .order("week_start").limit(500).execute()
+    )
+    fa = pd.DataFrame(res.data or [])
+    if fa.empty:
+        return None
+    fa["week_start"] = pd.to_datetime(fa["week_start"])
+    fa["weekly_sales_qty_forecast"] = pd.to_numeric(fa["weekly_sales_qty_forecast"], errors="coerce").fillna(0)
+
+    total_qty = int(fa["weekly_sales_qty_forecast"].sum())
+    period = (
+        f"{fa['week_start'].min().date()} ~ {fa['week_start'].max().date()}"
+        if not fa.empty else "N/A"
+    )
+
+    # 상위 SKU
+    sku_totals = (
+        fa.groupby("sku_id")["weekly_sales_qty_forecast"].sum()
+        .sort_values(ascending=False).head(5)
+    )
+    total_for_pct = sku_totals.sum() or 1
+
+    # 제품명 매핑 (Supabase bi_box_daily)
+    try:
+        from data_pipeline.bi_box_loader import build_sku_name_map
+    except ImportError:
+        from services.api.data_pipeline.bi_box_loader import build_sku_name_map
+    sku_list_int = [int(s) for s in sku_totals.index]
+    name_map = build_sku_name_map(skus=sku_list_int, client=client)
+
+    current_month = datetime.now().month
+    top_skus = []
+    for sku_str, q in sku_totals.items():
+        try:
+            sku_int = int(sku_str)
+        except (TypeError, ValueError):
+            continue
+        name = name_map.get(sku_int, f"SKU {sku_int}")
+        category = _product_category(name)
+        top_skus.append({
+            "sku": sku_int,
+            "name": name,
+            "qty": int(q),
+            "pct": round(q / total_for_pct * 100, 1),
+            "category": category,
+            "low_seasonal": _is_low_seasonal(category),
+            "month_factor": round(_month_factor(category, current_month), 4),
+        })
+
+    # 날씨 (v_weather_hybrid 최근 7일)
+    weather_summary = "데이터 없음"
+    try:
+        start = (today - pd.Timedelta(days=7)).date().isoformat()
+        end = today.date().isoformat()
+        wres = (
+            client.table("v_weather_hybrid")
+            .select("weather_date,temp_avg,temp_min,rain")
+            .gte("weather_date", start).lte("weather_date", end)
+            .execute()
+        )
+        wdf = pd.DataFrame(wres.data or [])
+        if not wdf.empty:
+            wdf["temp_avg"] = pd.to_numeric(wdf["temp_avg"], errors="coerce")
+            wdf["temp_min"] = pd.to_numeric(wdf["temp_min"], errors="coerce")
+            wdf["rain"] = pd.to_numeric(wdf["rain"], errors="coerce").fillna(0)
+            weather_summary = (
+                f"최근 7일 평균기온 {wdf['temp_avg'].mean():.1f}℃, "
+                f"최저 {wdf['temp_min'].min():.1f}℃, "
+                f"강수 {wdf['rain'].sum():.0f}mm"
+            )
+    except Exception:
+        pass
+
+    # Model B 미래 발주량
+    model_b_qty = None
+    try:
+        bres = (
+            client.table("forecast_model_b")
+            .select("pred_ratio,week_start")
+            .is_("sku_id", "null")
+            .gte("week_start", today.date().isoformat())
+            .execute()
+        )
+        bdf = pd.DataFrame(bres.data or [])
+        if not bdf.empty:
+            bdf["pred_ratio"] = pd.to_numeric(bdf["pred_ratio"], errors="coerce").fillna(0)
+            model_b_qty = int(bdf["pred_ratio"].sum())
+    except Exception:
+        pass
+
+    # 최근 2주 품절률 (bi_box_daily)
+    stockout_rate = None
+    try:
+        start2 = (today - pd.Timedelta(days=14)).date().isoformat()
+        sres = (
+            client.table("bi_box_daily")
+            .select("is_stockout").gte("date", start2).execute()
+        )
+        sdata = sres.data or []
+        if sdata:
+            total = len(sdata)
+            stockouts = sum(1 for r in sdata if r.get("is_stockout"))
+            stockout_rate = stockouts / total
+    except Exception:
+        pass
+
+    season = "성수기(겨울)" if current_month in (10, 11, 12, 1, 2) else "비시즌(봄/여름/가을)"
+
+    return InsightContext(
+        forecast_period=period,
+        total_predicted_qty=total_qty,
+        top_skus=top_skus,
+        weather_summary=weather_summary,
+        model_b_order_qty=model_b_qty,
+        stockout_rate=stockout_rate,
+        confidence_range=_compute_confidence_range(),
+        season=season,
+        current_month=current_month,
+    )
+
+
 def _context_to_user_prompt(ctx: InsightContext) -> str:
     """InsightContext → OpenAI user message 문자열."""
     lines = [
