@@ -1,5 +1,6 @@
 // 변경 이유: 파주 격자 단기·중기 API를 배치 호출해 최대 11일 예보를 한 번에 반환합니다.
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { buildPajuForecastRange } from "@/lib/kma-rework-fetch";
 import { PAJU } from "@/lib/paju";
 
@@ -7,6 +8,14 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 let cache: { expires: number; body: unknown } | null = null;
 
 export async function GET() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ message: "인증이 필요합니다." }, { status: 401 });
+  }
+
   const serviceKey = process.env.KMA_SERVICE_KEY;
   if (!serviceKey) {
     return NextResponse.json(

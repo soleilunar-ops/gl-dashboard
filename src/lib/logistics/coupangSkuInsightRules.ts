@@ -202,7 +202,7 @@ export function buildCoupangSkuRuleInsight(f: CoupangSkuInsightFacts): RuleBased
       "일별 업로드 데이터가 없어 입·출고 패턴을 계산하지 못했습니다. CSV를 여러 기준일로 쌓으면 추이가 보입니다.";
   } else if (f.outbound_drop_detected) {
     const r = f.outbound_late_to_early_ratio;
-    const rText = r !== null ? ` (후반/초반 출고 비율 약 ${(r * 100).toFixed(0)}%)` : "";
+    const rText = r != null ? ` (후반/초반 출고 비율 약 ${(r * 100).toFixed(0)}%)` : "";
     pattern = `막대 그래프 기준으로 앞쪽 구간 대비 뒤쪽 구간에서 출고가 한 번에 꺾인 형태입니다${rText}. 입고·출고 막대와 재고(선)를 함께 보면 FC 보추 타이밍을 짚기 쉽습니다. 발주가능/시즌 분류·노출을 우선 확인하세요.`;
   } else if (f.avg_daily_outbound >= 20) {
     pattern = "기간 대비 출고가 꾸준히 나오는 편입니다. 재고·발주 상태와 맞는지 확인하세요.";

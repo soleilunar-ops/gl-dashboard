@@ -1,5 +1,6 @@
 // 변경 이유: 출고일(orderDate) 기준 재작업일(D-2/D-1) 단기·중기예보 분기와 기존 단일 date 조회를 모두 지원합니다.
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import type { DailyWeather } from "@/lib/kma-daily-weather";
 import { fetchReworkDayDailyWeather } from "@/lib/kma-rework-fetch";
 import { reworkDatesFromOrderDate } from "@/lib/kma-time";
@@ -28,6 +29,14 @@ function dailyToLegacyPayload(w: DailyWeather) {
 }
 
 export async function GET(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ message: "인증이 필요합니다." }, { status: 401 });
+  }
+
   const serviceKey = process.env.KMA_SERVICE_KEY;
   if (!serviceKey) {
     return NextResponse.json(
