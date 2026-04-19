@@ -49,4 +49,3 @@ jobs:
           base: submain
           author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
           committer: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          sign-commits: false
