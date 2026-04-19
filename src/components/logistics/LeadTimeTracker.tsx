@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronRight, Loader2 } from "lucide-react";
+import * as XLSX from "xlsx";
+import { ChevronRight, Loader2, Trash2 } from "lucide-react";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import EmptyState from "@/components/shared/EmptyState";
 import { Badge } from "@/components/ui/badge";
@@ -25,15 +26,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { useLeadTime, type LeadTimeRow } from "./_hooks/useLeadTime";
+import { useLeadTime, type LeadTimeRow, type LeadtimeDbStep } from "./_hooks/useLeadTime";
 
-const STEP_LABELS = [
-  "① 발주확정",
-  "② 카고레디",
-  "③ 상하이 출항",
-  "④ 인천 입항",
-  "⑤ 파주 창고 입고",
-] as const;
+/** DB 컬럼 step2(카고레디)는 사용하지 않고, 상하이~파주는 BL·공공데이터·유니패스로 추적 */
+const DB_STEPS: readonly { db: LeadtimeDbStep; label: string }[] = [
+  { db: 1, label: "① 발주일" },
+  { db: 3, label: "② 상하이 출항" },
+  { db: 4, label: "③ 인천 입항" },
+  { db: 5, label: "④ 파주 창고 입고" },
+];
 
 // 두 날짜 차이 (일)
 const calcDelay = (actual: string, expected: string): number =>
@@ -47,13 +48,30 @@ const subtractCalendarDays = (isoDate: string, days: number): string => {
   return dt.toISOString().slice(0, 10);
 };
 
+/** 입항(예정)·실제 기준으로 상하이 출항 예상일 자동 산출 */
+function getComputedShanghaiExpected(row: LeadTimeRow): string | null {
+  if (row.step4_expected) {
+    return subtractCalendarDays(row.step4_expected, row.sea_days);
+  }
+  if (row.step4_actual) {
+    return subtractCalendarDays(row.step4_actual, row.sea_days);
+  }
+  return null;
+}
+
 // 전체 최대 지연 (비교 가능한 쌍이 없으면 hasAny: false)
 const getMaxDelay = (row: LeadTimeRow): { max: number; hasAny: boolean } => {
   const delays: number[] = [];
-  if (row.step4_actual && row.step4_expected)
+  const shanghaiExp = row.step3_expected ?? getComputedShanghaiExpected(row);
+  if (row.step3_actual && shanghaiExp) {
+    delays.push(calcDelay(row.step3_actual, shanghaiExp));
+  }
+  if (row.step4_actual && row.step4_expected) {
     delays.push(calcDelay(row.step4_actual, row.step4_expected));
-  if (row.step5_actual && row.step5_expected)
+  }
+  if (row.step5_actual && row.step5_expected) {
     delays.push(calcDelay(row.step5_actual, row.step5_expected));
+  }
   if (!delays.length) return { max: 0, hasAny: false };
   return { max: Math.max(...delays), hasAny: true };
 };
@@ -66,19 +84,12 @@ const getStatus = (row: LeadTimeRow): "완료" | "주의" | "정상" => {
   return "정상";
 };
 
-function totalExpectedLeadDays(row: LeadTimeRow): number | null {
-  if (!row.step1_actual || !row.step5_expected) return null;
-  return Math.round(
-    (new Date(row.step5_expected).getTime() - new Date(row.step1_actual).getTime()) / 86400000
-  );
-}
-
 function currentStageLabel(cs: number): string {
-  if (cs <= 1) return STEP_LABELS[0];
-  if (cs === 2) return STEP_LABELS[1];
-  if (cs === 3) return STEP_LABELS[2];
-  if (cs === 4) return STEP_LABELS[3];
-  return STEP_LABELS[4];
+  if (cs <= 1) return DB_STEPS[0].label;
+  if (cs === 2) return DB_STEPS[1].label;
+  if (cs === 3) return DB_STEPS[1].label;
+  if (cs === 4) return DB_STEPS[2].label;
+  return DB_STEPS[3].label;
 }
 
 function currentStagePillClass(cs: number): string {
@@ -88,37 +99,41 @@ function currentStagePillClass(cs: number): string {
   return "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200";
 }
 
-function isStepCurrent(row: LeadTimeRow, step: number): boolean {
-  if (row.current_step === 0) return step === 1;
-  return row.current_step === step;
+function isStepCurrent(row: LeadTimeRow, dbStep: LeadtimeDbStep): boolean {
+  if (dbStep === 1) {
+    return row.current_step === 0 || row.current_step === 1 || row.current_step === 2;
+  }
+  return row.current_step === dbStep;
 }
 
-function getActualValue(row: LeadTimeRow, step: number): string | null {
-  if (step === 1) return row.step1_actual;
-  if (step === 2) return row.step2_actual;
-  if (step === 3) return row.step3_actual;
-  if (step === 4) return row.step4_actual;
+function getActualValue(row: LeadTimeRow, dbStep: LeadtimeDbStep): string | null {
+  if (dbStep === 1) return row.step1_actual;
+  if (dbStep === 3) return row.step3_actual;
+  if (dbStep === 4) return row.step4_actual;
   return row.step5_actual;
 }
 
-function getExpectedValue(row: LeadTimeRow, step: number): string | null {
-  if (step === 3) {
-    if (row.step4_expected) {
-      return subtractCalendarDays(row.step4_expected, row.sea_days);
-    }
-    if (row.step4_actual) {
-      return subtractCalendarDays(row.step4_actual, row.sea_days);
-    }
-    return null;
+function getExpectedValue(row: LeadTimeRow, dbStep: LeadtimeDbStep): string | null {
+  if (dbStep === 1) return null;
+  if (dbStep === 3) {
+    return row.step3_expected ?? getComputedShanghaiExpected(row);
   }
-  if (step === 4) return row.step4_expected;
-  if (step === 5) return row.step5_expected;
+  if (dbStep === 4) return row.step4_expected;
+  if (dbStep === 5) return row.step5_expected;
   return null;
 }
 
-function stepCardClass(row: LeadTimeRow, step: number): string {
-  const done = !!getActualValue(row, step);
-  const cur = isStepCurrent(row, step);
+/** DB에 저장된 수기 예상일(②단계 자동참고 제외) */
+function getStoredExpected(row: LeadTimeRow, dbStep: LeadtimeDbStep): string | null {
+  if (dbStep === 1) return null;
+  if (dbStep === 3) return row.step3_expected;
+  if (dbStep === 4) return row.step4_expected;
+  return row.step5_expected;
+}
+
+function stepCardClass(row: LeadTimeRow, dbStep: LeadtimeDbStep): string {
+  const done = !!getActualValue(row, dbStep);
+  const cur = isStepCurrent(row, dbStep);
   if (done) return "border-green-200 bg-green-50";
   if (cur) return "border-blue-200 bg-blue-50";
   return "bg-muted/30 border-transparent";
@@ -141,6 +156,34 @@ function DelayBadge({ actual, expected }: { actual: string; expected: string }) 
   );
 }
 
+/** 화면 하단 리스트와 동일 컬럼으로 xlsx 다운로드 (Wings API 없음) */
+function downloadLeadTimeListExcel(rows: LeadTimeRow[]) {
+  if (rows.length === 0) return;
+  const sheetRows = rows.map((row) => {
+    const { max: maxD, hasAny: hasDelay } = getMaxDelay(row);
+    const st = getStatus(row);
+    const delayLabel = !hasDelay ? "—" : maxD > 0 ? `+${maxD}일` : "정시";
+    return {
+      발주번호: row.po_number,
+      품목명: row.product_name,
+      품목코드: row.erp_code ?? "",
+      발주일: row.step1_actual ?? "",
+      BL번호: row.bl_number ?? "",
+      현재단계: currentStageLabel(row.current_step),
+      예정입고일: row.step5_expected ?? "",
+      실제입고일: row.step5_actual ?? "",
+      현재지연: delayLabel,
+      상태: st,
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(sheetRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "수입리드타임");
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+  XLSX.writeFile(wb, `수입리드타임_${stamp}.xlsx`);
+}
+
 type LeadTimeTrackerProps = {
   /** section: 창고 페이지 하단 블록 / page: 전용 라우트 */
   variant?: "section" | "page";
@@ -155,30 +198,18 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
     loading,
     error,
     blLookupLoading,
-    isMockMode,
     updateActual,
-    updateParams,
+    updateExpected,
     saveBL,
     approveOrder,
+    deleteOrder,
     addOrder,
     refetch,
   } = useLeadTime();
 
-  const mockBanner = isMockMode ? (
-    <div
-      className="mb-4 rounded-lg border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100"
-      role="status"
-    >
-      <strong>MOCK 모드</strong> — DB 없이 UI와 <code className="text-[0.8rem]">/api/tracking</code>
-      만 검증합니다. 테이블 준비 후에는 <code className="text-[0.8rem]">.env.local</code>에서{" "}
-      <code className="text-[0.8rem]">NEXT_PUBLIC_LEADTIME_MOCK</code>를 지우고 서버 재시작하세요.
-    </div>
-  ) : null;
-
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draftDates, setDraftDates] = useState<Record<number, string>>({});
-  const [draftSea, setDraftSea] = useState<string>("2");
-  const [draftCustoms, setDraftCustoms] = useState<string>("2");
+  const [draftDates, setDraftDates] = useState<Partial<Record<LeadtimeDbStep, string>>>({});
+  const [draftExpected, setDraftExpected] = useState<Partial<Record<LeadtimeDbStep, string>>>({});
   const [blInput, setBlInput] = useState("");
   const [blMessage, setBlMessage] = useState<"ok" | "fail" | null>(null);
 
@@ -186,8 +217,7 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
   const [newPo, setNewPo] = useState("");
   const [newProduct, setNewProduct] = useState("");
   const [newErp, setNewErp] = useState("");
-  const [newSea, setNewSea] = useState("2");
-  const [newCustoms, setNewCustoms] = useState("2");
+  const [newOrderDate, setNewOrderDate] = useState("");
 
   const selected = useMemo(() => data.find((r) => r.id === selectedId) ?? null, [data, selectedId]);
 
@@ -202,7 +232,7 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
     }
   }, [data, selectedId]);
 
-  /** 발주 행 변경 시 조회 메시지 초기화 */
+  /** 선택 행 변경 시 BL 조회 메시지 초기화 */
   useEffect(() => {
     setBlMessage(null);
   }, [selectedId]);
@@ -210,44 +240,46 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
   useEffect(() => {
     if (!selected) {
       setDraftDates({});
-      setDraftSea("2");
-      setDraftCustoms("2");
+      setDraftExpected({});
       setBlInput("");
       return;
     }
     setDraftDates({
       1: selected.step1_actual ?? "",
-      2: selected.step2_actual ?? "",
       3: selected.step3_actual ?? "",
       4: selected.step4_actual ?? "",
       5: selected.step5_actual ?? "",
     });
-    setDraftSea(String(selected.sea_days));
-    setDraftCustoms(String(selected.customs_days));
+    setDraftExpected({
+      3: selected.step3_expected ?? "",
+      4: selected.step4_expected ?? "",
+      5: selected.step5_expected ?? "",
+    });
     setBlInput(selected.bl_number ?? "");
   }, [selected]);
 
   const handleSaveDates = useCallback(async () => {
     if (!selected) return;
-    for (let s = 1; s <= 5; s++) {
-      const draft = draftDates[s] ?? "";
-      const prev = getActualValue(selected, s) ?? "";
+    for (const { db } of DB_STEPS) {
+      if (db === 1) continue;
+      const expDraft = draftExpected[db] ?? "";
+      const prevExp = getStoredExpected(selected, db) ?? "";
+      const nextExp = expDraft.trim() === "" ? null : expDraft.trim();
+      const prevExpNorm = prevExp === "" ? null : prevExp;
+      if (nextExp !== prevExpNorm) {
+        await updateExpected(selected.id, db, nextExp);
+      }
+    }
+    for (const { db } of DB_STEPS) {
+      const draft = draftDates[db] ?? "";
+      const prev = getActualValue(selected, db) ?? "";
       const nextVal = draft === "" ? null : draft;
       const prevVal = prev === "" ? null : prev;
       if (nextVal !== prevVal) {
-        await updateActual(selected.id, s, nextVal);
+        await updateActual(selected.id, db, nextVal);
       }
     }
-  }, [draftDates, selected, updateActual]);
-
-  const handleParamsBlur = useCallback(async () => {
-    if (!selected) return;
-    const sea = Number.parseInt(draftSea, 10);
-    const customs = Number.parseInt(draftCustoms, 10);
-    if (Number.isNaN(sea) || sea < 1 || Number.isNaN(customs) || customs < 1) return;
-    if (sea === selected.sea_days && customs === selected.customs_days) return;
-    await updateParams(selected.id, sea, customs);
-  }, [draftCustoms, draftSea, selected, updateParams]);
+  }, [draftDates, draftExpected, selected, updateActual, updateExpected]);
 
   const handleBlLookup = useCallback(async () => {
     if (!selected || !blInput.trim()) return;
@@ -267,7 +299,6 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
       typeof error === "string" && /schema cache|could not find the table/i.test(error);
     return (
       <div className={sectionShell}>
-        {mockBanner}
         <div
           className={cn(
             "mb-4 flex flex-wrap items-center gap-2",
@@ -284,7 +315,7 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
               다시 불러오기
             </Button>
             <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-              + 발주 추가
+              + 건 추가
             </Button>
           </div>
         </div>
@@ -305,7 +336,7 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
           </div>
         ) : null}
         <EmptyState
-          message={error ? "위 오류를 해결한 뒤 다시 시도해 주세요." : "등록된 발주가 없습니다."}
+          message={error ? "위 오류를 해결한 뒤 다시 시도해 주세요." : "등록된 건이 없습니다."}
         />
         <NewOrderDialog
           open={dialogOpen}
@@ -316,24 +347,20 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
           setNewProduct={setNewProduct}
           newErp={newErp}
           setNewErp={setNewErp}
-          newSea={newSea}
-          setNewSea={setNewSea}
-          newCustoms={newCustoms}
-          setNewCustoms={setNewCustoms}
+          newOrderDate={newOrderDate}
+          setNewOrderDate={setNewOrderDate}
           onSubmit={async () => {
             await addOrder({
               po_number: newPo.trim(),
               product_name: newProduct.trim(),
               erp_code: newErp.trim() || undefined,
-              sea_days: Number.parseInt(newSea, 10) || 2,
-              customs_days: Number.parseInt(newCustoms, 10) || 2,
+              order_date: newOrderDate.trim() || undefined,
             });
             setDialogOpen(false);
             setNewPo("");
             setNewProduct("");
             setNewErp("");
-            setNewSea("2");
-            setNewCustoms("2");
+            setNewOrderDate("");
           }}
         />
       </div>
@@ -342,7 +369,6 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
 
   return (
     <div className={sectionShell}>
-      {mockBanner}
       <div
         className={cn(
           "mb-6 flex flex-wrap items-start gap-4",
@@ -354,7 +380,7 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
             <>
               <h2 className="text-lg font-medium">수입 리드타임</h2>
               <p className="text-muted-foreground text-sm">
-                발주부터 파주 입고까지 단계별 일정을 추적합니다.
+                ERP 발주 미연동 건은 수기로 등록하고, BL로 상하이 출항~파주 입고까지 추적합니다.
               </p>
             </>
           ) : null}
@@ -362,10 +388,7 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-            + 발주 추가
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => alert("Wings API 연동 후 활성화")}>
-            엑셀 추출
+            + 건 추가
           </Button>
         </div>
       </div>
@@ -377,63 +400,54 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
               <p className="text-[15px] font-medium">
                 {selected.product_name} — {selected.po_number}
               </p>
-              <p className="text-muted-foreground text-xs">상하이 → 인천항 → 파주</p>
+              <p className="text-muted-foreground text-xs">
+                BL 기준: 상하이 출항 → 인천 입항 → 파주 창고 (유니패스·공공데이터포털 외항반출입)
+              </p>
             </div>
             <div className="flex items-center gap-2">{detailStatusBadge}</div>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
-            <div className="flex flex-wrap items-end gap-6">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="sea_days" className="text-muted-foreground text-xs">
-                  해상운송일
-                </Label>
-                <Input
-                  id="sea_days"
-                  type="number"
-                  min={1}
-                  className="w-20"
-                  value={draftSea}
-                  onChange={(e) => setDraftSea(e.target.value)}
-                  onBlur={() => void handleParamsBlur()}
-                />
-                <span className="text-muted-foreground text-sm">일</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label htmlFor="customs_days" className="text-muted-foreground text-xs">
-                  내륙+통관
-                </Label>
-                <Input
-                  id="customs_days"
-                  type="number"
-                  min={1}
-                  className="w-20"
-                  value={draftCustoms}
-                  onChange={(e) => setDraftCustoms(e.target.value)}
-                  onBlur={() => void handleParamsBlur()}
-                />
-                <span className="text-muted-foreground text-sm">일</span>
-              </div>
-            </div>
-
             <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:overflow-x-auto">
-              {STEP_LABELS.map((label, idx) => {
-                const step = idx + 1;
+              {DB_STEPS.map(({ db, label }, idx) => {
                 const row = selected;
-                const expected = getExpectedValue(row, step);
-                const actualDraft = draftDates[step] ?? "";
-                const showDelay = expected && actualDraft && (step === 4 || step === 5);
+                const expectedForBadge =
+                  db === 1 ? null : (draftExpected[db] ?? "").trim() || getExpectedValue(row, db);
+                const shanghaiHint =
+                  db === 3 && !(draftExpected[3] ?? "").trim()
+                    ? getComputedShanghaiExpected(row)
+                    : null;
+                const actualDraft = draftDates[db] ?? "";
+                const showDelay = db !== 1 && !!expectedForBadge && !!actualDraft;
                 return (
                   <div key={label} className="flex min-w-0 flex-1 items-stretch gap-1">
                     <div
                       className={cn(
                         "flex flex-1 flex-col gap-2 rounded-lg border p-3",
-                        stepCardClass(row, step)
+                        stepCardClass(row, db)
                       )}
                     >
                       <p className="text-xs font-medium">{label}</p>
-                      <div className="text-muted-foreground text-xs">
-                        예상 <span className="text-foreground">{expected ?? "—"}</span>
-                      </div>
+                      {db !== 1 ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-muted-foreground text-xs">예상</span>
+                          <Input
+                            type="date"
+                            className="text-xs"
+                            value={draftExpected[db] ?? ""}
+                            onChange={(e) =>
+                              setDraftExpected((d) => ({
+                                ...d,
+                                [db]: e.target.value,
+                              }))
+                            }
+                          />
+                          {db === 3 && shanghaiHint ? (
+                            <p className="text-muted-foreground text-[0.65rem] leading-snug">
+                              미입력 시 참고: {shanghaiHint} (입항 예정−해상일)
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <div className="flex flex-col gap-1">
                         <span className="text-muted-foreground text-xs">실제</span>
                         <Input
@@ -443,17 +457,20 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
                           onChange={(e) =>
                             setDraftDates((d) => ({
                               ...d,
-                              [step]: e.target.value,
+                              [db]: e.target.value,
                             }))
                           }
                         />
-                        {showDelay && expected && actualDraft ? (
-                          <DelayBadge actual={actualDraft} expected={expected} />
+                        {showDelay ? (
+                          <DelayBadge actual={actualDraft} expected={expectedForBadge} />
                         ) : null}
                       </div>
-                      {step === 2 && (
+                      {db === 1 ? (
                         <div className="border-border mt-2 space-y-2 border-t pt-2">
-                          <Label className="text-xs">BL번호</Label>
+                          <Label className="text-xs">BL번호 (M/HBL)</Label>
+                          <p className="text-muted-foreground text-[0.65rem] leading-snug">
+                            유니패스 화물통관 + 공공데이터포털 외항반출입으로 일부 자동 반영됩니다.
+                          </p>
                           <div className="flex flex-wrap items-center gap-2">
                             <Input
                               placeholder="예: COSU1234567890"
@@ -484,25 +501,27 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
                           !selected.step4_actual &&
                           !selected.tracking_status ? (
                             <p className="text-xs text-amber-800 dark:text-amber-200">
-                              조회는 완료됐지만 유니패스·해양청에서 선박/일정을 받지 못했습니다.{" "}
-                              <code className="text-[0.7rem]">UNIPASS_API_KEY</code>·BL을 확인하고,
-                              ETA는 <code className="text-[0.7rem]">PUBLIC_DATA_API_KEY</code>와
-                              호출부호(
-                              <code className="text-[0.7rem]">clsgn</code>)가 필요할 수 있습니다.
+                              조회는 완료됐지만 유니패스·외항반출입 API에서 선박/일정을 받지
+                              못했습니다. <code className="text-[0.7rem]">UNIPASS_API_KEY</code>
+                              ·BL을 확인하고, 입항 예정은{" "}
+                              <code className="text-[0.7rem]">PUBLIC_DATA_API_KEY</code>와 호출부호(
+                              <code className="text-[0.7rem]">clsgn</code>, 인천 등은{" "}
+                              <code className="text-[0.7rem]">PUBLIC_DATA_PRT_AG_CD</code>)를 확인해
+                              주세요.
                             </p>
                           ) : null}
                           {blMessage === "fail" ? (
                             <p className="text-destructive text-xs">조회 실패, 수동 입력 필요</p>
                           ) : null}
                         </div>
-                      )}
-                      {step === 4 && selected.tracking_status ? (
+                      ) : null}
+                      {db === 4 && selected.tracking_status ? (
                         <Badge variant="outline" className="mt-1 w-fit text-xs">
                           {selected.tracking_status}
                         </Badge>
                       ) : null}
                     </div>
-                    {step < 5 ? (
+                    {idx < DB_STEPS.length - 1 ? (
                       <div className="text-muted-foreground flex shrink-0 items-center px-0.5">
                         <ChevronRight className="h-4 w-4" />
                       </div>
@@ -512,100 +531,173 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
               })}
             </div>
           </CardContent>
-          <CardFooter className="flex flex-wrap justify-end gap-2 border-t">
-            <Button type="button" variant="outline" onClick={() => void handleSaveDates()}>
-              저장
-            </Button>
+          <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-t">
             <Button
               type="button"
-              onClick={() => selected && void approveOrder(selected.id)}
-              disabled={selected?.is_approved}
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (!selected) return;
+                if (
+                  !window.confirm(
+                    `「${selected.po_number}」건을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`
+                  )
+                ) {
+                  return;
+                }
+                void deleteOrder(selected.id);
+              }}
             >
-              확인 완료 → 승인
+              삭제
             </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={() => void handleSaveDates()}>
+                저장
+              </Button>
+              <Button
+                type="button"
+                onClick={() => selected && void approveOrder(selected.id)}
+                disabled={selected?.is_approved}
+              >
+                확인 완료 → 승인
+              </Button>
+            </div>
           </CardFooter>
         </Card>
       )}
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>SKU</TableHead>
-            <TableHead>발주일</TableHead>
-            <TableHead>현재 단계</TableHead>
-            <TableHead>총 예상 납기</TableHead>
-            <TableHead>현재 지연</TableHead>
-            <TableHead>납품기일</TableHead>
-            <TableHead>상태</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.map((row) => {
-            const totalDays = totalExpectedLeadDays(row);
-            const { max: maxD, hasAny: hasDelay } = getMaxDelay(row);
-            const st = getStatus(row);
-            const orderDate = row.step1_actual ? row.step1_actual : row.created_at.slice(0, 10);
-            return (
-              <TableRow
-                key={row.id}
-                className={cn("cursor-pointer", row.id === selectedId ? "bg-muted/50" : undefined)}
-                onClick={() => setSelectedId(row.id)}
-              >
-                <TableCell>
-                  <span className="font-medium">{row.product_name}</span>
-                  <span className="text-muted-foreground ml-1 text-xs">{row.po_number}</span>
-                </TableCell>
-                <TableCell>{orderDate}</TableCell>
-                <TableCell>
-                  <span
-                    className={cn(
-                      "inline-flex rounded-full px-2 py-0.5 text-xs",
-                      currentStagePillClass(row.current_step)
+      <div className="mb-3 flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={data.length === 0}
+          onClick={() => downloadLeadTimeListExcel(data)}
+        >
+          엑셀 추출
+        </Button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="whitespace-nowrap">발주번호</TableHead>
+              <TableHead className="min-w-[140px]">품목/품목코드</TableHead>
+              <TableHead className="whitespace-nowrap">발주일</TableHead>
+              <TableHead className="min-w-[100px]">BL 번호</TableHead>
+              <TableHead className="whitespace-nowrap">현재 단계</TableHead>
+              <TableHead className="whitespace-nowrap">예정 입고일</TableHead>
+              <TableHead className="whitespace-nowrap">실제 입고일</TableHead>
+              <TableHead className="whitespace-nowrap">현재 지연</TableHead>
+              <TableHead className="whitespace-nowrap">상태</TableHead>
+              <TableHead className="w-14 text-center">삭제</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map((row) => {
+              const { max: maxD, hasAny: hasDelay } = getMaxDelay(row);
+              const st = getStatus(row);
+              const orderDate = row.step1_actual ?? "—";
+              const erp = row.erp_code?.trim();
+              return (
+                <TableRow
+                  key={row.id}
+                  className={cn(
+                    "cursor-pointer",
+                    row.id === selectedId ? "bg-muted/50" : undefined
+                  )}
+                  onClick={() => setSelectedId(row.id)}
+                >
+                  <TableCell className="font-medium [font-variant-numeric:tabular-nums]">
+                    {row.po_number}
+                  </TableCell>
+                  <TableCell>
+                    <div className="max-w-[200px]">
+                      <span className="font-medium">{row.product_name}</span>
+                      {erp ? (
+                        <span className="text-muted-foreground mt-0.5 block text-xs">{erp}</span>
+                      ) : (
+                        <span className="text-muted-foreground mt-0.5 block text-xs">—</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="[font-variant-numeric:tabular-nums]">{orderDate}</TableCell>
+                  <TableCell>
+                    {row.bl_number ? (
+                      <span className="font-mono text-xs tracking-tight">{row.bl_number}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
                     )}
-                  >
-                    {currentStageLabel(row.current_step)}
-                  </span>
-                </TableCell>
-                <TableCell>{totalDays !== null ? `${totalDays}일` : "—"}</TableCell>
-                <TableCell>
-                  {!hasDelay ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
+                  </TableCell>
+                  <TableCell>
                     <span
                       className={cn(
-                        maxD > 0 && "text-destructive font-medium",
-                        maxD === 0 && "text-green-600"
+                        "inline-flex rounded-full px-2 py-0.5 text-xs",
+                        currentStagePillClass(row.current_step)
                       )}
                     >
-                      {maxD > 0 ? `+${maxD}일` : "정시"}
+                      {currentStageLabel(row.current_step)}
                     </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {row.step5_expected ?? <span className="text-muted-foreground">계산 중</span>}
-                </TableCell>
-                <TableCell>
-                  {st === "완료" && (
-                    <Badge variant="default" className="text-xs">
-                      완료
-                    </Badge>
-                  )}
-                  {st === "주의" && (
-                    <Badge variant="outline" className="border-amber-500 text-xs text-amber-800">
-                      주의
-                    </Badge>
-                  )}
-                  {st === "정상" && (
-                    <Badge className="bg-green-600 text-xs text-white hover:bg-green-600">
-                      정상
-                    </Badge>
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  </TableCell>
+                  <TableCell className="[font-variant-numeric:tabular-nums]">
+                    {row.step5_expected ?? <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="[font-variant-numeric:tabular-nums]">
+                    {row.step5_actual ?? <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell>
+                    {!hasDelay ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span
+                        className={cn(
+                          maxD > 0 && "text-destructive font-medium",
+                          maxD === 0 && "text-green-600"
+                        )}
+                      >
+                        {maxD > 0 ? `+${maxD}일` : "정시"}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {st === "완료" && (
+                      <Badge variant="default" className="text-xs">
+                        완료
+                      </Badge>
+                    )}
+                    {st === "주의" && (
+                      <Badge variant="outline" className="border-amber-500 text-xs text-amber-800">
+                        주의
+                      </Badge>
+                    )}
+                    {st === "정상" && (
+                      <Badge className="bg-green-600 text-xs text-white hover:bg-green-600">
+                        정상
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="p-1 text-center" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:bg-destructive/10 size-8"
+                      aria-label={`${row.po_number} 삭제`}
+                      onClick={() => {
+                        if (!window.confirm(`「${row.po_number}」건을 삭제할까요?`)) return;
+                        void deleteOrder(row.id);
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
 
       <NewOrderDialog
         open={dialogOpen}
@@ -616,24 +708,20 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
         setNewProduct={setNewProduct}
         newErp={newErp}
         setNewErp={setNewErp}
-        newSea={newSea}
-        setNewSea={setNewSea}
-        newCustoms={newCustoms}
-        setNewCustoms={setNewCustoms}
+        newOrderDate={newOrderDate}
+        setNewOrderDate={setNewOrderDate}
         onSubmit={async () => {
           await addOrder({
             po_number: newPo.trim(),
             product_name: newProduct.trim(),
             erp_code: newErp.trim() || undefined,
-            sea_days: Number.parseInt(newSea, 10) || 2,
-            customs_days: Number.parseInt(newCustoms, 10) || 2,
+            order_date: newOrderDate.trim() || undefined,
           });
           setDialogOpen(false);
           setNewPo("");
           setNewProduct("");
           setNewErp("");
-          setNewSea("2");
-          setNewCustoms("2");
+          setNewOrderDate("");
         }}
       />
     </div>
@@ -649,10 +737,8 @@ function NewOrderDialog({
   setNewProduct,
   newErp,
   setNewErp,
-  newSea,
-  setNewSea,
-  newCustoms,
-  setNewCustoms,
+  newOrderDate,
+  setNewOrderDate,
   onSubmit,
 }: {
   open: boolean;
@@ -663,17 +749,15 @@ function NewOrderDialog({
   setNewProduct: (v: string) => void;
   newErp: string;
   setNewErp: (v: string) => void;
-  newSea: string;
-  setNewSea: (v: string) => void;
-  newCustoms: string;
-  setNewCustoms: (v: string) => void;
+  newOrderDate: string;
+  setNewOrderDate: (v: string) => void;
   onSubmit: () => Promise<void>;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>신규 발주 추가</DialogTitle>
+          <DialogTitle>신규 건 추가 (수기)</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3 py-2">
           <div className="grid gap-1">
@@ -689,30 +773,17 @@ function NewOrderDialog({
             />
           </div>
           <div className="grid gap-1">
-            <Label htmlFor="dlg_erp">ERP코드 (선택)</Label>
-            <Input id="dlg_erp" value={newErp} onChange={(e) => setNewErp(e.target.value)} />
+            <Label htmlFor="dlg_order_date">발주일 (선택)</Label>
+            <Input
+              id="dlg_order_date"
+              type="date"
+              value={newOrderDate}
+              onChange={(e) => setNewOrderDate(e.target.value)}
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1">
-              <Label htmlFor="dlg_sea">해상운송일</Label>
-              <Input
-                id="dlg_sea"
-                type="number"
-                min={1}
-                value={newSea}
-                onChange={(e) => setNewSea(e.target.value)}
-              />
-            </div>
-            <div className="grid gap-1">
-              <Label htmlFor="dlg_cus">내륙+통관</Label>
-              <Input
-                id="dlg_cus"
-                type="number"
-                min={1}
-                value={newCustoms}
-                onChange={(e) => setNewCustoms(e.target.value)}
-              />
-            </div>
+          <div className="grid gap-1">
+            <Label htmlFor="dlg_erp">품목코드 (ERP, 선택)</Label>
+            <Input id="dlg_erp" value={newErp} onChange={(e) => setNewErp(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
