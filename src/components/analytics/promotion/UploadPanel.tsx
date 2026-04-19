@@ -129,14 +129,14 @@ export default function UploadPanel() {
                     <TableCell className="text-xs whitespace-nowrap">
                       {h.uploaded_at ? new Date(h.uploaded_at).toLocaleString("ko-KR") : "—"}
                     </TableCell>
-                    <TableCell className="text-xs">{h.file_type ?? "—"}</TableCell>
+                    <TableCell className="text-xs">{h.category ?? "—"}</TableCell>
                     <TableCell className="max-w-[200px] truncate text-xs">
                       {h.file_name ?? "—"}
                     </TableCell>
                     <TableCell className="text-xs">
                       {(h.period_start ?? "—") + " ~ " + (h.period_end ?? "—")}
                     </TableCell>
-                    <TableCell className="text-xs">{h.row_count ?? "—"}</TableCell>
+                    <TableCell className="text-xs">{h.inserted_rows ?? "—"}</TableCell>
                     <TableCell className="text-xs">{h.status ?? "—"}</TableCell>
                   </TableRow>
                 ))}
