@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Table,
   TableBody,
@@ -297,26 +298,23 @@ export default function UploadSlot({
             동일 기간에 이미 올라온 라이브 데이터가 {overlapCount}건 있습니다. 덮어쓰면 해당
             기간(또는 월) 데이터가 삭제된 뒤 새 파일로 다시 들어갑니다.
           </p>
-          <div className="flex gap-3 py-2">
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="mode"
-                checked={pendingMode === "replace"}
-                onChange={() => setPendingMode("replace")}
-              />
+          <RadioGroup
+            value={pendingMode}
+            onValueChange={(v) => setPendingMode(v as UploadConflictMode)}
+            className="flex flex-row gap-4 py-2"
+          >
+            <label
+              htmlFor="mode-replace"
+              className="flex cursor-pointer items-center gap-2 text-sm"
+            >
+              <RadioGroupItem value="replace" id="mode-replace" />
               덮어쓰기
             </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="mode"
-                checked={pendingMode === "skip"}
-                onChange={() => setPendingMode("skip")}
-              />
+            <label htmlFor="mode-skip" className="flex cursor-pointer items-center gap-2 text-sm">
+              <RadioGroupItem value="skip" id="mode-skip" />
               겹치는 행만 건너뛰기
             </label>
-          </div>
+          </RadioGroup>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOverlapOpen(false)}>
               닫기
