@@ -18,7 +18,7 @@ import {
   fetchSeasonConfig,
   inferSeasonForIsoDate,
   pickDefaultSeason,
-} from "@/lib/upload/seasonAssign";
+} from "@/components/analytics/promotion/_utils/upload/seasonAssign";
 
 type AdRow = {
   contract_no: string;

@@ -21,21 +21,24 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
-import type { ParsedDailyPerformanceRow } from "@/lib/excel-parsers/parseDailyPerformance";
-import type { ParsedDeliveryRow } from "@/lib/excel-parsers/parseDeliveryDetail";
-import type { ParsedCouponContractRow } from "@/lib/excel-parsers/parseCouponContracts";
-import type { ParsedMilkrunRow } from "@/lib/excel-parsers/parseMilkrunCosts";
-import { detectUploadKind, type UploadKind } from "@/lib/upload/detectUploadKind";
+import type { ParsedDailyPerformanceRow } from "@/components/analytics/promotion/_utils/excel-parsers/parseDailyPerformance";
+import type { ParsedDeliveryRow } from "@/components/analytics/promotion/_utils/excel-parsers/parseDeliveryDetail";
+import type { ParsedCouponContractRow } from "@/components/analytics/promotion/_utils/excel-parsers/parseCouponContracts";
+import type { ParsedMilkrunRow } from "@/components/analytics/promotion/_utils/excel-parsers/parseMilkrunCosts";
+import {
+  detectUploadKind,
+  type UploadKind,
+} from "@/components/analytics/promotion/_utils/upload/detectUploadKind";
 import {
   countOverlappingDaily,
   countOverlappingDelivery,
   countOverlappingMilkrun,
-} from "@/lib/upload/overlapQueries";
+} from "@/components/analytics/promotion/_utils/upload/overlapQueries";
 import type { UploadConflictMode, UploadResult } from "@/lib/upload/uploadTypes";
-import { uploadCouponContracts } from "@/lib/uploadHandlers/uploadCouponContracts";
-import { uploadDailyPerformance } from "@/lib/uploadHandlers/uploadDailyPerformance";
-import { uploadDeliveryDetail } from "@/lib/uploadHandlers/uploadDeliveryDetail";
-import { uploadMilkrunCosts } from "@/lib/uploadHandlers/uploadMilkrunCosts";
+import { uploadCouponContracts } from "@/components/analytics/promotion/_utils/uploadHandlers/uploadCouponContracts";
+import { uploadDailyPerformance } from "@/components/analytics/promotion/_utils/uploadHandlers/uploadDailyPerformance";
+import { uploadDeliveryDetail } from "@/components/analytics/promotion/_utils/uploadHandlers/uploadDeliveryDetail";
+import { uploadMilkrunCosts } from "@/components/analytics/promotion/_utils/uploadHandlers/uploadMilkrunCosts";
 import { cn } from "@/lib/utils";
 
 export type UploadSlotProps = {

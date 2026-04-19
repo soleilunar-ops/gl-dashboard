@@ -2,13 +2,13 @@
  * promotion_coupon_contracts UPSERT (계약번호 기준)
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ParsedCouponContractRow } from "@/lib/excel-parsers/parseCouponContracts";
+import type { ParsedCouponContractRow } from "@/components/analytics/promotion/_utils/excel-parsers/parseCouponContracts";
 import type { Database } from "@/lib/supabase/types";
 import {
   fetchSeasonConfig,
   inferSeasonForIsoDate,
   pickDefaultSeason,
-} from "@/lib/upload/seasonAssign";
+} from "@/components/analytics/promotion/_utils/upload/seasonAssign";
 import type { UploadResult } from "@/lib/upload/uploadTypes";
 import { logUploadHistory } from "@/lib/upload/uploadHistoryLog";
 

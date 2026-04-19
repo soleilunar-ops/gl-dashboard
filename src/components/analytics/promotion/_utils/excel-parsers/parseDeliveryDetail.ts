@@ -3,7 +3,7 @@
  */
 import * as XLSX from "xlsx";
 import type { InsertTables } from "@/lib/supabase/types";
-import { normalizeDateCell, parseNumberKo } from "./parsingUtils";
+import { normalizeDateCell, parseNumberKo } from "@/lib/excel-parsers/parsingUtils";
 
 export type ParsedDeliveryRow = Omit<InsertTables<"coupang_delivery_detail">, "id"> & {
   is_baseline: false;

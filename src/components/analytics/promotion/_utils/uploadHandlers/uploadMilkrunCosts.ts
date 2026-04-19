@@ -1,36 +1,35 @@
 /**
- * coupang_delivery_detail 업로드
+ * promotion_milkrun_costs 업로드 (year_month + live 범위)
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ParsedDeliveryRow } from "@/lib/excel-parsers/parseDeliveryDetail";
+import {
+  milkrunDedupKey,
+  type ParsedMilkrunRow,
+} from "@/components/analytics/promotion/_utils/excel-parsers/parseMilkrunCosts";
 import type { Database } from "@/lib/supabase/types";
 import {
   fetchSeasonConfig,
-  inferSeasonForIsoDate,
+  inferSeasonForYm,
   pickDefaultSeason,
-} from "@/lib/upload/seasonAssign";
+} from "@/components/analytics/promotion/_utils/upload/seasonAssign";
 import type { UploadConflictMode, UploadResult } from "@/lib/upload/uploadTypes";
 import { logUploadHistory } from "@/lib/upload/uploadHistoryLog";
 import { insertInBatches } from "./uploadBatch";
 
-function periodBounds(rows: ParsedDeliveryRow[]): { min: string; max: string } {
-  const dates = rows.map((r) => r.delivery_date).sort();
-  return { min: dates[0]!, max: dates[dates.length - 1]! };
-}
-
-function rowKey(r: ParsedDeliveryRow): string {
-  return `${r.delivery_date}|${r.invoice_no ?? ""}|${r.sku_id ?? ""}`;
-}
-
-export async function uploadDeliveryDetail(
+export async function uploadMilkrunCosts(
   supabase: SupabaseClient<Database>,
-  rows: ParsedDeliveryRow[],
+  rows: ParsedMilkrunRow[],
   mode: UploadConflictMode,
   fileName: string
 ): Promise<UploadResult> {
   const errors: string[] = [];
   let inserted = 0;
-  const { min: periodStart, max: periodEnd } = periodBounds(rows);
+
+  const yms = [...new Set(rows.map((r) => r.year_month))].sort();
+  const periodStart = `${yms[0] ?? ""}-01`;
+  const lastYm = yms[yms.length - 1] ?? "";
+  const [ly, lm] = lastYm.split("-").map(Number);
+  const periodEnd = new Date(ly, lm, 0).toISOString().slice(0, 10);
 
   const seasonConfig = await fetchSeasonConfig(supabase);
   const fallback = pickDefaultSeason(seasonConfig);
@@ -38,42 +37,20 @@ export async function uploadDeliveryDetail(
   let toWrite = rows.map((r) => ({
     ...r,
     is_baseline: false as const,
-    season: inferSeasonForIsoDate(r.delivery_date, seasonConfig, fallback) ?? fallback,
+    season: inferSeasonForYm(r.year_month, seasonConfig, fallback) ?? fallback,
   }));
 
-  if (mode === "skip") {
-    const { data: existing, error: exErr } = await supabase
-      .from("coupang_delivery_detail")
-      .select("delivery_date, invoice_no, sku_id")
-      .gte("delivery_date", periodStart)
-      .lte("delivery_date", periodEnd)
-      .eq("is_baseline", false);
-    if (exErr) {
-      errors.push(`기존 데이터 조회 실패: ${exErr.message}`);
-      await logUploadHistory(supabase, {
-        fileName,
-        fileType: "delivery_detail",
-        periodStart,
-        periodEnd,
-        rowCount: rows.length,
-        status: "failed",
-      });
-      return { inserted: 0, updated: 0, errors, periodStart, periodEnd };
-    }
-    const keys = new Set((existing ?? []).map((e) => rowKey(e as ParsedDeliveryRow)));
-    toWrite = toWrite.filter((r) => !keys.has(rowKey(r)));
-  } else {
+  if (mode === "replace") {
     const { error: delErr } = await supabase
-      .from("coupang_delivery_detail")
+      .from("promotion_milkrun_costs")
       .delete()
-      .gte("delivery_date", periodStart)
-      .lte("delivery_date", periodEnd)
+      .in("year_month", yms)
       .eq("is_baseline", false);
     if (delErr) {
-      errors.push(`기간 내 기존 데이터 삭제 실패: ${delErr.message}`);
+      errors.push(`기존 밀크런 비용 삭제 실패: ${delErr.message}`);
       await logUploadHistory(supabase, {
         fileName,
-        fileType: "delivery_detail",
+        fileType: "milkrun_costs",
         periodStart,
         periodEnd,
         rowCount: 0,
@@ -81,11 +58,31 @@ export async function uploadDeliveryDetail(
       });
       return { inserted: 0, updated: 0, errors, periodStart, periodEnd };
     }
+  } else {
+    const { data: existing, error: exErr } = await supabase
+      .from("promotion_milkrun_costs")
+      .select("id, year_month, amount, delivery_date, description")
+      .in("year_month", yms)
+      .eq("is_baseline", false);
+    if (exErr) {
+      errors.push(`기존 데이터 조회 실패: ${exErr.message}`);
+      await logUploadHistory(supabase, {
+        fileName,
+        fileType: "milkrun_costs",
+        periodStart,
+        periodEnd,
+        rowCount: 0,
+        status: "failed",
+      });
+      return { inserted: 0, updated: 0, errors, periodStart, periodEnd };
+    }
+    const keys = new Set((existing ?? []).map((e) => milkrunDedupKey(e as ParsedMilkrunRow)));
+    toWrite = toWrite.filter((r) => !keys.has(milkrunDedupKey(r)));
   }
 
   inserted = await insertInBatches(
     supabase,
-    "coupang_delivery_detail",
+    "promotion_milkrun_costs",
     toWrite as Record<string, unknown>[],
     errors
   );
@@ -93,7 +90,7 @@ export async function uploadDeliveryDetail(
   const status = errors.length ? "partial" : "success";
   await logUploadHistory(supabase, {
     fileName,
-    fileType: "delivery_detail",
+    fileType: "milkrun_costs",
     periodStart,
     periodEnd,
     rowCount: inserted,

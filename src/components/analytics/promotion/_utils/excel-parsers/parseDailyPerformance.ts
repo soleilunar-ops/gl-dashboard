@@ -3,7 +3,7 @@
  */
 import Papa from "papaparse";
 import type { InsertTables } from "@/lib/supabase/types";
-import { isSummaryRowLabel, parseNumberKo, yyyymmddToIso } from "./parsingUtils";
+import { isSummaryRowLabel, parseNumberKo, yyyymmddToIso } from "@/lib/excel-parsers/parsingUtils";
 
 export type ParsedDailyPerformanceRow = InsertTables<"coupang_daily_performance"> & {
   is_baseline: false;

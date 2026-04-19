@@ -12,7 +12,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
-import { fetchSeasonConfig, inferSeasonForYm, pickDefaultSeason } from "@/lib/upload/seasonAssign";
+import {
+  fetchSeasonConfig,
+  inferSeasonForYm,
+  pickDefaultSeason,
+} from "@/components/analytics/promotion/_utils/upload/seasonAssign";
 
 function ymOptions(count = 24): string[] {
   const out: string[] = [];

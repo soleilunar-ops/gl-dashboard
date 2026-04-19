@@ -3,7 +3,11 @@
  */
 import * as XLSX from "xlsx";
 import type { InsertTables } from "@/lib/supabase/types";
-import { normalizeDateCell, parseNumberKo, yearMonthFromIsoDate } from "./parsingUtils";
+import {
+  normalizeDateCell,
+  parseNumberKo,
+  yearMonthFromIsoDate,
+} from "@/lib/excel-parsers/parsingUtils";
 
 export type ParsedMilkrunRow = InsertTables<"promotion_milkrun_costs"> & { is_baseline: false };
 

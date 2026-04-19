@@ -16,10 +16,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
-import { parseCouponContracts } from "@/lib/excel-parsers/parseCouponContracts";
-import { parseDailyPerformance } from "@/lib/excel-parsers/parseDailyPerformance";
-import { parseDeliveryDetail } from "@/lib/excel-parsers/parseDeliveryDetail";
-import { parseMilkrunCosts } from "@/lib/excel-parsers/parseMilkrunCosts";
+import { parseCouponContracts } from "@/components/analytics/promotion/_utils/excel-parsers/parseCouponContracts";
+import { parseDailyPerformance } from "@/components/analytics/promotion/_utils/excel-parsers/parseDailyPerformance";
+import { parseDeliveryDetail } from "@/components/analytics/promotion/_utils/excel-parsers/parseDeliveryDetail";
+import { parseMilkrunCosts } from "@/components/analytics/promotion/_utils/excel-parsers/parseMilkrunCosts";
 
 export default function UploadPanel() {
   const { rows: historyRows, loading: histLoading, refresh } = useUploadHistory(10);

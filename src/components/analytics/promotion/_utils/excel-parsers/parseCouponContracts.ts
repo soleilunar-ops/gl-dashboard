@@ -3,7 +3,7 @@
  */
 import * as XLSX from "xlsx";
 import type { InsertTables } from "@/lib/supabase/types";
-import { parseNumberKo } from "./parsingUtils";
+import { parseNumberKo } from "@/lib/excel-parsers/parsingUtils";
 
 export type ParsedCouponContractRow = InsertTables<"promotion_coupon_contracts"> & {
   is_baseline: false;
