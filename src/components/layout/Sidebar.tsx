@@ -14,6 +14,7 @@ import {
   CloudSun,
   Ship,
   Truck,
+  Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { navigation, type NavItem } from "./navigation.config";
@@ -38,6 +39,7 @@ const iconMap: Record<string, LucideIcon> = {
   CloudSun,
   Ship,
   Truck,
+  Upload,
 };
 
 export default function Sidebar() {
