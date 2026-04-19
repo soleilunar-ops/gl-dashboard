@@ -23,7 +23,9 @@ jobs:
           node-version: 20
 
       - name: Supabase CLI 설치
-        run: npm install -g supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
       - name: 타입 생성
         run: supabase gen types typescript --project-id ${{ secrets.SUPABASE_PROJECT_ID }} > supabase/types.ts
