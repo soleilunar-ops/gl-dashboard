@@ -81,33 +81,86 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _load_from_supabase_daily(
+    client, skus: Iterable[int] | None = None, page_size: int = 1000
+) -> pd.DataFrame:
+    """bi_box_daily 테이블에서 벤더아이템 단위 raw 조회 → CSV 로더와 동일 스키마로 반환.
+
+    Supabase는 이미 집계 후 PK=(date, sku_id, vendor_item_id) 단위. bi_box_share는 0~100.
+    """
+    query = client.table("bi_box_daily").select(
+        "date,sku_id,sku_name,vendor_item_id,vendor_item_name,"
+        "min_price,mid_price,max_price,bi_box_share,is_stockout"
+    )
+    if skus is not None:
+        query = query.in_("sku_id", [str(s) for s in skus])
+
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        res = query.range(offset, offset + page_size - 1).execute()
+        batch = res.data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"])
+    df["coupang_sku_id"] = pd.to_numeric(df["sku_id"], errors="coerce").astype("Int64")
+    # Supabase 저장 포맷(0~100) → CSV 로더 포맷(0~1)
+    df["bi_box_share"] = pd.to_numeric(df["bi_box_share"], errors="coerce") / 100.0
+    df["is_stockout"] = df["is_stockout"].fillna(False).astype(bool)
+    for c in ("min_price", "mid_price", "max_price"):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df
+
+
 def load_bi_box_all(
     directory: Path | str = DEFAULT_DIR,
     skus: Iterable[int] | None = None,
+    *,
+    client=None,
+    prefer_supabase: bool = True,
 ) -> pd.DataFrame:
     """
-    bi_box 디렉토리의 모든 CSV 로드 → SKU-일자 집계.
+    바이박스 daily 집계 데이터.
 
     Args:
-        directory: 바이박스 CSV 폴더
+        directory: 바이박스 CSV 폴더 (fallback)
         skus: 필터할 SKU 목록 (None이면 전체)
+        client: supabase client (prefer_supabase=True일 때 우선 사용)
+        prefer_supabase: True면 Supabase bi_box_daily 먼저, 실패·빈 응답 시 CSV
 
     Returns:
         DataFrame: date, coupang_sku_id, is_stockout, min_price, mid_price,
                    max_price, bi_box_share, source
     """
-    base = Path(directory)
-    files = sorted(base.glob("*.csv"))
-    if not files:
-        raise FileNotFoundError(f"바이박스 CSV 없음: {base.resolve()}")
+    df: pd.DataFrame | None = None
 
-    frames = [_normalize(_read_bi_box_csv(f)) for f in files]
-    df = pd.concat(frames, ignore_index=True)
+    if prefer_supabase and client is not None:
+        try:
+            df = _load_from_supabase_daily(client, skus)
+            if df.empty:
+                df = None
+        except Exception as ex:
+            print(f"  bi_box_daily 조회 실패({ex}), CSV fallback")
+            df = None
 
-    if skus is not None:
-        df = df[df["coupang_sku_id"].isin(list(skus))].copy()
+    if df is None:
+        base = Path(directory)
+        files = sorted(base.glob("*.csv"))
+        if not files:
+            raise FileNotFoundError(f"바이박스 CSV 없음: {base.resolve()}")
+        frames = [_normalize(_read_bi_box_csv(f)) for f in files]
+        df = pd.concat(frames, ignore_index=True)
+        if skus is not None:
+            df = df[df["coupang_sku_id"].isin(list(skus))].copy()
 
-    # SKU × 일자 단위 집계 (벤더아이템 여러 개)
+    # SKU × 일자 단위 집계 (벤더아이템 여러 개 → 하나로 합산)
     agg = df.groupby(["date", "coupang_sku_id"], as_index=False).agg(
         is_stockout=("is_stockout", "any"),
         min_price=("min_price", "min"),
@@ -115,15 +168,43 @@ def load_bi_box_all(
         max_price=("max_price", "max"),
         bi_box_share=("bi_box_share", "max"),
     )
-    agg["source"] = "bi_box_csv"
+    agg["source"] = "bi_box_daily" if (prefer_supabase and client is not None) else "bi_box_csv"
     return agg.sort_values(["date", "coupang_sku_id"]).reset_index(drop=True)
 
 
 def build_sku_name_map(
     directory: Path | str = DEFAULT_DIR,
     skus: Iterable[int] | None = None,
+    *,
+    client=None,
+    prefer_supabase: bool = True,
 ) -> dict[int, str]:
-    """SKU ID → 제품명 매핑 딕셔너리. 바이박스 CSV 기준."""
+    """SKU ID → 제품명 매핑. Supabase bi_box_daily 우선, CSV fallback."""
+
+    if prefer_supabase and client is not None:
+        try:
+            query = client.table("bi_box_daily").select("sku_id, sku_name")
+            if skus is not None:
+                query = query.in_("sku_id", [str(s) for s in skus])
+            rows: list[dict] = []
+            offset = 0
+            while True:
+                res = query.range(offset, offset + 999).execute()
+                batch = res.data or []
+                rows.extend(batch)
+                if len(batch) < 1000:
+                    break
+                offset += 1000
+            if rows:
+                df = pd.DataFrame(rows).drop_duplicates("sku_id")
+                return {
+                    int(r["sku_id"]): str(r["sku_name"])
+                    for _, r in df.iterrows()
+                    if r.get("sku_name")
+                }
+        except Exception:
+            pass
+
     base = Path(directory)
     files = sorted(base.glob("*.csv"))
     if not files:
@@ -131,10 +212,8 @@ def build_sku_name_map(
 
     frames = [_normalize(_read_bi_box_csv(f)) for f in files]
     df = pd.concat(frames, ignore_index=True)
-
     if skus is not None:
         df = df[df["coupang_sku_id"].isin(list(skus))]
-
     names = df.drop_duplicates("coupang_sku_id").set_index("coupang_sku_id")["sku_name"]
     return {int(k): str(v) for k, v in names.items()}
 

@@ -1,12 +1,13 @@
 """
 주단위 피처 테이블 빌더.
 
-입력:
-- Supabase coupang_performance (일자 × SKU 단위 판매 지표)
-- Supabase weather_data (일자 × 지역 단위 날씨 지표)
+입력 (v6 스키마, 2026-04-19 PM 전환 반영):
+- Supabase daily_performance (일자 × SKU 단위 판매 지표) — 이전 coupang_performance
+- Supabase weather_unified (일자 × 관측소 단위 날씨 지표) — 이전 weather_data
+- Supabase inventory_operation (일자 × SKU 재고/품절) — 이전 coupang_logistics
 
 출력:
-- weekly_df: week_start × coupang_sku_id 단위 학습용 테이블
+- weekly_df: week_start × sku 단위 학습용 테이블
     sku, week_start, weekly_sales_qty, weekly_gmv, weekly_promo_units,
     avg_asp, avg_conversion_rate, weekly_page_views, promotion_flag,
     temp_mean, temp_min, temp_max, rain_mm, snow_cm, cold_days
@@ -33,7 +34,7 @@ WARMER_SKUS: tuple[int, ...] = (
 class WeeklyFeatureConfig:
     """주단위 피처 빌드 설정."""
 
-    category_l3: str = "보온소품"
+    category_l3: str = "보온소품"  # v6에서는 WARMER_SKUS 리스트로 암묵 적용
     skus: tuple[int, ...] = WARMER_SKUS
     # 날씨 집계 기준: national_avg(5지점 평균) 또는 seoul(서울만)
     weather_mode: str = "national_avg"
@@ -41,12 +42,16 @@ class WeeklyFeatureConfig:
     include_forecast_weather: bool = False
     # 페이지 단위 조회 크기 (Supabase 기본 1000)
     page_size: int = 1000
-    # Supabase 'source' 필드로 ASOS/예보 구분
+    # Supabase weather_unified.source 필드 — v6: 'asos'/'era5'/'forecast'
     asos_source: str = "asos"
-    forecast_source: str = "ecmwf_open_meteo"
+    forecast_source: str = "forecast"
+    # weather_unified.station 서울 값 (v6: 한글)
+    seoul_station: str = "서울"
+    # 한파 임계 (일최저기온 °C) — v6 weather_unified엔 cold_wave_alert 컬럼 없음. 대체 조건식
+    cold_wave_threshold_c: float = -12.0
     # 품절 마스킹 — 기본 off. 데이터 커버리지 확인 후 켜기
     apply_stockout_mask: bool = False
-    # 품절 소스: "logistics" (coupang_logistics.is_stockout), "bi_box" (바이박스 CSV), "both" (둘 다)
+    # 품절 소스: "logistics" (inventory_operation.is_stockout), "bi_box" (바이박스 CSV), "both" (둘 다)
     stockout_source: str = "bi_box"
     # bi_box 디렉토리 경로
     bi_box_dir: str = "data/raw/coupang/bi_box"
@@ -61,19 +66,29 @@ def _fetch_coupang_performance(
     client,
     cfg: WeeklyFeatureConfig,
 ) -> pd.DataFrame:
-    """coupang_performance 전체 조회 (페이지네이션). 보온소품 + 34 SKU만."""
+    """
+    daily_performance 조회 (페이지네이션). 34 SKU만.
+
+    v6 매핑:
+    - date → sale_date
+    - coupang_sku_id → sku_id (TEXT)
+    - promo_units → promo_units_sold
+    - category_l3 필터 제거 (WARMER_SKUS 리스트 자체가 보온소품 암묵 필터)
+    """
+    # v6 daily_performance.sku_id가 TEXT이므로 문자열 변환
+    sku_ids = [str(s) for s in cfg.skus]
+
     rows: list[dict] = []
     offset = 0
     while True:
         query = (
-            client.table("coupang_performance")
+            client.table("daily_performance")
             .select(
-                "date,coupang_sku_id,units_sold,gmv,promo_units,asp,"
+                "sale_date,sku_id,units_sold,gmv,promo_units_sold,asp,"
                 "conversion_rate,page_views,return_units"
             )
-            .eq("category_l3", cfg.category_l3)
-            .in_("coupang_sku_id", list(cfg.skus))
-            .order("date")
+            .in_("sku_id", sku_ids)
+            .order("sale_date")
             .range(offset, offset + cfg.page_size - 1)
         )
         res = query.execute()
@@ -85,6 +100,15 @@ def _fetch_coupang_performance(
     df = pd.DataFrame(rows)
     if df.empty:
         return df
+
+    # 다운스트림 이전 컬럼명(date/coupang_sku_id/promo_units)에 맞춰 rename
+    df = df.rename(
+        columns={
+            "sale_date": "date",
+            "sku_id": "coupang_sku_id",
+            "promo_units_sold": "promo_units",
+        }
+    )
     df["date"] = pd.to_datetime(df["date"])
     return df
 
@@ -119,7 +143,16 @@ def _aggregate_weekly_sales(df: pd.DataFrame, sku_col: str = "coupang_sku_id") -
 # 날씨 집계
 # ────────────────────────────────────────────
 def _fetch_weather(client, cfg: WeeklyFeatureConfig) -> pd.DataFrame:
-    """weather_data 전체 조회 (page size 1000 기준 페이지네이션)."""
+    """
+    weather_unified 전체 조회 (page size 1000 기준 페이지네이션).
+
+    v6 매핑:
+    - date → weather_date
+    - region → station (값: '서울'/'수원'/'대전'/'광주'/'부산' 한글)
+    - snow_depth (적설) → snowfall (강설) ⚠ 의미 다름, Model A 재검증 권장
+    - cold_wave_alert (boolean) → 부재. temp_min <= cold_wave_threshold_c 조건식으로 파생
+    - source: 'asos'/'era5'/'forecast'
+    """
     sources = [cfg.asos_source]
     if cfg.include_forecast_weather:
         sources.append(cfg.forecast_source)
@@ -128,10 +161,13 @@ def _fetch_weather(client, cfg: WeeklyFeatureConfig) -> pd.DataFrame:
     offset = 0
     while True:
         query = (
-            client.table("weather_data")
-            .select("date,region,temp_min,temp_max,temp_avg,precipitation,snow_depth,cold_wave_alert,source")
+            client.table("weather_unified")
+            .select(
+                "weather_date,station,temp_min,temp_max,temp_avg,"
+                "precipitation,snowfall,source"
+            )
             .in_("source", sources)
-            .order("date")
+            .order("weather_date")
             .range(offset, offset + cfg.page_size - 1)
         )
         res = query.execute()
@@ -144,9 +180,20 @@ def _fetch_weather(client, cfg: WeeklyFeatureConfig) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     if df.empty:
         return df
+
+    # 다운스트림 이전 컬럼명(date/region/snow_depth/cold_wave_alert)에 맞춰 rename + 파생
+    df = df.rename(
+        columns={
+            "weather_date": "date",
+            "station": "region",
+            "snowfall": "snow_depth",  # ⚠ 의미 차이: snow_depth(적설) vs snowfall(강설)
+        }
+    )
     df["date"] = pd.to_datetime(df["date"])
+    # cold_wave_alert 파생 (일최저기온 임계 이하면 True)
+    df["cold_wave_alert"] = df["temp_min"].astype(float) <= cfg.cold_wave_threshold_c
     if cfg.weather_mode == "seoul":
-        df = df[df["region"] == "seoul"].copy()
+        df = df[df["region"] == cfg.seoul_station].copy()
     return df
 
 
@@ -184,16 +231,26 @@ def _aggregate_weekly_weather(df: pd.DataFrame) -> pd.DataFrame:
 # 품절 마스킹 (placeholder — 데이터 커버리지 확장 후 활성화)
 # ────────────────────────────────────────────
 def _fetch_stockout_days(client, cfg: WeeklyFeatureConfig) -> pd.DataFrame:
-    """coupang_logistics.is_stockout=True 인 (date, coupang_sku_id) 목록 조회."""
+    """
+    inventory_operation.is_stockout=True 인 (op_date, sku_id) 목록 조회.
+
+    v6 매핑:
+    - date → op_date
+    - coupang_sku_id → sku_id (TEXT)
+    - is_stockout → is_stockout (동일)
+    """
+    # v6 inventory_operation.sku_id TEXT
+    sku_ids = [str(s) for s in cfg.skus]
+
     rows: list[dict] = []
     offset = 0
     while True:
         query = (
-            client.table("coupang_logistics")
-            .select("date,coupang_sku_id,is_stockout")
+            client.table("inventory_operation")
+            .select("op_date,sku_id,is_stockout")
             .eq("is_stockout", True)
-            .in_("coupang_sku_id", list(cfg.skus))
-            .order("date")
+            .in_("sku_id", sku_ids)
+            .order("op_date")
             .range(offset, offset + cfg.page_size - 1)
         )
         res = query.execute()
@@ -205,6 +262,8 @@ def _fetch_stockout_days(client, cfg: WeeklyFeatureConfig) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     if df.empty:
         return df
+
+    df = df.rename(columns={"op_date": "date", "sku_id": "coupang_sku_id"})
     df["date"] = pd.to_datetime(df["date"])
     return df
 

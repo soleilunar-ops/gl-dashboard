@@ -18,9 +18,10 @@ export function inferWeightGramFromProductName(productName: string): number | nu
 const DEFAULT_WEIGHT_G = 10;
 
 export interface ProductMarginPreset {
+  /** 대표 erp_code (gl_pharm 우선) — 표시용. 선택 PK는 itemId 참조 */
   erpCode: string;
-  /** item_master.item_id */
-  itemId: number | null;
+  /** item_master.item_id — 이 preset의 PK */
+  itemId: number;
   productName: string;
   displayLabel: string;
   pcsPerPallet: number;
@@ -49,17 +50,29 @@ type ItemFullRow = Pick<
 
 type ItemMasterRow = Pick<Tables<"item_master">, "item_id" | "base_cost">;
 
-/** ERP 선택 시 DB 기반 프리셋 조회 (환율 변경과 무관) */
-export function useProductMarginPreset(erpCode: string | null | undefined) {
+function pickPrimaryErpCode(item: ItemFullRow): string {
+  const candidates = [item.gl_pharm_erp_code, item.hnb_erp_code, item.gl_erp_code];
+  for (const c of candidates) {
+    if (c && c.trim()) return c.trim();
+  }
+  return "";
+}
+
+/**
+ * 선택된 item_id 기준으로 DB 프리셋 조회 (환율 변경과 무관).
+ *
+ * 이전 버전은 erpCode 기반이었으나 `item_erp_mapping`에서 같은 erp_code가
+ * 여러 item_id에 매핑되는 케이스(19건)가 있어 정확한 preset 로드 불가능.
+ * v6 item_master PK인 item_id로 시그니처 전환하여 1:1 매칭 보장.
+ */
+export function useProductMarginPreset(itemId: number | null | undefined) {
   const [preset, setPreset] = useState<ProductMarginPreset | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
 
-  const normalizedErp = erpCode?.trim() ?? "";
-
   const fetchPreset = useCallback(async () => {
-    if (!normalizedErp) {
+    if (itemId === null || itemId === undefined || !Number.isFinite(itemId) || itemId <= 0) {
       setPreset(null);
       setError(null);
       setLoading(false);
@@ -68,16 +81,13 @@ export function useProductMarginPreset(erpCode: string | null | undefined) {
     setLoading(true);
     setError(null);
 
-    // 1. v_item_full에서 해당 erp_code를 가진 품목 찾기 (3개 ERP 컬럼 중 어디든)
+    // 1. v_item_full에서 item_id로 단일 행 조회
     const { data: itemRaw, error: iErr } = await supabase
       .from("v_item_full")
       .select(
         "item_id, item_name_norm, item_name_raw, channel_variant, gl_erp_code, gl_pharm_erp_code, hnb_erp_code, coupang_mappings"
       )
-      .or(
-        `gl_erp_code.eq.${normalizedErp},gl_pharm_erp_code.eq.${normalizedErp},hnb_erp_code.eq.${normalizedErp}`
-      )
-      .limit(1)
+      .eq("item_id", itemId)
       .maybeSingle();
 
     if (iErr) {
@@ -89,12 +99,12 @@ export function useProductMarginPreset(erpCode: string | null | undefined) {
     const item = itemRaw as ItemFullRow | null;
     if (!item || item.item_id === null || item.item_id === undefined) {
       setPreset(null);
-      setError("해당 ERP 품목을 찾을 수 없습니다.");
+      setError("해당 item_id의 품목을 찾을 수 없습니다.");
       setLoading(false);
       return;
     }
 
-    // 2. item_master.base_cost 조회 (v_item_full에는 base_cost가 없음)
+    // 2. item_master.base_cost 조회 (v_item_full엔 base_cost 없음)
     const { data: masterRaw, error: mErr } = await supabase
       .from("item_master")
       .select("item_id, base_cost")
@@ -113,17 +123,19 @@ export function useProductMarginPreset(erpCode: string | null | undefined) {
     const usedWeightFallback = inferred === null;
     const weightGram = inferred ?? DEFAULT_WEIGHT_G;
 
-    // v6 item_master에 pcs_per_pallet 없음 → 항상 DEFAULT + fallback
+    // v6 item_master에 pcs_per_pallet 없음 → DEFAULT + fallback
     const pcsPerPallet = DEFAULT_PCS_PER_PALLET;
     const usedPalletFallback = true;
 
+    const representativeErp = pickPrimaryErpCode(item);
     const variant =
       item.channel_variant && item.channel_variant.trim()
         ? ` [${item.channel_variant.trim()}]`
         : "";
-    const displayLabel = `${itemName}${variant} · ${normalizedErp}`;
+    const erpLabel = representativeErp || "—";
+    const displayLabel = `${itemName}${variant} · ${erpLabel}`;
 
-    // 3. 매핑된 SKU의 최근 ASP
+    // 3. 매핑된 쿠팡 SKU의 최근 ASP
     let recentAsp: number | null = null;
     const mappingsRaw = item.coupang_mappings;
     const mappedSkus: string[] = Array.isArray(mappingsRaw)
@@ -171,7 +183,7 @@ export function useProductMarginPreset(erpCode: string | null | undefined) {
     const unitCostKrw = Number.isFinite(krw) && krw > 0 ? krw : null;
 
     setPreset({
-      erpCode: normalizedErp,
+      erpCode: representativeErp,
       itemId: item.item_id,
       productName: itemName,
       displayLabel,
@@ -184,7 +196,7 @@ export function useProductMarginPreset(erpCode: string | null | undefined) {
       unitCostKrw,
     });
     setLoading(false);
-  }, [normalizedErp, supabase]);
+  }, [itemId, supabase]);
 
   useEffect(() => {
     void fetchPreset();

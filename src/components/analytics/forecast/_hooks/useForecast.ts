@@ -1,74 +1,74 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/lib/supabase/types";
+import { FASTAPI_URL } from "@/lib/constants";
 
-type CoupangPerformance = Database["public"]["Tables"]["coupang_performance"]["Row"];
-type Forecast = Database["public"]["Tables"]["forecasts"]["Row"];
+// FastAPI /forecast/daily-sales 응답
+export type DailySales = {
+  sale_date: string;
+  units_sold: number;
+  gmv: number;
+};
+
+// FastAPI /forecast/weekly-prediction 응답 (34 SKU 합산 스케일)
+export type WeeklyPrediction = {
+  week_start: string;
+  predicted_qty: number;
+  source: string; // "winter_validation" | "model_b_future"
+};
 
 type UseForecastOptions = {
-  // 핫팩(보온소품) SKU만 필터링할지 여부
-  warmersOnly?: boolean;
-  // 조회 행 제한
   limit?: number;
 };
 
+/**
+ * 34개 핫팩 SKU 일별 판매(daily_performance) + 주차별 예측(Model A) 로드.
+ *
+ * 데이터 소스:
+ * - 실판매: FastAPI /forecast/daily-sales → daily_performance 집계 (Supabase)
+ * - 예측: FastAPI /forecast/weekly-prediction → data/processed/forecast_latest.csv
+ */
 export function useForecast(options: UseForecastOptions = {}) {
-  const { warmersOnly = true, limit = 100 } = options;
+  const { limit = 400 } = options;
 
-  const [performance, setPerformance] = useState<CoupangPerformance[]>([]);
-  const [forecasts, setForecasts] = useState<Forecast[]>([]);
+  const [dailySales, setDailySales] = useState<DailySales[]>([]);
+  const [predictions, setPredictions] = useState<WeeklyPrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-
-    const fetchData = async () => {
+    const fetchAll = async () => {
       setLoading(true);
       setError(null);
 
-      // 쿠팡 성과 데이터 조회 — 컬럼명은 date (sale_date 아님)
-      let perfQuery = supabase
-        .from("coupang_performance")
-        .select("*")
-        .order("date", { ascending: false })
-        .limit(limit);
+      try {
+        const [salesRes, predRes] = await Promise.all([
+          fetch(`${FASTAPI_URL}/forecast/daily-sales?limit=${limit}`),
+          fetch(`${FASTAPI_URL}/forecast/weekly-prediction`),
+        ]);
 
-      if (warmersOnly) {
-        // 핫팩 관련 카테고리만 (category_l3 기준 보온소품)
-        perfQuery = perfQuery.eq("category_l3", "보온소품");
-      }
+        if (!salesRes.ok) {
+          throw new Error(`판매 데이터 조회 실패 (${salesRes.status})`);
+        }
+        if (!predRes.ok) {
+          throw new Error(`예측 데이터 조회 실패 (${predRes.status})`);
+        }
 
-      const { data: perfData, error: perfError } = await perfQuery;
+        const sales: DailySales[] = await salesRes.json();
+        const preds: WeeklyPrediction[] = await predRes.json();
 
-      if (perfError) {
-        setError(`성과 데이터 조회 실패: ${perfError.message}`);
+        setDailySales(sales);
+        setPredictions(preds);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "알 수 없는 오류";
+        setError(`${msg}. FastAPI 서버(localhost:8000)가 기동 중인지 확인하세요.`);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      // 수요예측 결과 조회
-      const { data: forecastData, error: forecastError } = await supabase
-        .from("forecasts")
-        .select("*")
-        .order("forecast_date", { ascending: false })
-        .limit(limit);
-
-      if (forecastError) {
-        setError(`예측 데이터 조회 실패: ${forecastError.message}`);
-        setLoading(false);
-        return;
-      }
-
-      setPerformance(perfData ?? []);
-      setForecasts(forecastData ?? []);
-      setLoading(false);
     };
 
-    fetchData();
-  }, [warmersOnly, limit]);
+    fetchAll();
+  }, [limit]);
 
-  return { performance, forecasts, loading, error };
+  return { dailySales, predictions, loading, error };
 }

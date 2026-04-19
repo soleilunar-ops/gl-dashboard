@@ -93,7 +93,7 @@ export default function MarginCalculator({
   const { exCurrent, setExCurrent, rateStatus, isRateLoading, fetchExchangeRate } =
     useExchangeRate(194.8);
 
-  const [selectedErpCode, setSelectedErpCode] = useState("");
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [exPi, setExPi] = useState(193.5);
   const [shipmentQty, setShipmentQty] = useState(292800);
   const [totalQty, setTotalQty] = useState(585600);
@@ -111,12 +111,24 @@ export default function MarginCalculator({
 
   const { options: productOptions, loading: productOptionsLoading } = useMarginProductOptions();
 
-  const effectiveErp = selectedErpCode.trim() || selectedOrder?.erpCode?.trim() || null;
+  /**
+   * orders→cost 연동 처리 (OrdersMarginContext의 selectedOrder.erpCode).
+   * 같은 erpCode가 여러 item_id에 매핑될 수 있어 productOptions에서 첫 매칭 item 사용.
+   * 정확성이 중요하면 2단에서 erp_system까지 함께 전달하는 설계로 확장.
+   */
+  const selectedOrderErp = selectedOrder?.erpCode?.trim() ?? "";
+  const orderLinkedItemId = useMemo(() => {
+    if (!selectedOrderErp) return null;
+    const hit = productOptions.find((o) => o.erpCode === selectedOrderErp);
+    return hit?.itemId ?? null;
+  }, [productOptions, selectedOrderErp]);
+
+  const effectiveItemId = selectedItemId ?? orderLinkedItemId;
   const {
     preset,
     loading: presetLoading,
     error: presetError,
-  } = useProductMarginPreset(effectiveErp);
+  } = useProductMarginPreset(effectiveItemId);
 
   useEffect(() => {
     if (!selectedOrder) return;
@@ -126,27 +138,28 @@ export default function MarginCalculator({
     if (selectedOrder.exPI !== null) {
       setExPi(selectedOrder.exPI);
     }
-    const linkedErp = selectedOrder.erpCode?.trim();
-    if (linkedErp) {
-      setSelectedErpCode(linkedErp);
+    // 주문 연동 erpCode가 있으면 productOptions에서 매칭되는 itemId를 selectedItemId에 주입
+    // (직접 드롭다운 선택을 아직 안 한 상태에서만 동작)
+    if (orderLinkedItemId !== null && selectedItemId === null) {
+      setSelectedItemId(orderLinkedItemId);
     }
-  }, [selectedOrder]);
+  }, [selectedOrder, orderLinkedItemId, selectedItemId]);
 
-  /** ERP/프리셋 로드 시 적재·중량·ASP 자동 주입 */
+  /** 프리셋 로드 시 적재·중량·ASP 자동 주입 */
   useEffect(() => {
-    if (!preset || !effectiveErp || preset.erpCode !== effectiveErp) return;
+    if (!preset || preset.itemId !== effectiveItemId) return;
     setPcsPerPallet(preset.pcsPerPallet);
     setWeightGram(preset.weightGram);
     if (preset.recentAsp !== null) {
       setCurrentVatPrice(preset.recentAsp);
     }
-  }, [preset, effectiveErp]);
+  }, [preset, effectiveItemId]);
 
-  /** 매입 CNY 또는 원화원가÷환율 역산 — 연동 주문과 ERP가 같으면 주문 단가만 유지 */
+  /** 매입 CNY 또는 원화원가÷환율 역산 — 연동 주문과 item이 같으면 주문 단가만 유지 */
   useEffect(() => {
-    if (!preset || !effectiveErp || preset.erpCode !== effectiveErp) return;
-    const orderErp = selectedOrder?.erpCode?.trim() ?? "";
-    if (orderErp !== "" && orderErp === effectiveErp) return;
+    if (!preset || preset.itemId !== effectiveItemId) return;
+    // 주문 연동 item과 현재 effective item이 동일하면 주문 CNY 단가 유지 (덮어쓰기 방지)
+    if (orderLinkedItemId !== null && orderLinkedItemId === effectiveItemId) return;
     if (preset.purchaseCnyPerUnit !== null) {
       setUnitCostCny(preset.purchaseCnyPerUnit);
       return;
@@ -155,11 +168,12 @@ export default function MarginCalculator({
     if (derived !== null) {
       setUnitCostCny(derived);
     }
-    // 의도: SKU·프리셋이 바뀔 때만 단가 자동 주입(실시간 환율 변동으로 입력칸 덮어쓰기 방지)
+    // 의도: item·프리셋이 바뀔 때만 단가 자동 주입(실시간 환율 변동으로 입력칸 덮어쓰기 방지)
     // exCurrent는 의도적으로 deps에서 제외 — 프리셋 갱신 시점의 스냅샷만 사용
-  }, [preset, effectiveErp, selectedOrder?.erpCode]);
+  }, [preset, effectiveItemId, orderLinkedItemId]);
 
-  const usedPalletFallback = preset?.erpCode === effectiveErp && preset.usedPalletFallback === true;
+  const usedPalletFallback =
+    preset?.itemId === effectiveItemId && preset.usedPalletFallback === true;
 
   const marginInputBase = useMemo(
     () => ({
@@ -283,12 +297,12 @@ export default function MarginCalculator({
   const channelLabel = CHANNEL_RATES[channel].name;
 
   const displayProductName = useMemo(() => {
-    if (preset && preset.erpCode === effectiveErp) return preset.productName;
-    if (presetLoading && effectiveErp) return "불러오는 중…";
-    if (effectiveErp && presetError) return `ERP ${effectiveErp}`;
-    if (effectiveErp) return `ERP ${effectiveErp}`;
+    if (preset && preset.itemId === effectiveItemId) return preset.productName;
+    if (presetLoading && effectiveItemId !== null) return "불러오는 중…";
+    if (effectiveItemId !== null && presetError) return `Item #${effectiveItemId}`;
+    if (effectiveItemId !== null) return `Item #${effectiveItemId}`;
     return "상품 미선택";
-  }, [preset, effectiveErp, presetLoading, presetError]);
+  }, [preset, effectiveItemId, presetLoading, presetError]);
 
   const recommendedPriceVat = Math.round(marginSnapshot.suggestedPriceVAT);
   const stableProfitPerUnit = Math.round(marginSnapshot.profitPerUnit);
@@ -326,7 +340,7 @@ export default function MarginCalculator({
             </div>
           ) : null}
 
-          {presetError && effectiveErp ? (
+          {presetError && effectiveItemId !== null ? (
             <p className="text-destructive text-sm">{presetError}</p>
           ) : null}
 
@@ -342,8 +356,8 @@ export default function MarginCalculator({
                   ERP 품목
                 </span>
                 <Select
-                  value={selectedErpCode || undefined}
-                  onValueChange={setSelectedErpCode}
+                  value={selectedItemId !== null ? String(selectedItemId) : undefined}
+                  onValueChange={(v) => setSelectedItemId(v ? Number(v) : null)}
                   disabled={productOptionsLoading}
                 >
                   <SelectTrigger className="w-full">
@@ -357,14 +371,16 @@ export default function MarginCalculator({
                   </SelectTrigger>
                   <SelectContent className="max-h-72">
                     {productOptions.map((opt) => (
-                      <SelectItem key={opt.erpCode} value={opt.erpCode}>
+                      // itemId를 React key·value로 사용 (unique PK).
+                      // erpCode는 다른 item_id와 중복 가능 (gl_pharm_erp_code/hnb_erp_code 교차).
+                      <SelectItem key={opt.itemId} value={String(opt.itemId)}>
                         {opt.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </label>
-              {preset && preset.erpCode === effectiveErp ? (
+              {preset && preset.itemId === effectiveItemId ? (
                 <div className="text-muted-foreground mt-2 grid gap-1 text-xs sm:grid-cols-2 lg:grid-cols-4">
                   <span>파렛트 적재: {preset.pcsPerPallet.toLocaleString("ko-KR")}개</span>
                   <span>
