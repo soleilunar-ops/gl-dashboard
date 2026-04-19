@@ -696,3 +696,42 @@ src/components/logistics/
   - ecount debug 필드 경로별 상이 (§3.2)
 
 **→ 진행 가능.**
+
+---
+
+## 9. 실행 결과 (2026-04-19)
+
+### 9.1 완료: 5/7 (refactor 브랜치, origin/refactor 푸시 완료)
+
+| 순  | 파일                              | 커밋       | 원본 → 축약 |
+| --- | --------------------------------- | ---------- | ----------- |
+| 1   | `MarginCalculator.tsx`            | `3834a348` | 987 → 350   |
+| 2   | `api/crawl/ecount/route.ts`       | `2537cb9f` | 667 → 102   |
+| 5   | `CoupangSkuAnalysisDialog.tsx`    | `d33b894a` | 549 → 270   |
+| 6   | `_hooks/useMilkrunAllocations.ts` | `dd1d7c71` | 456 → 50    |
+| 7   | `LeadTimeTracker.tsx`             | `c762add2` | 800 → 465   |
+
+검증: 각 파일 `npx tsc --noEmit` + `npm run build` 통과. `/logistics` 전 탭 (쿠팡 FC SKU 다이얼로그·밀크런·리드타임) + `/analytics/cost` 수동 회귀 2026-04-19 통과.
+
+### 9.2 미결: 2건 — 정민 영역, 함부로 재개 금지
+
+#### §3.3 `ForecastDashboard.tsx` — 보류
+
+- **사유**: 정민 영역. 해당 브랜치 작업과의 충돌 회피 + 실측 없이 머지 시 정민 본인 테스트 플로우 훼손 우려
+- **기술 리스크**: 낮음 (tsc/build로 대부분 검증 가능)
+- **재개 조건**: 정민 본인이 진행하거나, 정민 브랜치 submain 병합 후 정민 입회 하에서만
+
+#### §3.4 `dataPreprocess.ts` — 보류
+
+- **사유**: xlsx asset URL 런타임 깨짐 리스크. tsc/build로는 검증 불가 (계획서 §3.4 DO-6 명시)
+- **기술 리스크**: **높음** — 6개 프로모션 컴포넌트 전부 빈 화면 가능. `npm run dev`에서 실제 xlsx 로드 육안 확인 필수
+- **재개 조건**:
+  1. 정민 본인이 진행 OR PM이 정민 입회 하에 `/analytics/promotion` 6탭 라이브 검증
+  2. `import.meta.url` 경로 해석이 Next.js 16 turbopack + 브릿지 경로 주입 조합에서 동작하는지 실측 확인 후에만
+
+#### ⚠️ 재개 시 반드시 지킬 것
+
+1. 재개 직전 submain에서 fresh rebase — 정민 최신 작업 반영 확인
+2. §3.4는 반드시 `npm run dev` 열고 `/analytics/promotion` 6탭 (SeasonCompare, PromotionSalesOverlay, ROICalculator, BudgetPlanner, TimingOptimizer, SeasonAlertMonitor) 데이터 렌더 육안 확인 + 네트워크 탭 xlsx 200 응답 확인
+3. `npm run build` 통과만으로 **절대** 커밋 금지 — §3.4는 빌드 성공하고도 런타임에서 6개 컴포넌트 빈 화면으로 깨질 수 있음
+4. 실패 시 즉시 `git revert` — hotfix 시도 금지, 원인 파악 후 새 커밋
