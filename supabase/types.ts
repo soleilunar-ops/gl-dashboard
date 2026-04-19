@@ -1749,7 +1749,10 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      gl_warehouse_daily_series: {
+        Args: { p_from: string; p_to: string }
+        Returns: { d: string; inbound_qty: number; outbound_qty: number }[]
+      }
     }
     Enums: {
       [_ in never]: never

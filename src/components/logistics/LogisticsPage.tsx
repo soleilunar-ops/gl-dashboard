@@ -2,46 +2,38 @@
 
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import InventoryDashboard from "./InventoryDashboard";
-import LogisticsSettings from "./LogisticsSettings";
-import StockMovementsTab from "./StockMovementsTab";
-import type { InventoryItem } from "./_hooks/useInventory";
+import CoupangFcInventoryTab from "./CoupangFcInventoryTab";
+import LogisticsGlTab from "./LogisticsGlTab";
+import LogisticsUnifiedTab from "./LogisticsUnifiedTab";
 
 export default function LogisticsPage() {
-  const [activeTab, setActiveTab] = useState("inventory");
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-
-  const handleItemClick = (item: InventoryItem) => {
-    setSelectedItem(item);
-    setActiveTab("movements");
-  };
+  const [activeTab, setActiveTab] = useState("unified");
 
   return (
     <div className="p-6">
-      <h1 className="mb-1 text-xl font-medium">창고 재고</h1>
-      <p className="text-muted-foreground mb-6 text-sm">Supabase 기준 실시간 재고·입출고</p>
+      <div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+        <div>
+          <h1 className="text-xl font-medium">물류 현황</h1>
+        </div>
+      </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
         <TabsList>
-          <TabsTrigger value="inventory">총재고현황</TabsTrigger>
-          <TabsTrigger value="movements">입출고내역</TabsTrigger>
-          <TabsTrigger value="settings">설정</TabsTrigger>
+          <TabsTrigger value="unified">통합 현황</TabsTrigger>
+          <TabsTrigger value="gl">GL창고</TabsTrigger>
+          <TabsTrigger value="coupang">쿠팡센터</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="inventory" className="mt-4">
-          <InventoryDashboard onItemClick={handleItemClick} />
+        <TabsContent value="unified" className="mt-4">
+          <LogisticsUnifiedTab />
         </TabsContent>
 
-        <TabsContent value="movements" className="mt-4">
-          <StockMovementsTab
-            selectedItem={selectedItem}
-            onSelectItem={setSelectedItem}
-            onClearItem={() => setSelectedItem(null)}
-          />
+        <TabsContent value="gl" className="mt-4">
+          <LogisticsGlTab />
         </TabsContent>
 
-        <TabsContent value="settings" className="mt-4">
-          <LogisticsSettings />
+        <TabsContent value="coupang" className="mt-4">
+          <CoupangFcInventoryTab />
         </TabsContent>
       </Tabs>
     </div>

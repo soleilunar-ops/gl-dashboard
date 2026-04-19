@@ -51,17 +51,16 @@ export function InventoryTable({
               <TableHead>순번</TableHead>
               <TableHead>품목코드</TableHead>
               <TableHead>품목명</TableHead>
+              <TableHead>제조년도</TableHead>
               <TableHead>유형</TableHead>
               <TableHead>재고량</TableHead>
               <TableHead>재고금액</TableHead>
-              <TableHead>입고예정(7일)</TableHead>
-              <TableHead>출고예정(7일)</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {Array.from({ length: 5 }).map((_, i) => (
               <TableRow key={i}>
-                {Array.from({ length: 8 }).map((__, j) => (
+                {Array.from({ length: 7 }).map((__, j) => (
                   <TableCell key={j}>
                     <Skeleton className="h-5 w-full" />
                   </TableCell>
@@ -82,17 +81,16 @@ export function InventoryTable({
             <TableHead>순번</TableHead>
             <TableHead>품목코드</TableHead>
             <TableHead>품목명</TableHead>
+            <TableHead>제조년도</TableHead>
             <TableHead>유형</TableHead>
             <TableHead>재고량</TableHead>
             <TableHead>재고금액</TableHead>
-            <TableHead>입고예정(7일)</TableHead>
-            <TableHead>출고예정(7일)</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={8} className="text-muted-foreground h-24 text-center">
+              <TableCell colSpan={7} className="text-muted-foreground h-24 text-center">
                 표시할 품목이 없습니다.
               </TableCell>
             </TableRow>
@@ -119,6 +117,9 @@ export function InventoryTable({
                     {row.erp_code ?? "—"}
                   </TableCell>
                   <TableCell className="font-medium">{row.item_name}</TableCell>
+                  <TableCell className="text-muted-foreground tabular-nums">
+                    {row.manufacture_year ?? "—"}
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline" className={badgeClass}>
                       {type}
@@ -126,8 +127,6 @@ export function InventoryTable({
                   </TableCell>
                   <TableCell>{row.current_qty.toLocaleString()}</TableCell>
                   <TableCell>{wonFormatter.format(row.stock_amount)}</TableCell>
-                  <TableCell>{row.in_7days.toLocaleString()}</TableCell>
-                  <TableCell>{row.out_7days.toLocaleString()}</TableCell>
                 </TableRow>
               );
             })
