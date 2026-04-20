@@ -178,7 +178,8 @@ export async function POST(request: Request) {
   const toInsert = normalized.filter((r) => !existing.has(r.erpRef));
   const skipped = normalized.length - toInsert.length;
 
-  // 6. item_id 매핑 — item_erp_mapping.erp_code → item_id (verified만)
+  // 6. item_id 매핑 — item_erp_mapping.erp_code → item_id
+  // (v6 스키마에서 mapping_status 컬럼 제거됨 — 모든 매핑을 신뢰 가능한 것으로 간주)
   const codes = [...new Set(toInsert.map((r) => r.erpCode))];
   const itemByCode = new Map<string, number>();
   for (const batch of chunk(codes, 150)) {
@@ -186,7 +187,6 @@ export async function POST(request: Request) {
       .from("item_erp_mapping")
       .select("item_id, erp_code")
       .eq("erp_system", companyCode)
-      .eq("mapping_status", "verified")
       .in("erp_code", batch);
     if (err) {
       return NextResponse.json({ error: `품목 매핑 조회 실패: ${err.message}` }, { status: 500 });
