@@ -407,73 +407,194 @@ function PackDistributionCard() {
 }
 
 // ────────────────────────────────────────────
-// 발주 시뮬레이션 카드 (Model B)
+// 발주 시뮬레이션 카드 (Model B) — 주차별 아코디언 + 근거 박스
 // ────────────────────────────────────────────
+type OrderItem = {
+  sku: number;
+  name: string;
+  predicted_order_qty: number;
+  sku_ratio: number;
+};
+
+type OrderWeek = {
+  week_start: string;
+  label: string;
+  category_total: number;
+  model_a_pred_total: number;
+  ratio_applied: number;
+  reference_mae: {
+    overall_sku_week: number | null;
+    winter_sku_week: number | null;
+    category_weekly_overall: number | null;
+    unit_note: string;
+  };
+  notable_cases: string[];
+  items: OrderItem[];
+};
+
 function OrderSimulationCard() {
-  const [data, setData] = useState<OrderSimRow[]>([]);
-  const [simLoading, setSimLoading] = useState(true);
+  const [weeks, setWeeks] = useState<OrderWeek[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openIdx, setOpenIdx] = useState<number>(0); // 이번 주 기본 펼침
 
   useEffect(() => {
-    fetch(`${FASTAPI_URL}/forecast/order-simulation`)
+    fetch(`${FASTAPI_URL}/forecast/order-weekly`)
       .then((r) => (r.ok ? r.json() : []))
-      .then(setData)
-      .catch(() => setData([]))
-      .finally(() => setSimLoading(false));
+      .then(setWeeks)
+      .catch(() => setWeeks([]))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center gap-2">
         <Package className="h-5 w-5 text-orange-600" />
-        <CardTitle>발주 시뮬레이션 (Model B)</CardTitle>
+        <CardTitle>발주 시뮬레이션 (Model B) — 주차별 권장</CardTitle>
+        <Badge variant="secondary" className="ml-auto text-xs">
+          권장 발주량 ≤ 50 제외
+        </Badge>
       </CardHeader>
-      <CardContent>
-        {simLoading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : data.length === 0 ? (
-          <EmptyHint text="FastAPI /forecast/order-simulation 응답 대기 중" />
+      <CardContent className="space-y-3">
+        {loading ? (
+          <Skeleton className="h-60 w-full" />
+        ) : weeks.length === 0 ? (
+          <EmptyHint text="FastAPI /forecast/order-weekly 응답 대기 중" />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b text-xs font-medium text-gray-500">
-                  <th className="pb-2">주차</th>
-                  <th className="pb-2">SKU</th>
-                  <th className="pb-2">제품명</th>
-                  <th className="pb-2 text-right">권장 발주량</th>
-                  <th className="pb-2 text-right">비중</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((row, i) => (
-                  <tr key={i} className="border-b last:border-0">
-                    <td className="py-2 text-gray-600">{row.week_start?.slice(0, 10)}</td>
-                    <td className="py-2 font-mono text-xs">{row.sku}</td>
-                    <td className="py-2">{row.name || `SKU ${row.sku}`}</td>
-                    <td className="py-2 text-right font-semibold">
-                      {(row.predicted_order_qty ?? 0).toLocaleString()}
-                    </td>
-                    <td className="py-2 text-right text-gray-500">
-                      {row.sku_ratio ? `${(row.sku_ratio * 100).toFixed(1)}%` : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          weeks.map((w, idx) => {
+            const isOpen = idx === openIdx;
+            return (
+              <div key={w.week_start} className="rounded-md border">
+                {/* 헤더 — 클릭 시 펼침/접힘 */}
+                <button
+                  type="button"
+                  onClick={() => setOpenIdx(isOpen ? -1 : idx)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={
+                        "rounded px-2 py-0.5 text-xs font-semibold " +
+                        (idx === 0 ? "bg-orange-100 text-orange-800" : "bg-gray-100 text-gray-700")
+                      }
+                    >
+                      {w.label}
+                    </span>
+                    <span className="text-sm text-gray-500">{w.week_start}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500">카테고리 총 권장</div>
+                      <div className="text-lg font-bold">{w.category_total.toLocaleString()}개</div>
+                    </div>
+                    <span className="text-gray-400">{isOpen ? "▲" : "▼"}</span>
+                  </div>
+                </button>
+
+                {/* 근거 박스 + SKU 표 */}
+                {isOpen && (
+                  <div className="space-y-3 border-t px-4 py-3">
+                    {/* 계산 근거 */}
+                    <div className="space-y-1 rounded-md bg-blue-50 p-3 text-xs">
+                      <div className="font-semibold text-blue-900">계산 근거</div>
+                      <div className="text-gray-700">
+                        Model A 주간 판매 예측{" "}
+                        <span className="font-mono font-semibold">
+                          {w.model_a_pred_total.toLocaleString()}개
+                        </span>{" "}
+                        × 비율{" "}
+                        <span className="font-mono font-semibold">
+                          {w.ratio_applied.toFixed(3)}
+                        </span>{" "}
+                        = 카테고리 총 권장{" "}
+                        <span className="font-mono font-semibold">
+                          {w.category_total.toLocaleString()}개
+                        </span>
+                      </div>
+                      <div className="text-gray-600">
+                        비율 = 직전 4주 납품/판매 실측 (ratio_lookback_weeks=4)
+                      </div>
+                      <div className="text-gray-600">SKU 분배 = 직전 2주 SKU 판매 점유율</div>
+                    </div>
+
+                    {/* 이 숫자의 한계 */}
+                    <div className="space-y-1 rounded-md bg-amber-50 p-3 text-xs">
+                      <div className="font-semibold text-amber-900">이 숫자의 한계</div>
+                      <div className="text-gray-700">신뢰구간 제공 못 함 — 이유 3가지:</div>
+                      <ol className="ml-4 list-decimal space-y-0.5 text-gray-600">
+                        <li>학습 데이터가 1년치뿐 — 분산 추정 불안정</li>
+                        <li>
+                          발주 권장(Model B) 자체의 정확도를 측정한 실측 없음. 현재 측정값은 Model A
+                          판매 예측 오차만임
+                        </li>
+                        <li>계절별 오차 편차가 커 단일값으로 표현 불가</li>
+                      </ol>
+                      <div className="pt-1 text-gray-700">
+                        참고 수치 (Model A 판매 예측 MAE — 발주 권장과 별개):
+                      </div>
+                      <div className="ml-4 font-mono text-gray-600">
+                        SKU×주 평균 {w.reference_mae.overall_sku_week?.toLocaleString() ?? "-"} ·{" "}
+                        겨울(11~1월) {w.reference_mae.winter_sku_week?.toLocaleString() ?? "-"} ·{" "}
+                        카테고리 합산 주간{" "}
+                        {w.reference_mae.category_weekly_overall?.toLocaleString() ?? "-"}
+                      </div>
+                      {w.notable_cases.length > 0 && (
+                        <>
+                          <div className="pt-1 text-gray-700">편차 큰 주차 사례:</div>
+                          <ul className="ml-4 space-y-0.5 text-gray-600">
+                            {w.notable_cases.map((c, i) => (
+                              <li key={i}>{c}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                      <div className="pt-1 text-gray-500">
+                        재측정 예정: 2027년 이후 (2년치 실데이터 축적 완료 시)
+                      </div>
+                    </div>
+
+                    {/* SKU 표 */}
+                    {w.items.length === 0 ? (
+                      <p className="py-2 text-sm text-gray-500">
+                        이 주차에는 50개 초과 권장 SKU가 없습니다.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead>
+                            <tr className="border-b text-xs font-medium text-gray-500">
+                              <th className="pb-2">SKU</th>
+                              <th className="pb-2">제품명</th>
+                              <th className="pb-2 text-right">권장 발주량</th>
+                              <th className="pb-2 text-right">주 내 비중</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {w.items.map((r) => (
+                              <tr key={r.sku} className="border-b last:border-0">
+                                <td className="py-2 font-mono text-xs">{r.sku}</td>
+                                <td className="py-2">{r.name}</td>
+                                <td className="py-2 text-right font-semibold">
+                                  {r.predicted_order_qty.toLocaleString()}
+                                </td>
+                                <td className="py-2 text-right text-gray-500">
+                                  {(r.sku_ratio * 100).toFixed(1)}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </CardContent>
     </Card>
   );
 }
-
-type OrderSimRow = {
-  week_start: string;
-  sku: number;
-  name: string;
-  predicted_order_qty: number;
-  sku_ratio: number;
-};
 
 // ────────────────────────────────────────────
 // 인사이트 훅 (FastAPI /forecast/insight)

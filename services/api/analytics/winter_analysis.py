@@ -39,6 +39,7 @@ def run_winter_deep_analysis(client=None, used_synthetic: bool = True) -> dict:
             "cold_days_7d", "temp_range", "promotion_flag",
             "weekly_min_price", "weekly_bi_box_share_mean", "weekly_stockout_flag",
             "first_snow_flag",
+            # NOTE: temp_anomaly 실험 2026-04-20 — winter MAE +6% 악화로 제외
         ),
     )
 
@@ -105,11 +106,27 @@ def run_winter_deep_analysis(client=None, used_synthetic: bool = True) -> dict:
     )
 
     # ═══════════ 요약 JSON ═══════════
+    # MAE 단위 구분 (단위 혼동 방지):
+    #   sku_week_mae   = SKU × 주 단위 행의 절대오차 평균 (한 SKU가 한 주에 평균 몇 개 틀리는가)
+    #   category_weekly_mae = 주차별 34 SKU 합산 판매 예측의 절대오차 평균
     summary = {
         "val_period": f"{weekly['week_start'].min().date()} ~ {weekly['week_start'].max().date()}",
         "total_weeks": total_weeks,
+        # 기존 호환 (SKU×주 단위) — Supabase winter_validation.overall_mae 로 저장됨
         "overall_mae": round(float(val["abs_error"].mean()), 1),
         "winter_mae": round(float(val[val["month"].isin([11, 12, 1])]["abs_error"].mean()), 1),
+        # 명시적 단위 라벨
+        "sku_week_mae": round(float(val["abs_error"].mean()), 1),
+        "sku_week_winter_mae": round(float(val[val["month"].isin([11, 12, 1])]["abs_error"].mean()), 1),
+        "category_weekly_mae": round(float(weekly["abs_error"].mean()), 1),
+        "category_weekly_winter_mae": round(
+            float(weekly[weekly["week_start"].dt.month.isin([11, 12, 1])]["abs_error"].mean()), 1
+        ),
+        "mae_unit_note": (
+            "sku_week_mae = SKU×주 단위 평균 오차 / "
+            "category_weekly_mae = 주차별 34 SKU 합산 판매 예측 오차. "
+            "신뢰구간 계산 시 단위 일치 필수."
+        ),
         "bias": {
             "over_predict_weeks": int(over),
             "under_predict_weeks": int(under),
@@ -210,8 +227,8 @@ if __name__ == "__main__":
     s = run_winter_deep_analysis()
 
     print(f"\n검증 기간: {s['val_period']} ({s['total_weeks']}주)")
-    print(f"전체 MAE: {s['overall_mae']}")
-    print(f"겨울(11~1월) MAE: {s['winter_mae']}")
+    print(f"SKU×주 단위 MAE — 전체: {s['sku_week_mae']}, 겨울: {s['sku_week_winter_mae']}")
+    print(f"카테고리 주간 합산 MAE — 전체: {s['category_weekly_mae']}, 겨울: {s['category_weekly_winter_mae']}")
 
     print(f"\n[편향] 과대 {s['bias']['over_predict_weeks']}주 / 과소 {s['bias']['under_predict_weeks']}주")
     print(f"과대 비율: {s['bias']['over_predict_ratio']*100:.1f}%")

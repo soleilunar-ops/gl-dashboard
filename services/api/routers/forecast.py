@@ -91,6 +91,18 @@ class DailySalesItem(BaseModel):
     gmv: float
 
 
+class OrderWeeklyItem(BaseModel):
+    """한 주차의 발주 권장 묶음 (카테고리 총량 + 근거 + SKU 분배)."""
+    week_start: str
+    label: str                       # "이번 주" / "다음 주" / "다다음 주"
+    category_total: int              # Model B 카테고리 총 권장 발주량
+    model_a_pred_total: int          # Model A 주간 판매 예측 총량 (카테고리 환산 기준)
+    ratio_applied: float             # model_b / model_a (= 납품/판매 비율)
+    reference_mae: dict              # 참고 Model A 판매 예측 MAE
+    notable_cases: list[str]         # 실측 극단 사례 (청중이 판단하도록 공개)
+    items: list[dict]                # [{sku, name, predicted_order_qty, sku_ratio}]
+
+
 class PackDistributionItem(BaseModel):
     category: str  # "붙이는 핫팩" | "손난로" | "일반 핫팩" | "찜질팩"
     pack_size: int  # 포장 단위 (개)
@@ -284,7 +296,8 @@ def get_order_simulation() -> list[OrderSimulationItem]:
                 df["sku_ratio"] = (df["distributed_qty"] / total_by_week).round(4)
                 for _, r in df.iterrows():
                     qty = int(round(r["distributed_qty"]))
-                    if qty <= 0:
+                    # 발주 대상 아님(월 수요 미미) 구간 필터: ≤50개 제외
+                    if qty <= 50:
                         continue
                     sku = int(r["sku_id"])
                     rows.append(OrderSimulationItem(
@@ -312,7 +325,8 @@ def get_order_simulation() -> list[OrderSimulationItem]:
     rows = []
     for _, r in df.sort_values(["week_start", "predicted_order_qty"], ascending=[True, False]).iterrows():
         sku = int(r["sku"])
-        if r["predicted_order_qty"] <= 0:
+        # 발주 대상 아님(월 수요 미미) 구간 필터: ≤50개 제외
+        if r["predicted_order_qty"] <= 50:
             continue
         rows.append(OrderSimulationItem(
             week_start=r["week_start"].strftime("%Y-%m-%d"),
@@ -323,6 +337,189 @@ def get_order_simulation() -> list[OrderSimulationItem]:
         ))
 
     return rows[:50]
+
+
+@router.get("/order-weekly", response_model=list[OrderWeeklyItem])
+def get_order_weekly(qty_threshold: int = Query(default=50, ge=0, le=10000)) -> list[OrderWeeklyItem]:
+    """
+    주차별 발주 권장 (이번 주 / 다음 주 / 다다음 주) + 계산 근거.
+
+    근거 체인:
+      Model A 예측(판매) × 비율(직전 4주 납품/판매) = 카테고리 총량(Model B)
+      카테고리 총량 × SKU 비중(직전 2주 점유율) = SKU별 권장 발주량
+      qty_threshold 이하 SKU 제외 (기본 50).
+    """
+    import pandas as pd
+    from datetime import date, timedelta
+
+    try:
+        from data_pipeline.bi_box_loader import build_sku_name_map
+        from data_pipeline.weekly_feature_builder import WARMER_SKUS
+    except ImportError:
+        from services.api.data_pipeline.bi_box_loader import build_sku_name_map
+        from services.api.data_pipeline.weekly_feature_builder import WARMER_SKUS
+
+    sb = _get_supabase_client()
+    bi_box_dir = PROJECT_ROOT / "data" / "raw" / "coupang" / "bi_box"
+    try:
+        name_map = build_sku_name_map(directory=bi_box_dir, skus=WARMER_SKUS, client=sb)
+    except Exception:
+        name_map = {}
+
+    # 대상 주차: 이번 주 / 다음 주 / 다다음 주 (월요일 기준)
+    today = date.today()
+    this_week = today - timedelta(days=today.weekday())
+    targets = [(this_week + timedelta(weeks=i)).isoformat() for i in range(3)]
+    labels = ["이번 주", "다음 주", "다다음 주"]
+
+    # Model B 최신 model_version
+    latest_b = (
+        sb.table("forecast_model_b").select("model_version,generated_at")
+        .order("generated_at", desc=True).limit(1).execute()
+    )
+    if not latest_b.data:
+        return []
+    mv_b = latest_b.data[0]["model_version"]
+
+    # 카테고리 총량 조회
+    cat_res = (
+        sb.table("forecast_model_b")
+        .select("week_start,pred_ratio")
+        .eq("model_version", mv_b)
+        .is_("sku_id", "null")
+        .in_("week_start", targets)
+        .execute()
+    )
+    cat_map: dict[str, float] = {
+        r["week_start"][:10]: float(r["pred_ratio"] or 0) for r in (cat_res.data or [])
+    }
+
+    # SKU별 분배 조회
+    sku_res = (
+        sb.table("forecast_model_b")
+        .select("week_start,sku_id,distributed_qty")
+        .eq("model_version", mv_b)
+        .not_.is_("sku_id", "null")
+        .in_("week_start", targets)
+        .order("week_start").order("distributed_qty", desc=True)
+        .execute()
+    )
+
+    # Model A 주간 예측 총량 (최신 model_version)
+    latest_a = (
+        sb.table("forecast_model_a").select("model_version,generated_at")
+        .order("generated_at", desc=True).limit(1).execute()
+    )
+    model_a_totals: dict[str, float] = {}
+    if latest_a.data:
+        mv_a = latest_a.data[0]["model_version"]
+        a_res = (
+            sb.table("forecast_model_a")
+            .select("week_start,weekly_sales_qty_forecast")
+            .eq("model_version", mv_a)
+            .in_("week_start", targets)
+            .execute()
+        )
+        for r in a_res.data or []:
+            w = r["week_start"][:10]
+            model_a_totals[w] = model_a_totals.get(w, 0) + float(r["weekly_sales_qty_forecast"] or 0)
+
+    # Model A 판매 예측 참고 MAE (발주 권장 신뢰구간이 아님)
+    reference_mae: dict = {
+        "overall_sku_week": None,          # SKU×주 단위 평균 MAE
+        "winter_sku_week": None,           # 겨울(11~1월) SKU×주 단위 MAE
+        "category_weekly_overall": None,   # 카테고리 합산 주간 MAE
+        "unit_note": "Model A 판매 예측 MAE이며 발주 권장 오차와 별개",
+    }
+    notable_cases: list[str] = []
+    try:
+        latest_run = (
+            sb.table("winter_validation").select("run_id,overall_mae,winter_mae")
+            .eq("grain", "summary").order("generated_at", desc=True).limit(1).execute()
+        )
+        if latest_run.data:
+            row = latest_run.data[0]
+            if row.get("overall_mae") is not None:
+                reference_mae["overall_sku_week"] = int(round(float(row["overall_mae"])))
+            if row.get("winter_mae") is not None:
+                reference_mae["winter_sku_week"] = int(round(float(row["winter_mae"])))
+
+            # weekly grain의 abs_error 평균 (카테고리 합산 주간 MAE)
+            wv_weekly = (
+                sb.table("winter_validation").select("week_start,actual,predicted,abs_error,error_pct")
+                .eq("grain", "weekly").eq("run_id", row["run_id"])
+                .execute()
+            )
+            ws = wv_weekly.data or []
+            if ws:
+                abs_errs = [float(r["abs_error"]) for r in ws if r.get("abs_error") is not None]
+                if abs_errs:
+                    reference_mae["category_weekly_overall"] = int(round(sum(abs_errs) / len(abs_errs)))
+
+                # 편차 큰 주차 상위 3개 (±)
+                top = sorted(
+                    [r for r in ws if r.get("error_pct") is not None],
+                    key=lambda r: abs(float(r["error_pct"])),
+                    reverse=True,
+                )[:3]
+                for r in top:
+                    actual = int(round(float(r["actual"] or 0)))
+                    predicted = int(round(float(r["predicted"] or 0)))
+                    pct = float(r["error_pct"])
+                    notable_cases.append(
+                        f"{r['week_start'][:10]}: 실측 {actual:,} vs 예측 {predicted:,} ({pct:+.0f}%)"
+                    )
+    except Exception:
+        pass
+
+    # 주차별 묶음 구성
+    items_by_week: dict[str, list[dict]] = {w: [] for w in targets}
+    qty_by_week: dict[str, list[float]] = {w: [] for w in targets}
+    for r in sku_res.data or []:
+        w = r["week_start"][:10]
+        if w not in items_by_week:
+            continue
+        qty_by_week[w].append(float(r["distributed_qty"] or 0))
+
+    # sku_ratio 재계산(주 내 합 대비)
+    result: list[OrderWeeklyItem] = []
+    for idx, w in enumerate(targets):
+        total_of_week = sum(qty_by_week[w]) or 1
+        rows = []
+        for r in sku_res.data or []:
+            if r["week_start"][:10] != w:
+                continue
+            qty = int(round(float(r["distributed_qty"] or 0)))
+            if qty <= qty_threshold:
+                continue
+            sku = int(r["sku_id"])
+            rows.append({
+                "sku": sku,
+                "name": name_map.get(sku, f"SKU {sku}"),
+                "predicted_order_qty": qty,
+                "sku_ratio": round(float(r["distributed_qty"]) / total_of_week, 4),
+            })
+        # 내림차순 정렬
+        rows.sort(key=lambda x: -x["predicted_order_qty"])
+
+        category_total = int(round(cat_map.get(w, 0)))
+        model_a_total = int(round(model_a_totals.get(w, 0)))
+        ratio_applied = (
+            round(category_total / model_a_total, 4) if model_a_total > 0 else 0.0
+        )
+
+        result.append(OrderWeeklyItem(
+            week_start=w,
+            label=labels[idx],
+            category_total=category_total,
+            model_a_pred_total=model_a_total,
+            ratio_applied=ratio_applied,
+            reference_mae=reference_mae,
+            notable_cases=notable_cases,
+            items=rows,
+        ))
+
+    return result
 
 
 @router.get("/weekly-prediction", response_model=list[WeeklyPredictionItem])
