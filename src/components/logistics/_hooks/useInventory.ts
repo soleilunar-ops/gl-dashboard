@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
  * - 구 `items` → `item_master` (id→item_id, item_name→item_name_raw, cost_price→base_cost)
  * - 구 `inventory_snapshots` → `v_current_stock` 뷰 (트리거로 자동 계산된 current_stock 사용)
  * - 구 ERP 코드 → `item_erp_mapping`에서 별도 조회 (gl 시스템 우선)
- * - 구 `scheduled_transactions` → 신 스키마 미지원, in_7days/out_7days = 0
+ * - 구 `scheduled_transactions` → 신 스키마 미지원 (UI 미표시)
  * - erp_qty/diff: 신 스키마는 ERP 재고를 신뢰하지 않아 미수집 (HANDOVER v6 원칙 5번) → null
  */
 
@@ -26,8 +26,6 @@ export type InventoryItem = {
   erp_qty: number | null;
   diff: number | null;
   stock_amount: number;
-  in_7days: number;
-  out_7days: number;
 };
 
 export function useInventory() {
@@ -111,8 +109,6 @@ export function useInventory() {
         erp_qty: null,
         diff: null,
         stock_amount: currentQty * cost,
-        in_7days: 0,
-        out_7days: 0,
       };
     });
 

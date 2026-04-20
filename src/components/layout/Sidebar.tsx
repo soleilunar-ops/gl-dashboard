@@ -11,11 +11,21 @@ import {
   Megaphone,
   LogOut,
   LayoutDashboard,
+  CloudSun,
+  Ship,
+  Truck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { navigation } from "./navigation.config";
+import { navigation, type NavItem } from "./navigation.config";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { cn } from "@/lib/utils";
+
+/** 부모(/logistics)와 자식(/logistics/leadtime)이 동시에 매칭될 때 더 긴 경로만 활성(선택) 처리 */
+function resolveActivePathInGroup(items: NavItem[], pathname: string): string | null {
+  const matches = items.filter((it) => pathname === it.path || pathname.startsWith(it.path + "/"));
+  if (matches.length === 0) return null;
+  return matches.reduce((a, b) => (b.path.length > a.path.length ? b : a)).path;
+}
 
 // 아이콘 이름 → 컴포넌트 매핑
 const iconMap: Record<string, LucideIcon> = {
@@ -25,6 +35,9 @@ const iconMap: Record<string, LucideIcon> = {
   Calculator,
   Package,
   Megaphone,
+  CloudSun,
+  Ship,
+  Truck,
 };
 
 export default function Sidebar() {
@@ -48,7 +61,8 @@ export default function Sidebar() {
             <p className="text-muted-foreground mb-1 px-2 text-xs font-medium">{group.title}</p>
             {group.items.map((item) => {
               const Icon = iconMap[item.icon];
-              const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
+              const activePath = resolveActivePathInGroup(group.items, pathname);
+              const isActive = activePath !== null && item.path === activePath;
 
               return (
                 <Link

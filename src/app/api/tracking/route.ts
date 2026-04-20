@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * 유니패스: 화물통관진행정보 가이드 (retrieveCargCsclPrgsInfo, mblNo·blYy)
- * 해양수산부: DAT211 외항화물반출입정보 Info4 — XML, 파라미터 prtAgCd·etryptYear·etryptCo·clsgn
+ * 1) 유니패스 화물통관: cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo (mblNo·hblNo·blYy)
+ * 2) 공공데이터포털 외항화물반출입정보: 해양수산부 DAT211 Info4(XML) — prtAgCd·etryptYear·etryptCo·clsgn
  * 호출부호(clsgn) 없으면 2차 조회 생략 → .env PUBLIC_DATA_DEFAULT_CLSGN 또는 ?clsgn=
  * 항만청코드(prtAgCd) 기본 020(가이드 샘플: 부산), 인천 등은 PUBLIC_DATA_PRT_AG_CD로 변경
  *
@@ -318,7 +318,7 @@ export async function GET(req: NextRequest) {
     // 호출부호(clsgn)는 있는데 API 키가 없으면 2차 조회를 못 함 → 운영자가 인지 가능하게 경고
     if (clsgn && !publicDataKey) {
       console.warn(
-        "[tracking] PUBLIC_DATA_API_KEY 미설정 → 해양수산부 입항/ETA 2차 조회 생략 (유니패스 1차 결과만 반환)"
+        "[tracking] PUBLIC_DATA_API_KEY 미설정 → 공공데이터 외항반출입 입항·ETA 2차 조회 생략 (유니패스 1차만 반환)"
       );
     }
 

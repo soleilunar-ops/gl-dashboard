@@ -13,14 +13,22 @@ export type InventoryFilter = {
 interface FilterBarProps {
   filter: InventoryFilter;
   onFilterChange: Dispatch<SetStateAction<InventoryFilter>>;
+  /** 현재 필터가 적용된 전체 목록을 시트로 저장 (페이지와 무관) */
+  onExportExcel: () => void;
+  exportDisabled?: boolean;
 }
 
-export function FilterBar({ filter, onFilterChange }: FilterBarProps) {
+export function FilterBar({
+  filter,
+  onFilterChange,
+  onExportExcel,
+  exportDisabled = false,
+}: FilterBarProps) {
   return (
     <div className="bg-card flex flex-wrap items-center gap-2 rounded-lg border p-3">
       <Input
         className="md:w-64"
-        placeholder="품목명 / ERP 코드"
+        placeholder="품목코드 / 품목명"
         value={filter.search}
         onChange={(e) => onFilterChange((prev) => ({ ...prev, search: e.target.value }))}
       />
@@ -44,7 +52,8 @@ export function FilterBar({ filter, onFilterChange }: FilterBarProps) {
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => console.log("PM에게 /api/export/excel 생성 요청")}
+        disabled={exportDisabled}
+        onClick={() => onExportExcel()}
       >
         엑셀 추출
       </Button>

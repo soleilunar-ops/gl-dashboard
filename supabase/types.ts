@@ -14,6 +14,161 @@ export type Database = {
   }
   public: {
     Tables: {
+      allocation_items: {
+        Row: {
+          allocation_id: number
+          basic_price: number
+          center_name: string
+          id: number
+          line_cost: number
+          pallet_count: number
+        }
+        Insert: {
+          allocation_id: number
+          basic_price: number
+          center_name: string
+          id?: number
+          line_cost: number
+          pallet_count: number
+        }
+        Update: {
+          allocation_id?: number
+          basic_price?: number
+          center_name?: string
+          id?: number
+          line_cost?: number
+          pallet_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "allocation_items_allocation_id_fkey"
+            columns: ["allocation_id"]
+            isOneToOne: false
+            referencedRelation: "allocations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      allocations: {
+        Row: {
+          center_count: number
+          created_at: string
+          id: number
+          memo: string | null
+          order_date: string
+          total_cost: number
+          total_pallets: number
+          updated_at: string
+        }
+        Insert: {
+          center_count: number
+          created_at?: string
+          id?: number
+          memo?: string | null
+          order_date: string
+          total_cost: number
+          total_pallets: number
+          updated_at?: string
+        }
+        Update: {
+          center_count?: number
+          created_at?: string
+          id?: number
+          memo?: string | null
+          order_date?: string
+          total_cost?: number
+          total_pallets?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      baseline_kpi_snapshot: {
+        Row: {
+          avg_margin_rate: number | null
+          avg_roi: number | null
+          best_roi_month: string | null
+          calculated_at: string | null
+          cost_ratio: number | null
+          season: string
+          total_cost: number | null
+          total_gmv: number | null
+        }
+        Insert: {
+          avg_margin_rate?: number | null
+          avg_roi?: number | null
+          best_roi_month?: string | null
+          calculated_at?: string | null
+          cost_ratio?: number | null
+          season: string
+          total_cost?: number | null
+          total_gmv?: number | null
+        }
+        Update: {
+          avg_margin_rate?: number | null
+          avg_roi?: number | null
+          best_roi_month?: string | null
+          calculated_at?: string | null
+          cost_ratio?: number | null
+          season?: string
+          total_cost?: number | null
+          total_gmv?: number | null
+        }
+        Relationships: []
+      }
+      bi_box_daily: {
+        Row: {
+          attribute_error: boolean | null
+          bi_box_share: number | null
+          created_at: string | null
+          date: string
+          is_stockout: boolean | null
+          max_price: number | null
+          mid_price: number | null
+          min_price: number | null
+          per_piece_price_ok: boolean | null
+          sku_id: string
+          sku_name: string | null
+          source_file: string | null
+          unit_price_ok: boolean | null
+          vendor_item_id: string
+          vendor_item_name: string | null
+        }
+        Insert: {
+          attribute_error?: boolean | null
+          bi_box_share?: number | null
+          created_at?: string | null
+          date: string
+          is_stockout?: boolean | null
+          max_price?: number | null
+          mid_price?: number | null
+          min_price?: number | null
+          per_piece_price_ok?: boolean | null
+          sku_id: string
+          sku_name?: string | null
+          source_file?: string | null
+          unit_price_ok?: boolean | null
+          vendor_item_id: string
+          vendor_item_name?: string | null
+        }
+        Update: {
+          attribute_error?: boolean | null
+          bi_box_share?: number | null
+          created_at?: string | null
+          date?: string
+          is_stockout?: boolean | null
+          max_price?: number | null
+          mid_price?: number | null
+          min_price?: number | null
+          per_piece_price_ok?: boolean | null
+          sku_id?: string
+          sku_name?: string | null
+          source_file?: string | null
+          unit_price_ok?: boolean | null
+          vendor_item_id?: string
+          vendor_item_name?: string | null
+        }
+        Relationships: []
+      }
       competitor_products: {
         Row: {
           brand: string | null
@@ -68,6 +223,132 @@ export type Database = {
           release_date?: string | null
           review_count?: number | null
           search_keyword?: string | null
+        }
+        Relationships: []
+      }
+      coupang_daily_performance: {
+        Row: {
+          asp: number | null
+          brand: string | null
+          cogs: number | null
+          conversion_rate: number | null
+          coupon_discount: number | null
+          created_at: string | null
+          date: string
+          gmv: number | null
+          instant_discount: number | null
+          is_baseline: boolean | null
+          order_count: number | null
+          page_views: number | null
+          promo_gmv: number | null
+          promo_units_sold: number | null
+          return_units: number | null
+          season: string | null
+          sku_id: string
+          sku_name: string | null
+          units_sold: number | null
+          updated_at: string | null
+          vendor_item_id: string | null
+        }
+        Insert: {
+          asp?: number | null
+          brand?: string | null
+          cogs?: number | null
+          conversion_rate?: number | null
+          coupon_discount?: number | null
+          created_at?: string | null
+          date: string
+          gmv?: number | null
+          instant_discount?: number | null
+          is_baseline?: boolean | null
+          order_count?: number | null
+          page_views?: number | null
+          promo_gmv?: number | null
+          promo_units_sold?: number | null
+          return_units?: number | null
+          season?: string | null
+          sku_id: string
+          sku_name?: string | null
+          units_sold?: number | null
+          updated_at?: string | null
+          vendor_item_id?: string | null
+        }
+        Update: {
+          asp?: number | null
+          brand?: string | null
+          cogs?: number | null
+          conversion_rate?: number | null
+          coupon_discount?: number | null
+          created_at?: string | null
+          date?: string
+          gmv?: number | null
+          instant_discount?: number | null
+          is_baseline?: boolean | null
+          order_count?: number | null
+          page_views?: number | null
+          promo_gmv?: number | null
+          promo_units_sold?: number | null
+          return_units?: number | null
+          season?: string | null
+          sku_id?: string
+          sku_name?: string | null
+          units_sold?: number | null
+          updated_at?: string | null
+          vendor_item_id?: string | null
+        }
+        Relationships: []
+      }
+      coupang_delivery_detail: {
+        Row: {
+          created_at: string | null
+          delivery_date: string
+          id: number
+          invoice_no: string | null
+          is_baseline: boolean | null
+          logistics_center: string | null
+          payment_date: string | null
+          quantity: number | null
+          season: string | null
+          sku_id: string | null
+          sku_name: string | null
+          supply_amount: number | null
+          tax_amount: number | null
+          total_supply_amount: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          delivery_date: string
+          id?: number
+          invoice_no?: string | null
+          is_baseline?: boolean | null
+          logistics_center?: string | null
+          payment_date?: string | null
+          quantity?: number | null
+          season?: string | null
+          sku_id?: string | null
+          sku_name?: string | null
+          supply_amount?: number | null
+          tax_amount?: number | null
+          total_supply_amount?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          delivery_date?: string
+          id?: number
+          invoice_no?: string | null
+          is_baseline?: boolean | null
+          logistics_center?: string | null
+          payment_date?: string | null
+          quantity?: number | null
+          season?: string | null
+          sku_id?: string | null
+          sku_name?: string | null
+          supply_amount?: number | null
+          tax_amount?: number | null
+          total_supply_amount?: number | null
+          unit_price?: number | null
         }
         Relationships: []
       }
@@ -214,6 +495,451 @@ export type Database = {
           status?: string | null
           synced_at?: string | null
           table_name?: string
+        }
+        Relationships: []
+      }
+      ecount_production_outsource: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string | null
+          date_from: string | null
+          date_to: string | null
+          doc_date: string | null
+          doc_no: string | null
+          erp_code: string | null
+          id: number
+          memo: string | null
+          product_name: string | null
+          qty: number | null
+          spec: string | null
+          supply_amount: number | null
+          total_amount: number | null
+          unit_price: number | null
+          unit_price_vat: number | null
+          vat_amount: number | null
+        }
+        Insert: {
+          company_code: string
+          counterparty?: string | null
+          crawled_at?: string | null
+          date_from?: string | null
+          date_to?: string | null
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: never
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          spec?: string | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string | null
+          date_from?: string | null
+          date_to?: string | null
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: never
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          spec?: string | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Relationships: []
+      }
+      ecount_production_receipt: {
+        Row: {
+          company_code: string
+          crawled_at: string | null
+          date_from: string
+          date_to: string
+          factory_name: string | null
+          id: number
+          product_name: string | null
+          qty: number | null
+          receipt_no: string | null
+          warehouse_name: string | null
+          work_order: string | null
+        }
+        Insert: {
+          company_code: string
+          crawled_at?: string | null
+          date_from: string
+          date_to: string
+          factory_name?: string | null
+          id?: never
+          product_name?: string | null
+          qty?: number | null
+          receipt_no?: string | null
+          warehouse_name?: string | null
+          work_order?: string | null
+        }
+        Update: {
+          company_code?: string
+          crawled_at?: string | null
+          date_from?: string
+          date_to?: string
+          factory_name?: string | null
+          id?: never
+          product_name?: string | null
+          qty?: number | null
+          receipt_no?: string | null
+          warehouse_name?: string | null
+          work_order?: string | null
+        }
+        Relationships: []
+      }
+      ecount_purchase: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string
+          date_from: string | null
+          date_to: string | null
+          doc_date: string
+          doc_no: string | null
+          erp_code: string
+          id: number
+          memo: string | null
+          product_name: string | null
+          qty: number | null
+          spec: string | null
+          supply_amount: number | null
+          total_amount: number | null
+          unit_price: number | null
+          unit_price_vat: number | null
+          vat_amount: number | null
+        }
+        Insert: {
+          company_code: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string | null
+          date_to?: string | null
+          doc_date: string
+          doc_no?: string | null
+          erp_code: string
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          spec?: string | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string | null
+          date_to?: string | null
+          doc_date?: string
+          doc_no?: string | null
+          erp_code?: string
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          spec?: string | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Relationships: []
+      }
+      ecount_sales: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string
+          date_from: string | null
+          date_to: string | null
+          doc_date: string
+          doc_no: string | null
+          erp_code: string
+          id: number
+          memo: string | null
+          product_name: string | null
+          qty: number | null
+          spec: string | null
+          supply_amount: number | null
+          total_amount: number | null
+          unit_price: number | null
+          unit_price_vat: number | null
+          vat_amount: number | null
+        }
+        Insert: {
+          company_code: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string | null
+          date_to?: string | null
+          doc_date: string
+          doc_no?: string | null
+          erp_code: string
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          spec?: string | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string | null
+          date_to?: string | null
+          doc_date?: string
+          doc_no?: string | null
+          erp_code?: string
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          spec?: string | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Relationships: []
+      }
+      ecount_stock_ledger: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string
+          date_from: string | null
+          date_to: string | null
+          doc_date: string
+          id: number
+          inbound_qty: number | null
+          memo: string | null
+          outbound_qty: number | null
+        }
+        Insert: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string | null
+          date_to?: string | null
+          doc_date: string
+          id?: number
+          inbound_qty?: number | null
+          memo?: string | null
+          outbound_qty?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string | null
+          date_to?: string | null
+          doc_date?: string
+          id?: number
+          inbound_qty?: number | null
+          memo?: string | null
+          outbound_qty?: number | null
+        }
+        Relationships: []
+      }
+      forecast_model_a: {
+        Row: {
+          confidence_interval: number | null
+          features_used: Json | null
+          generated_at: string | null
+          lower_bound: number | null
+          model_version: string
+          sku_id: string
+          upper_bound: number | null
+          used_synthetic: boolean | null
+          week_start: string
+          weekly_sales_qty_forecast: number
+        }
+        Insert: {
+          confidence_interval?: number | null
+          features_used?: Json | null
+          generated_at?: string | null
+          lower_bound?: number | null
+          model_version?: string
+          sku_id: string
+          upper_bound?: number | null
+          used_synthetic?: boolean | null
+          week_start: string
+          weekly_sales_qty_forecast: number
+        }
+        Update: {
+          confidence_interval?: number | null
+          features_used?: Json | null
+          generated_at?: string | null
+          lower_bound?: number | null
+          model_version?: string
+          sku_id?: string
+          upper_bound?: number | null
+          used_synthetic?: boolean | null
+          week_start?: string
+          weekly_sales_qty_forecast?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forecast_model_a_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "sku_master"
+            referencedColumns: ["sku_id"]
+          },
+        ]
+      }
+      forecast_model_b: {
+        Row: {
+          distribute_weeks: number | null
+          distributed_qty: number | null
+          generated_at: string | null
+          id: number
+          lookback_weeks: number | null
+          model_version: string
+          pred_linear: number | null
+          pred_ratio: number | null
+          product_category: string
+          sku_id: string | null
+          used_synthetic: boolean | null
+          week_start: string
+        }
+        Insert: {
+          distribute_weeks?: number | null
+          distributed_qty?: number | null
+          generated_at?: string | null
+          id?: number
+          lookback_weeks?: number | null
+          model_version?: string
+          pred_linear?: number | null
+          pred_ratio?: number | null
+          product_category: string
+          sku_id?: string | null
+          used_synthetic?: boolean | null
+          week_start: string
+        }
+        Update: {
+          distribute_weeks?: number | null
+          distributed_qty?: number | null
+          generated_at?: string | null
+          id?: number
+          lookback_weeks?: number | null
+          model_version?: string
+          pred_linear?: number | null
+          pred_ratio?: number | null
+          product_category?: string
+          sku_id?: string | null
+          used_synthetic?: boolean | null
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forecast_model_b_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "sku_master"
+            referencedColumns: ["sku_id"]
+          },
+        ]
+      }
+      import_leadtime: {
+        Row: {
+          bl_number: string | null
+          created_at: string
+          current_step: number
+          customs_days: number
+          erp_code: string | null
+          id: string
+          is_approved: boolean
+          po_number: string
+          product_name: string
+          sea_days: number
+          step1_actual: string | null
+          step1_expected: string | null
+          step2_actual: string | null
+          step3_actual: string | null
+          step3_expected: string | null
+          step4_actual: string | null
+          step4_expected: string | null
+          step5_actual: string | null
+          step5_expected: string | null
+          tracking_status: string | null
+          updated_at: string
+          vessel_name: string | null
+        }
+        Insert: {
+          bl_number?: string | null
+          created_at?: string
+          current_step?: number
+          customs_days?: number
+          erp_code?: string | null
+          id?: string
+          is_approved?: boolean
+          po_number: string
+          product_name: string
+          sea_days?: number
+          step1_actual?: string | null
+          step1_expected?: string | null
+          step2_actual?: string | null
+          step3_actual?: string | null
+          step3_expected?: string | null
+          step4_actual?: string | null
+          step4_expected?: string | null
+          step5_actual?: string | null
+          step5_expected?: string | null
+          tracking_status?: string | null
+          updated_at?: string
+          vessel_name?: string | null
+        }
+        Update: {
+          bl_number?: string | null
+          created_at?: string
+          current_step?: number
+          customs_days?: number
+          erp_code?: string | null
+          id?: string
+          is_approved?: boolean
+          po_number?: string
+          product_name?: string
+          sea_days?: number
+          step1_actual?: string | null
+          step1_expected?: string | null
+          step2_actual?: string | null
+          step3_actual?: string | null
+          step3_expected?: string | null
+          step4_actual?: string | null
+          step4_expected?: string | null
+          step5_actual?: string | null
+          step5_expected?: string | null
+          tracking_status?: string | null
+          updated_at?: string
+          vessel_name?: string | null
         }
         Relationships: []
       }
@@ -873,6 +1599,147 @@ export type Database = {
           },
         ]
       }
+      promotion_ad_costs: {
+        Row: {
+          budget: number | null
+          contract_no: number | null
+          created_at: string | null
+          end_date: string | null
+          id: number
+          is_baseline: boolean | null
+          paid_amount: number | null
+          season: string | null
+          start_date: string | null
+          year_month: string
+        }
+        Insert: {
+          budget?: number | null
+          contract_no?: number | null
+          created_at?: string | null
+          end_date?: string | null
+          id?: number
+          is_baseline?: boolean | null
+          paid_amount?: number | null
+          season?: string | null
+          start_date?: string | null
+          year_month: string
+        }
+        Update: {
+          budget?: number | null
+          contract_no?: number | null
+          created_at?: string | null
+          end_date?: string | null
+          id?: number
+          is_baseline?: boolean | null
+          paid_amount?: number | null
+          season?: string | null
+          start_date?: string | null
+          year_month?: string
+        }
+        Relationships: []
+      }
+      promotion_coupon_contracts: {
+        Row: {
+          budget: number | null
+          contract_no: number
+          coupon_category: string | null
+          coupon_name: string | null
+          created_at: string | null
+          end_date: string | null
+          is_baseline: boolean | null
+          paid_amount: number | null
+          season: string | null
+          start_date: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          budget?: number | null
+          contract_no: number
+          coupon_category?: string | null
+          coupon_name?: string | null
+          created_at?: string | null
+          end_date?: string | null
+          is_baseline?: boolean | null
+          paid_amount?: number | null
+          season?: string | null
+          start_date?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          budget?: number | null
+          contract_no?: number
+          coupon_category?: string | null
+          coupon_name?: string | null
+          created_at?: string | null
+          end_date?: string | null
+          is_baseline?: boolean | null
+          paid_amount?: number | null
+          season?: string | null
+          start_date?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      promotion_milkrun_costs: {
+        Row: {
+          amount: number | null
+          created_at: string | null
+          delivery_date: string | null
+          description: string | null
+          id: number
+          is_baseline: boolean | null
+          season: string | null
+          year_month: string
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string | null
+          delivery_date?: string | null
+          description?: string | null
+          id?: number
+          is_baseline?: boolean | null
+          season?: string | null
+          year_month: string
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string | null
+          delivery_date?: string | null
+          description?: string | null
+          id?: number
+          is_baseline?: boolean | null
+          season?: string | null
+          year_month?: string
+        }
+        Relationships: []
+      }
+      promotion_premium_data_costs: {
+        Row: {
+          amount: number | null
+          created_at: string | null
+          id: number
+          is_baseline: boolean | null
+          season: string | null
+          year_month: string
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string | null
+          id?: number
+          is_baseline?: boolean | null
+          season?: string | null
+          year_month: string
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string | null
+          id?: number
+          is_baseline?: boolean | null
+          season?: string | null
+          year_month?: string
+        }
+        Relationships: []
+      }
       regional_sales: {
         Row: {
           brand: string | null
@@ -955,6 +1822,27 @@ export type Database = {
             referencedColumns: ["sku_id"]
           },
         ]
+      }
+      season_config: {
+        Row: {
+          end_date: string
+          is_closed: boolean | null
+          season: string
+          start_date: string
+        }
+        Insert: {
+          end_date: string
+          is_closed?: boolean | null
+          season: string
+          start_date: string
+        }
+        Update: {
+          end_date?: string
+          is_closed?: boolean | null
+          season?: string
+          start_date?: string
+        }
+        Relationships: []
       }
       sku_master: {
         Row: {
@@ -1083,6 +1971,78 @@ export type Database = {
           },
         ]
       }
+      upload_history: {
+        Row: {
+          file_name: string | null
+          file_type: string | null
+          id: number
+          period_end: string | null
+          period_start: string | null
+          row_count: number | null
+          status: string | null
+          uploaded_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          file_name?: string | null
+          file_type?: string | null
+          id?: number
+          period_end?: string | null
+          period_start?: string | null
+          row_count?: number | null
+          status?: string | null
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          file_name?: string | null
+          file_type?: string | null
+          id?: number
+          period_end?: string | null
+          period_start?: string | null
+          row_count?: number | null
+          status?: string | null
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
+      weather_daily: {
+        Row: {
+          avg_temp: number | null
+          created_at: string | null
+          date: string
+          max_temp: number | null
+          min_temp: number | null
+          normal_avg_temp: number | null
+          source: string | null
+          temp_anomaly: number | null
+          temp_diff: number | null
+        }
+        Insert: {
+          avg_temp?: number | null
+          created_at?: string | null
+          date: string
+          max_temp?: number | null
+          min_temp?: number | null
+          normal_avg_temp?: number | null
+          source?: string | null
+          temp_anomaly?: number | null
+          temp_diff?: number | null
+        }
+        Update: {
+          avg_temp?: number | null
+          created_at?: string | null
+          date?: string
+          max_temp?: number | null
+          min_temp?: number | null
+          normal_avg_temp?: number | null
+          source?: string | null
+          temp_anomaly?: number | null
+          temp_diff?: number | null
+        }
+        Relationships: []
+      }
       weather_unified: {
         Row: {
           apparent_temp_avg: number | null
@@ -1169,6 +2129,71 @@ export type Database = {
           wind_max?: number | null
         }
         Relationships: []
+      }
+      winter_validation: {
+        Row: {
+          abs_error: number | null
+          actual: number | null
+          bias: number | null
+          error_pct: number | null
+          generated_at: string | null
+          grain: string
+          id: number
+          notes: string | null
+          overall_mae: number | null
+          predicted: number | null
+          run_id: string
+          sku_id: string | null
+          used_synthetic: boolean | null
+          val_mae_no_synthetic: number | null
+          week_start: string | null
+          winter_mae: number | null
+        }
+        Insert: {
+          abs_error?: number | null
+          actual?: number | null
+          bias?: number | null
+          error_pct?: number | null
+          generated_at?: string | null
+          grain: string
+          id?: number
+          notes?: string | null
+          overall_mae?: number | null
+          predicted?: number | null
+          run_id: string
+          sku_id?: string | null
+          used_synthetic?: boolean | null
+          val_mae_no_synthetic?: number | null
+          week_start?: string | null
+          winter_mae?: number | null
+        }
+        Update: {
+          abs_error?: number | null
+          actual?: number | null
+          bias?: number | null
+          error_pct?: number | null
+          generated_at?: string | null
+          grain?: string
+          id?: number
+          notes?: string | null
+          overall_mae?: number | null
+          predicted?: number | null
+          run_id?: string
+          sku_id?: string | null
+          used_synthetic?: boolean | null
+          val_mae_no_synthetic?: number | null
+          week_start?: string | null
+          winter_mae?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "winter_validation_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "sku_master"
+            referencedColumns: ["sku_id"]
+          },
+        ]
       }
     }
     Views: {
@@ -1749,6 +2774,27 @@ export type Database = {
         }
         Relationships: []
       }
+      v_weather_hybrid: {
+        Row: {
+          apparent_temp_avg: number | null
+          apparent_temp_max: number | null
+          apparent_temp_min: number | null
+          humidity_avg: number | null
+          lat: number | null
+          lon: number | null
+          precipitation: number | null
+          rain: number | null
+          snowfall: number | null
+          station: string | null
+          temp_avg: number | null
+          temp_max: number | null
+          temp_min: number | null
+          weather_date: string | null
+          wind_avg: number | null
+          wind_direction: number | null
+        }
+        Relationships: []
+      }
       v_weather_observed: {
         Row: {
           humidity_avg: number | null
@@ -1793,7 +2839,14 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      gl_warehouse_daily_series: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          d: string
+          inbound_qty: number
+          outbound_qty: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

@@ -72,9 +72,15 @@ class SyntheticConfig:
     first_cold_wave_date: str = "2024-11-27"
 
     # ── 지역 가중치 [근거 D: 지역별판매트렌드 CSV 실측] ──
+    # 지역별판매트렌드 CSV 원본 비중 (합계 65.8% — 인천 7.6%는 ASOS 관측소 없어 제외)
+    # 코드 내부에서 sum(weights)로 정규화되므로 각 지역의 상대 비중만 의미.
+    # 수도권 61.5% = 서울(23.7) + 경기(30.2) + 인천(7.6)  [행정 구분]
     region_weights: dict[str, float] = field(default_factory=lambda: {
-        "seoul": 0.237, "suwon": 0.302, "busan": 0.065,
-        "daejeon": 0.027, "gwangju": 0.027,
+        "seoul": 0.237,    # 서울
+        "suwon": 0.302,    # 경기 대표
+        "busan": 0.065,    # 부산
+        "daejeon": 0.027,  # 대전
+        "gwangju": 0.027,  # 광주
     })
 
     # ── 월별 발주/판매 비율 [근거 D: 납품률×일간성과 실측] ──

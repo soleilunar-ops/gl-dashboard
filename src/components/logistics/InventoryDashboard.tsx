@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { dailyInventoryBase } from "./_data/dailyInventoryBase";
 import { FilterBar, type InventoryFilter } from "./FilterBar";
 import { InventoryTable } from "./InventoryTable";
 import { SummaryCards } from "./SummaryCards";
@@ -13,6 +14,26 @@ function formatLocalYmd(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/** 화면 표와 동일 컬럼으로 전체 필터 결과를 xlsx 저장 (페이지 분할 무시) */
+function downloadInventoryListExcel(rows: InventoryItem[]) {
+  if (rows.length === 0) return;
+  const sheetRows = rows.map((row) => ({
+    순번: row.seq_no,
+    품목코드: row.erp_code ?? "",
+    품목명: row.item_name,
+    제조년도: row.manufacture_year ?? "",
+    유형: row.production_type ?? "",
+    재고량: row.current_qty,
+    재고금액: row.stock_amount,
+  }));
+  const ws = XLSX.utils.json_to_sheet(sheetRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "지엘창고재고");
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+  XLSX.writeFile(wb, `지엘창고재고_${stamp}.xlsx`);
 }
 
 interface InventoryDashboardProps {
@@ -27,9 +48,6 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
   });
   const [todayIncoming, setTodayIncoming] = useState(0);
   const [todayOutgoing, setTodayOutgoing] = useState(0);
-  const [masterMessage] = useState<string | null>(
-    `일일재고 기본자료 적용: ${dailyInventoryBase.length.toLocaleString()}건`
-  );
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
 
@@ -73,55 +91,8 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
     void loadTodayMovement();
   }, [loadTodayMovement, items.length]);
 
-  const fallbackItems = useMemo(
-    () =>
-      dailyInventoryBase.map((row, index) => ({
-        id: -(index + 1),
-        seq_no: row.seqNo,
-        item_name: row.productName,
-        manufacture_year: null,
-        production_type: row.productionType,
-        erp_code: row.productCode,
-        coupang_sku_id: null,
-        cost_price: row.qty === 0 ? 0 : row.amount / row.qty,
-        is_active: true,
-        current_qty: row.qty,
-        erp_qty: null,
-        diff: null,
-        stock_amount: row.amount,
-        in_7days: 0,
-        out_7days: 0,
-      })),
-    []
-  );
-
-  const itemsWithMaster = useMemo((): InventoryItem[] => {
-    const baseByCode = new Map(fallbackItems.map((row) => [row.erp_code, row]));
-    const merged = items.map((item) => {
-      const code = (item.erp_code ?? "").trim();
-      const base = code ? baseByCode.get(code) : undefined;
-      if (!base) return item;
-      return {
-        ...item,
-        erp_code: code,
-        item_name: base.item_name,
-        production_type: base.production_type,
-        current_qty: base.current_qty,
-        stock_amount: base.stock_amount,
-      };
-    });
-
-    if (merged.length === 0) {
-      return fallbackItems;
-    }
-
-    const existingCodes = new Set(merged.map((row) => (row.erp_code ?? "").trim()));
-    const extras = fallbackItems.filter((row) => !existingCodes.has((row.erp_code ?? "").trim()));
-    return [...merged, ...extras];
-  }, [items, fallbackItems]);
-
   const filteredItems = useMemo(() => {
-    return itemsWithMaster.filter((row) => {
+    return items.filter((row) => {
       if (filter.productionType !== "all" && row.production_type !== filter.productionType) {
         return false;
       }
@@ -132,7 +103,7 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
         (row.erp_code?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [itemsWithMaster, filter]);
+  }, [items, filter]);
 
   useEffect(() => {
     setPage(1);
@@ -152,6 +123,15 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
     [onItemClick]
   );
 
+  const handleExportExcel = useCallback(() => {
+    if (filteredItems.length === 0) {
+      toast.error("추출할 데이터가 없습니다.");
+      return;
+    }
+    downloadInventoryListExcel(filteredItems);
+    toast.success(`엑셀 저장 완료 (${filteredItems.length.toLocaleString()}건)`);
+  }, [filteredItems]);
+
   return (
     <div className="space-y-4">
       <SummaryCards
@@ -161,14 +141,12 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
         todayOutgoing={todayOutgoing}
       />
 
-      <FilterBar filter={filter} onFilterChange={setFilter} />
-
-      {masterMessage ? <p className="text-muted-foreground text-sm">{masterMessage}</p> : null}
-      <p className="text-muted-foreground text-xs">
-        총재고현황 기본값은 `일일재고_3시스템_품목코드매핑.xlsx` 기준입니다. 매핑 규칙은
-        `지엘_품목코드→품목코드`, `지엘_품목명→품목명`, `재고수량→재고량`,
-        `원가_일일재고×재고수량→재고금액`으로 적용했습니다.
-      </p>
+      <FilterBar
+        filter={filter}
+        onFilterChange={setFilter}
+        onExportExcel={handleExportExcel}
+        exportDisabled={loading || filteredItems.length === 0}
+      />
 
       {error && items.length > 0 ? (
         <p className="text-destructive text-sm" role="alert">
