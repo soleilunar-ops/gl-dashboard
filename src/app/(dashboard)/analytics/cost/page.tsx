@@ -1,10 +1,10 @@
 import PageWrapper from "@/components/layout/PageWrapper";
-import CostAnalyticsDashboard from "@/components/analytics/cost/CostAnalyticsDashboard";
+import CostMain from "@/components/analytics/cost/CostMain";
 
 export default function CostPage() {
   return (
     <PageWrapper title="마진 산출">
-      <CostAnalyticsDashboard />
+      <CostMain />
     </PageWrapper>
   );
 }
