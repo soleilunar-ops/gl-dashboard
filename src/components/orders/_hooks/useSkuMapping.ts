@@ -42,12 +42,12 @@ export function useSkuMapping(erpCode: string | null | undefined) {
       setLoading(true);
       setError(null);
       try {
-        // item_erp_mapping에서 verified 상태의 ERP 매핑을 우선 조회
+        // item_erp_mapping에서 ERP 매핑 조회
+        // (v6 스키마에서 mapping_status 컬럼 제거됨 — 모든 매핑을 신뢰 가능한 것으로 간주)
         const { data, error: qErr } = await supabase
           .from("item_erp_mapping")
           .select("item_id, erp_code, erp_system")
           .eq("erp_code", erpCode)
-          .eq("mapping_status", "verified")
           .limit(1)
           .maybeSingle();
 

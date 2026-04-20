@@ -58,11 +58,7 @@ export function useContractFormOptions(companyCode: ContractCompanyCode | null) 
           .select("item_id, seq_no, item_name_norm, item_name_raw, is_active")
           .eq("is_active", true)
           .order("seq_no", { ascending: true }),
-        supabase
-          .from("item_erp_mapping")
-          .select("item_id, erp_code")
-          .eq("erp_system", companyCode)
-          .eq("mapping_status", "verified"),
+        supabase.from("item_erp_mapping").select("item_id, erp_code").eq("erp_system", companyCode),
         supabase
           .from("orders")
           .select("counterparty")
