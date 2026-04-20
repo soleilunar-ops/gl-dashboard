@@ -352,6 +352,57 @@ export type Database = {
         }
         Relationships: []
       }
+      coupang_sku_ai_analysis_snapshots: {
+        Row: {
+          base_op_date: string
+          body: string
+          center_label: string
+          center_query: string | null
+          created_at: string
+          gl_erp_code: string | null
+          id: string
+          item_id: number | null
+          period_end: string | null
+          period_start: string | null
+          sku_display_name: string | null
+          sku_id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          base_op_date: string
+          body: string
+          center_label: string
+          center_query?: string | null
+          created_at?: string
+          gl_erp_code?: string | null
+          id?: string
+          item_id?: number | null
+          period_end?: string | null
+          period_start?: string | null
+          sku_display_name?: string | null
+          sku_id: string
+          title?: string
+          user_id: string
+        }
+        Update: {
+          base_op_date?: string
+          body?: string
+          center_label?: string
+          center_query?: string | null
+          created_at?: string
+          gl_erp_code?: string | null
+          id?: string
+          item_id?: number | null
+          period_end?: string | null
+          period_start?: string | null
+          sku_display_name?: string | null
+          sku_id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_performance: {
         Row: {
           amv: number | null
