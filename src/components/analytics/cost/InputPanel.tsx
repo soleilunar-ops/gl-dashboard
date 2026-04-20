@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ChevronDown, ChevronRight, FileSpreadsheet, X } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -44,11 +44,6 @@ type Props = {
   refreshExchange: () => void;
 
   channels: ChannelRate[];
-  channelFileName: string | null;
-  channelIsCustom: boolean;
-  onUploadChannelFile: (file: File) => void;
-  onResetChannels: () => void;
-  onDownloadChannelTemplate: () => void;
 };
 
 /** 숫자 입력 파싱 — 변경 이유: NaN 방어, 빈값은 0으로 클램프 */
@@ -74,15 +69,9 @@ export default function InputPanel({
   exchange,
   refreshExchange,
   channels,
-  channelFileName,
-  channelIsCustom,
-  onUploadChannelFile,
-  onResetChannels,
-  onDownloadChannelTemplate,
 }: Props) {
   const [fixedOpen, setFixedOpen] = useState(false);
   const [exCurrentManual, setExCurrentManual] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleField = <K extends keyof InputState>(key: K, value: InputState[K]) => {
     setInput({ ...input, [key]: value });
@@ -106,13 +95,6 @@ export default function InputPanel({
       return;
     }
     handleField("exPI", exchange.cnyKrw);
-  };
-
-  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    onUploadChannelFile(file);
-    e.target.value = "";
   };
 
   return (
@@ -234,58 +216,19 @@ export default function InputPanel({
             </div>
 
             <div className="space-y-2 sm:col-span-2">
-              <Label>판매 채널</Label>
-              <div className="flex gap-2">
-                <select
-                  value={input.selectedChannel}
-                  onChange={(e) => handleField("selectedChannel", e.target.value)}
-                  className="border-input bg-background flex h-10 flex-1 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                >
-                  {channels.map((c) => (
-                    <option key={c.channelName} value={c.channelName}>
-                      {c.channelName} ({(c.payoutRate * 100).toFixed(1)}%)
-                    </option>
-                  ))}
-                </select>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={handleFilePick}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="채널 수수료 엑셀 업로드"
-                  title="채널 수수료 엑셀 업로드"
-                >
-                  <FileSpreadsheet className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={onDownloadChannelTemplate}
-                  className="text-xs"
-                >
-                  템플릿
-                </Button>
-              </div>
-              {channelIsCustom && channelFileName && (
-                <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                  <span>📄 {channelFileName}</span>
-                  <button
-                    type="button"
-                    onClick={onResetChannels}
-                    className="hover:text-foreground inline-flex items-center gap-1"
-                  >
-                    <X className="h-3 w-3" /> 기본값 복원
-                  </button>
-                </div>
-              )}
+              <Label htmlFor="cost-channel-select">판매 채널</Label>
+              <select
+                id="cost-channel-select"
+                value={input.selectedChannel}
+                onChange={(e) => handleField("selectedChannel", e.target.value)}
+                className="border-input bg-background flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+              >
+                {channels.map((c) => (
+                  <option key={c.channelName} value={c.channelName}>
+                    {c.channelName}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </section>

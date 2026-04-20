@@ -113,11 +113,6 @@ export default function CostMain() {
           exchange={rate}
           refreshExchange={() => void refresh()}
           channels={channels.rates}
-          channelFileName={channels.fileName}
-          channelIsCustom={channels.isCustom}
-          onUploadChannelFile={channels.upload}
-          onResetChannels={channels.reset}
-          onDownloadChannelTemplate={channels.downloadTemplate}
         />
 
         <div className="space-y-6">
@@ -138,7 +133,16 @@ export default function CostMain() {
         <QShipMarginChart baseInput={marginInput} />
       </div>
 
-      <ChannelTable rates={channels.rates} baseInput={marginInput} />
+      <ChannelTable
+        rates={channels.rates}
+        baseInput={marginInput}
+        channelFileName={channels.fileName}
+        channelIsCustom={channels.isCustom}
+        channelError={channels.error}
+        onUploadChannelFile={channels.upload}
+        onResetChannels={channels.reset}
+        onDownloadChannelTemplate={channels.downloadTemplate}
+      />
     </div>
   );
 }

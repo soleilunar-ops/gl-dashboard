@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { FileSpreadsheet, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -19,6 +21,13 @@ type Props = {
   rates: ChannelRate[];
   /** channelPayoutRate는 각 채널 값으로 덮어쓰므로 MarginInput 그대로 수용 */
   baseInput: MarginInput;
+  /** 채널 수수료 엑셀 업로드 연동 — 변경 이유: 판매 채널 select 옆에서 테이블 헤더로 이동 */
+  channelFileName: string | null;
+  channelIsCustom: boolean;
+  channelError: string | null;
+  onUploadChannelFile: (file: File) => void;
+  onResetChannels: () => void;
+  onDownloadChannelTemplate: () => void;
 };
 
 type Row = {
@@ -31,8 +40,19 @@ type Row = {
   isInfeasible: boolean;
 };
 
-/** 채널별 마진 테이블 — 변경 이유: 단일 목표 마진 기준 일괄 비교 */
-export default function ChannelTable({ rates, baseInput }: Props) {
+/** 채널별 마진 테이블 — 변경 이유: 단일 목표 마진 기준 일괄 비교 + 수수료 엑셀 업로드 */
+export default function ChannelTable({
+  rates,
+  baseInput,
+  channelFileName,
+  channelIsCustom,
+  channelError,
+  onUploadChannelFile,
+  onResetChannels,
+  onDownloadChannelTemplate,
+}: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const rows: Row[] = useMemo(() => {
     return rates
       .map((ch) => {
@@ -50,10 +70,60 @@ export default function ChannelTable({ rates, baseInput }: Props) {
       .sort((a, b) => b.actualMargin - a.actualMargin);
   }, [rates, baseInput]);
 
+  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    onUploadChannelFile(file);
+    e.target.value = "";
+  };
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">채널별 권장가 · 마진</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">채널별 권장가 · 마진</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleFilePick}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              채널별 수수료율 업데이트
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={onDownloadChannelTemplate}
+            >
+              템플릿
+            </Button>
+          </div>
+        </div>
+        {channelIsCustom && channelFileName && (
+          <div className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
+            <span>📄 {channelFileName}</span>
+            <button
+              type="button"
+              onClick={onResetChannels}
+              className="hover:text-foreground inline-flex items-center gap-1"
+            >
+              <X className="h-3 w-3" /> 기본값 복원
+            </button>
+          </div>
+        )}
+        {channelError && <p className="mt-2 text-xs text-red-600">업로드 실패: {channelError}</p>}
       </CardHeader>
       <CardContent>
         <Table>

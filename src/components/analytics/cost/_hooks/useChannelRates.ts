@@ -20,28 +20,56 @@ export const DEFAULT_CHANNEL_RATES: ChannelRate[] = [
   { channelName: "카카오선물하기", payoutRate: 0.93 },
 ];
 
-/** 셀 값 → 0~1 정산비율 — 변경 이유: %·소수 혼용 입력 허용 */
-function normalizePayoutCell(v: unknown): number | null {
+/** 단일 숫자 토큰 → 0~1 비율 — 변경 이유: % 표기·소수 혼용, >1이면 /100 */
+function parseSingleNumber(raw: string): number | null {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const v = n > 1 ? n / 100 : n;
+  if (v <= 0 || v > 1) return null;
+  return v;
+}
+
+/**
+ * 셀 값 → 0~1 비율
+ * 변경 이유: "45%-50%" 같은 범위 값은 평균, "(VAT 별도)" 등 괄호 텍스트는 제거
+ */
+function normalizeRateCell(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   if (typeof v === "number" && Number.isFinite(v)) {
-    let n = v;
-    if (n > 1) n = n / 100;
-    if (n <= 0 || n > 1) return null;
-    return n;
+    return parseSingleNumber(String(v));
   }
-  const s = String(v).trim();
+  let s = String(v).trim();
   if (s === "") return null;
-  const stripped = s.replace(/%/g, "").replace(/,/g, "");
-  let n = Number(stripped);
-  if (!Number.isFinite(n)) return null;
-  if (n > 1) n = n / 100;
-  if (n <= 0 || n > 1) return null;
-  return n;
+  // 괄호·주석 제거 후 %·콤마 정리
+  s = s
+    .replace(/\([^)]*\)/g, "")
+    .replace(/%/g, "")
+    .replace(/,/g, "")
+    .trim();
+  if (s === "") return null;
+  // 범위(-, ~, 물결 등)는 평균으로 대체
+  const rangeMatch = s
+    .split(/[-~–—]/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (rangeMatch.length >= 2) {
+    const nums = rangeMatch.map(parseSingleNumber).filter((n): n is number => n !== null);
+    if (nums.length === 0) return null;
+    const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+    if (avg <= 0 || avg > 1) return null;
+    return avg;
+  }
+  return parseSingleNumber(s);
+}
+
+/** 정산비율 셀 — 위와 동일 */
+function normalizePayoutCell(v: unknown): number | null {
+  return normalizeRateCell(v);
 }
 
 /** 수수료율 셀 → 정산비율 (1 - 수수료) — 변경 이유: 업로드 컬럼명 변형 대응 */
 function normalizeFeeToPayout(v: unknown): number | null {
-  const raw = normalizePayoutCell(v);
+  const raw = normalizeRateCell(v);
   if (raw === null) return null;
   const oneMinus = 1 - raw;
   if (oneMinus <= 0 || oneMinus > 1) return null;
@@ -50,16 +78,43 @@ function normalizeFeeToPayout(v: unknown): number | null {
 
 type HeaderKind = "channel" | "payout" | "fee" | "note";
 
+/** 헤더 셀 → 의미 매핑 — 변경 이유: 업로드 엑셀의 '사이트' 컬럼도 채널로 인식 */
 function matchHeaderCell(h: string): HeaderKind | null {
   const t = h.trim();
-  if (/채널|channel/i.test(t)) return "channel";
+  if (/채널|사이트|channel|site/i.test(t)) return "channel";
   if (/정산/.test(t)) return "payout";
   if (/수수료/.test(t)) return "fee";
   if (/비고|메모|note/i.test(t)) return "note";
   return null;
 }
 
-/** 첫 시트만 세로 포맷 파싱 — 변경 이유: 요구 스키마 고정 */
+/**
+ * 헤더 행 자동 탐색 — 변경 이유: 제목/빈 행이 위에 있는 엑셀 대응
+ * 최대 12행까지 스캔하여 channel + (payout|fee) 모두 찾으면 그 행을 헤더로 채택.
+ */
+function findHeaderRow(matrix: unknown[][]): {
+  headerIdx: number;
+  colMap: Partial<Record<HeaderKind, number>>;
+} | null {
+  const maxScan = Math.min(matrix.length, 12);
+  for (let r = 0; r < maxScan; r++) {
+    const row = (matrix[r] ?? []).map((c) => String(c ?? "").trim());
+    const localMap: Partial<Record<HeaderKind, number>> = {};
+    row.forEach((cell, idx) => {
+      const kind = matchHeaderCell(cell);
+      if (kind && localMap[kind] === undefined) localMap[kind] = idx;
+    });
+    if (
+      localMap.channel !== undefined &&
+      (localMap.payout !== undefined || localMap.fee !== undefined)
+    ) {
+      return { headerIdx: r, colMap: localMap };
+    }
+  }
+  return null;
+}
+
+/** 첫 시트 파싱 — 변경 이유: 요구 스키마 + 헤더 자동 탐색 */
 function parseFirstSheet(workbook: XLSX.WorkBook): { rows: ChannelRate[]; error: string | null } {
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
@@ -75,25 +130,19 @@ function parseFirstSheet(workbook: XLSX.WorkBook): { rows: ChannelRate[]; error:
     return { rows: [], error: "데이터 행이 없습니다." };
   }
 
-  const headerRow = (matrix[0] ?? []).map((c) => String(c ?? "").trim());
-  const colMap: Partial<Record<HeaderKind, number>> = {};
-
-  headerRow.forEach((cell, idx) => {
-    const kind = matchHeaderCell(cell);
-    if (kind && colMap[kind] === undefined) colMap[kind] = idx;
-  });
-
-  if (colMap.channel === undefined) {
-    return { rows: [], error: "헤더에 채널명 열(채널/channel)이 없습니다." };
+  const found = findHeaderRow(matrix);
+  if (!found) {
+    return {
+      rows: [],
+      error: "헤더(사이트/채널명 + 수수료율/정산비율)를 찾을 수 없습니다.",
+    };
   }
-  if (colMap.payout === undefined && colMap.fee === undefined) {
-    return { rows: [], error: "헤더에 정산비율 또는 수수료율 열이 없습니다." };
-  }
+  const { headerIdx, colMap } = found;
 
   const seen = new Set<string>();
   const rows: ChannelRate[] = [];
 
-  for (let r = 1; r < matrix.length; r++) {
+  for (let r = headerIdx + 1; r < matrix.length; r++) {
     const line = matrix[r];
     const nameIdx = colMap.channel as number;
     const channelName = String(line[nameIdx] ?? "").trim();
