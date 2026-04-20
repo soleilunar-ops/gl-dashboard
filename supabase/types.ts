@@ -686,7 +686,9 @@ export type Database = {
           id: string
           inserted_count: number
           skipped_count: number
+          storage_path: string | null
           total_input: number
+          uploaded_by: string | null
         }
         Insert: {
           company_code: string
@@ -695,7 +697,9 @@ export type Database = {
           id?: string
           inserted_count?: number
           skipped_count?: number
+          storage_path?: string | null
           total_input?: number
+          uploaded_by?: string | null
         }
         Update: {
           company_code?: string
@@ -704,9 +708,49 @@ export type Database = {
           id?: string
           inserted_count?: number
           skipped_count?: number
+          storage_path?: string | null
           total_input?: number
+          uploaded_by?: string | null
         }
         Relationships: []
+      }
+      order_documents: {
+        Row: {
+          content_type: string | null
+          created_at: string
+          file_name: string
+          id: string
+          order_id: number
+          storage_path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          content_type?: string | null
+          created_at?: string
+          file_name: string
+          id?: string
+          order_id: number
+          storage_path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          content_type?: string | null
+          created_at?: string
+          file_name?: string
+          id?: string
+          order_id?: number
+          storage_path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_documents_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orders: {
         Row: {

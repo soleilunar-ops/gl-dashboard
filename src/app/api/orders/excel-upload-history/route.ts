@@ -1,6 +1,6 @@
 // src/app/api/orders/excel-upload-history/route.ts
 // 엑셀 업로드 이력 조회 — 팝업 내 "최근 업로드" 목록
-// 요청: GET ?companyCode=gl|gl_pharm|hnb
+// 요청: GET ?companyCode=gl|gl_pharm|hnb  |  ?scope=all (전 기업 이력)
 
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdmin } from "@supabase/supabase-js";
@@ -34,19 +34,29 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
+  const scopeAll = url.searchParams.get("scope") === "all";
   const companyCode = resolveCompanyCode(url.searchParams.get("companyCode"));
-  if (!companyCode) {
-    return NextResponse.json({ error: "companyCode: gl | gl_pharm | hnb 필요" }, { status: 400 });
+
+  if (!scopeAll && !companyCode) {
+    return NextResponse.json(
+      { error: "companyCode: gl | gl_pharm | hnb 필요, 또는 scope=all" },
+      { status: 400 }
+    );
   }
 
   const admin = createAdmin<Database>(supabaseUrl, serviceRoleKey);
 
-  const { data, error } = await admin
+  let q = admin
     .from("order_excel_upload_logs")
-    .select("id, company_code, file_name, total_input, inserted_count, skipped_count, created_at")
-    .eq("company_code", companyCode)
-    .order("created_at", { ascending: false })
-    .limit(10);
+    .select(
+      "id, company_code, file_name, total_input, inserted_count, skipped_count, created_at, storage_path, uploaded_by"
+    )
+    .order("created_at", { ascending: false });
+
+  if (!scopeAll && companyCode) {
+    q = q.eq("company_code", companyCode);
+  }
+  const { data, error } = await q.limit(scopeAll ? 100 : 40);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

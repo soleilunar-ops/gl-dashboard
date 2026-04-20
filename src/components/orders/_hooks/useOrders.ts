@@ -9,7 +9,7 @@ export type OrderDashboardRow = Tables<"v_orders_dashboard">;
 
 export type OrderStatus = "pending" | "approved" | "rejected" | "all";
 export type OrderErpSystem = "gl" | "gl_pharm" | "hnb";
-export type OrderTxType = "purchase" | "sale" | "return_sale" | "return_purchase";
+export type OrderTxType = "purchase" | "sale" | "return_sale" | "return_purchase" | "production_in";
 
 export interface UseOrdersOptions {
   /** 'all'이면 상태 필터 미적용(pending 우선 정렬) */
@@ -34,6 +34,8 @@ export interface UseOrdersResult {
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
+  /** 변경 이유: ERP 적재 직후 page 상태와 무관하게 0페이지부터 조회해 표에 신규 건이 보이게 함 */
+  refetchFromStart: () => Promise<void>;
 }
 
 /** 승인 워크플로우 메인 훅 — v_orders_dashboard 기반 서버 사이드 페이징 */
@@ -46,73 +48,91 @@ export function useOrders(opts: UseOrdersOptions): UseOrdersResult {
 
   const { status, erpSystems, txTypes, itemSearch, dateFrom, dateTo, page, pageSize } = opts;
 
-  const fetchRows = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchRows = useCallback(
+    async (pageIndexOverride?: number) => {
+      setLoading(true);
+      setError(null);
 
-    // 필터 토글이 모두 해제된 경우 = "배제" 의미 → 0건 반환 (쿼리 생략)
-    if (erpSystems.length === 0 || txTypes.length === 0) {
-      setRows([]);
-      setTotalCount(0);
-      setLoading(false);
-      return;
-    }
+      const pageIndex = pageIndexOverride !== undefined ? pageIndexOverride : page;
 
-    let q = supabase.from("v_orders_dashboard").select("*", { count: "exact" });
-
-    if (status !== "all") {
-      q = q.eq("status", status);
-    }
-    q = q.in("erp_system", erpSystems);
-    q = q.in("tx_type", txTypes);
-    const searchTerm = itemSearch.trim();
-    if (searchTerm) {
-      // 품목명(item_name) + ERP 코드 통합 검색 (item_name_norm alias + erp_code)
-      q = q.or(`item_name.ilike.%${searchTerm}%,erp_code.ilike.%${searchTerm}%`);
-    }
-    if (dateFrom) {
-      q = q.gte("tx_date", dateFrom);
-    }
-    if (dateTo) {
-      q = q.lte("tx_date", dateTo);
-    }
-
-    // 정렬: 전체 탭에서는 pending 먼저, 그 외 탭은 날짜 DESC만
-    if (status === "all") {
-      // 클라이언트 사이드 정렬로 pending 우선 — supabase .or() 직후 order 제약 회피
-      // DB 측 정렬: tx_date DESC, order_id DESC (pending 우선은 후처리)
-    }
-    q = q.order("tx_date", { ascending: false }).order("order_id", { ascending: false });
-
-    const from = page * pageSize;
-    const to = from + pageSize - 1;
-    q = q.range(from, to);
-
-    const { data, count, error: err } = await q;
-    if (err) {
-      setError(err.message);
-      setRows([]);
-      setTotalCount(0);
-    } else {
-      let ordered = data ?? [];
-      if (status === "all") {
-        // pending 우선 (같은 date 내에서)
-        ordered = [...ordered].sort((a, b) => {
-          const ap = a.status === "pending" ? 0 : 1;
-          const bp = b.status === "pending" ? 0 : 1;
-          if (ap !== bp) return ap - bp;
-          return 0;
-        });
+      // 필터 토글이 모두 해제된 경우 = "배제" 의미 → 0건 반환 (쿼리 생략)
+      if (erpSystems.length === 0 || txTypes.length === 0) {
+        setRows([]);
+        setTotalCount(0);
+        setLoading(false);
+        return;
       }
-      setRows(ordered);
-      setTotalCount(count ?? 0);
-    }
-    setLoading(false);
-  }, [supabase, status, erpSystems, txTypes, itemSearch, dateFrom, dateTo, page, pageSize]);
+
+      let q = supabase.from("v_orders_dashboard").select("*", { count: "exact" });
+
+      if (status !== "all") {
+        q = q.eq("status", status);
+      }
+      q = q.in("erp_system", erpSystems);
+      q = q.in("tx_type", txTypes);
+      const searchTerm = itemSearch.trim();
+      if (searchTerm) {
+        // 품목명(item_name) + ERP 코드 통합 검색 (item_name_norm alias + erp_code)
+        q = q.or(`item_name.ilike.%${searchTerm}%,erp_code.ilike.%${searchTerm}%`);
+      }
+      if (dateFrom) {
+        q = q.gte("tx_date", dateFrom);
+      }
+      if (dateTo) {
+        q = q.lte("tx_date", dateTo);
+      }
+
+      // 정렬: 전체 탭에서는 pending 먼저, 그 외 탭은 날짜 DESC만
+      if (status === "all") {
+        // 클라이언트 사이드 정렬로 pending 우선 — supabase .or() 직후 order 제약 회피
+        // DB 측 정렬: tx_date DESC, order_id DESC (pending 우선은 후처리)
+      }
+      q = q.order("tx_date", { ascending: false }).order("order_id", { ascending: false });
+
+      const from = pageIndex * pageSize;
+      const to = from + pageSize - 1;
+      q = q.range(from, to);
+
+      const { data, count, error: err } = await q;
+      if (err) {
+        setError(err.message);
+        setRows([]);
+        setTotalCount(0);
+      } else {
+        let ordered = data ?? [];
+        if (status === "all") {
+          // pending 우선 (같은 date 내에서)
+          ordered = [...ordered].sort((a, b) => {
+            const ap = a.status === "pending" ? 0 : 1;
+            const bp = b.status === "pending" ? 0 : 1;
+            if (ap !== bp) return ap - bp;
+            return 0;
+          });
+        }
+        setRows(ordered);
+        setTotalCount(count ?? 0);
+      }
+      setLoading(false);
+    },
+    [supabase, status, erpSystems, txTypes, itemSearch, dateFrom, dateTo, page, pageSize]
+  );
 
   useEffect(() => {
     void fetchRows();
   }, [fetchRows]);
 
-  return { rows, totalCount, loading, error, refetch: fetchRows };
+  const refetchFromStart = useCallback(async () => {
+    await fetchRows(0);
+  }, [fetchRows]);
+
+  return {
+    rows,
+    totalCount,
+    loading,
+    error,
+    refetch: useCallback(async () => {
+      await fetchRows();
+    }, [fetchRows]),
+    refetchFromStart,
+  };
 }

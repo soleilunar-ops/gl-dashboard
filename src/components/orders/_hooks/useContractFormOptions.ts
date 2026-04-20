@@ -7,30 +7,26 @@ import type { Tables } from "@/lib/supabase/types";
 export type ContractCompanyCode = "gl" | "gl_pharm" | "hnb";
 
 export interface ContractItemOption {
-  /** item_master.item_id (bigint) */
+  /** item_erp_mapping.id — 동일 품목·다른 매핑 행 구분 */
+  mappingId: number;
+  /** item_master.item_id */
   itemId: number;
-  /** item_erp_mapping.erp_code — 선택한 기업 기준 */
   erpCode: string | null;
-  /** item_master.item_name_norm (정규화 품목명) */
   name: string;
-  /** 드롭다운 label: "ERP코드 · 품목명" */
+  /** 드롭다운: 품목코드 · 품목명 */
   label: string;
-  /** item_master.seq_no — 정렬/표시용 */
   seqNo: number;
 }
 
 type ItemMasterRow = Pick<
   Tables<"item_master">,
-  "item_id" | "seq_no" | "item_name_norm" | "item_name_raw" | "is_active"
+  "item_id" | "seq_no" | "item_name_norm" | "item_name_raw"
 >;
-type MappingRow = Pick<Tables<"item_erp_mapping">, "item_id" | "erp_code">;
+type MappingRow = Pick<Tables<"item_erp_mapping">, "id" | "item_id" | "erp_code">;
 
 /**
  * 계약 수동 추가 폼용 품목·거래처 옵션 조회
- *
- * v6 대응:
- * - 품목: item_master (144) + item_erp_mapping (선택 기업의 verified 매핑)
- * - 거래처: orders.counterparty (tx_type='purchase') DISTINCT
+ * 품목: 해당 기업의 item_erp_mapping 전 행(상태 무관) + item_master 조인
  */
 export function useContractFormOptions(companyCode: ContractCompanyCode | null) {
   const supabase = useMemo(() => createClient(), []);
@@ -52,17 +48,12 @@ export function useContractFormOptions(companyCode: ContractCompanyCode | null) 
       setLoading(true);
       setError(null);
 
-      const [itemRes, mappingRes, supplierRes] = await Promise.all([
-        supabase
-          .from("item_master")
-          .select("item_id, seq_no, item_name_norm, item_name_raw, is_active")
-          .eq("is_active", true)
-          .order("seq_no", { ascending: true }),
+      const [mappingRes, supplierRes] = await Promise.all([
         supabase
           .from("item_erp_mapping")
-          .select("item_id, erp_code")
+          .select("id, item_id, erp_code")
           .eq("erp_system", companyCode)
-          .eq("mapping_status", "verified"),
+          .order("id", { ascending: true }),
         supabase
           .from("orders")
           .select("counterparty")
@@ -74,11 +65,6 @@ export function useContractFormOptions(companyCode: ContractCompanyCode | null) 
 
       if (cancelled) return;
 
-      if (itemRes.error) {
-        setError(itemRes.error.message);
-        setLoading(false);
-        return;
-      }
       if (mappingRes.error) {
         setError(mappingRes.error.message);
         setLoading(false);
@@ -90,25 +76,53 @@ export function useContractFormOptions(companyCode: ContractCompanyCode | null) 
         return;
       }
 
-      const itemRows = (itemRes.data ?? []) as ItemMasterRow[];
       const mappingRows = (mappingRes.data ?? []) as MappingRow[];
-      const mappingByItem = new Map<number, string | null>();
-      for (const m of mappingRows) {
-        mappingByItem.set(m.item_id, m.erp_code);
+      if (mappingRows.length === 0) {
+        setItems([]);
+        const supplierRows = (supplierRes.data ?? []) as { counterparty: string | null }[];
+        const names = new Set<string>();
+        for (const row of supplierRows) {
+          const n = row.counterparty;
+          if (n && n.trim()) names.add(n.trim());
+        }
+        setSuppliers([...names].sort((a, b) => a.localeCompare(b, "ko")));
+        setLoading(false);
+        return;
       }
 
-      const nextOptions: ContractItemOption[] = itemRows.map((it) => {
-        const erpCode = mappingByItem.get(it.item_id) ?? null;
-        const name = it.item_name_norm ?? it.item_name_raw ?? "";
-        const codeLabel = erpCode ?? "—";
+      const itemIdSet = new Set(mappingRows.map((m) => m.item_id));
+      const itemRes = await supabase
+        .from("item_master")
+        .select("item_id, seq_no, item_name_norm, item_name_raw")
+        .in("item_id", [...itemIdSet]);
+
+      if (cancelled) return;
+      if (itemRes.error) {
+        setError(itemRes.error.message);
+        setLoading(false);
+        return;
+      }
+
+      const itemRows = (itemRes.data ?? []) as ItemMasterRow[];
+      const itemById = new Map<number, ItemMasterRow>();
+      for (const it of itemRows) {
+        itemById.set(it.item_id, it);
+      }
+
+      const nextOptions: ContractItemOption[] = mappingRows.map((m) => {
+        const it = itemById.get(m.item_id);
+        const name = it?.item_name_norm ?? it?.item_name_raw ?? "";
+        const code = m.erp_code ?? "—";
         return {
-          itemId: it.item_id,
-          erpCode,
+          mappingId: m.id,
+          itemId: m.item_id,
+          erpCode: m.erp_code,
           name,
-          label: `${codeLabel} · ${name}`,
-          seqNo: it.seq_no,
+          label: `${code} · ${name}`,
+          seqNo: it?.seq_no ?? 0,
         };
       });
+      nextOptions.sort((a, b) => a.label.localeCompare(b.label, "ko"));
       setItems(nextOptions);
 
       const supplierRows = (supplierRes.data ?? []) as { counterparty: string | null }[];

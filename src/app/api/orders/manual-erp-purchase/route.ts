@@ -17,12 +17,18 @@ interface Body {
   quantity?: number;
   unitPrice?: number;
   grossTotal?: number;
+  supplyAmount?: number;
+  vatAmount?: number;
+  currency?: string;
+  /** 1 외화 단위당 KRW(수동 입력·조회값) */
+  exchangeRateToKrw?: number;
   supplierName?: string;
   productName?: string;
   memo?: string;
 }
 
 const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "gl_pharm", "hnb"];
+const VALID_CURRENCY = new Set(["CNY", "USD", "KRW"]);
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -67,13 +73,56 @@ export async function POST(request: Request) {
   if (typeof body.grossTotal !== "number" || body.grossTotal < 0) {
     return NextResponse.json({ error: "grossTotal(≥0) 필요" }, { status: 400 });
   }
+  if (
+    body.supplyAmount !== undefined &&
+    body.supplyAmount !== null &&
+    (typeof body.supplyAmount !== "number" || body.supplyAmount < 0)
+  ) {
+    return NextResponse.json({ error: "supplyAmount(≥0) 불일치" }, { status: 400 });
+  }
+  if (
+    body.vatAmount !== undefined &&
+    body.vatAmount !== null &&
+    (typeof body.vatAmount !== "number" || body.vatAmount < 0)
+  ) {
+    return NextResponse.json({ error: "vatAmount(≥0) 불일치" }, { status: 400 });
+  }
+  if (
+    body.currency !== undefined &&
+    body.currency !== null &&
+    body.currency !== "" &&
+    !VALID_CURRENCY.has(body.currency)
+  ) {
+    return NextResponse.json({ error: "currency: CNY | USD | KRW" }, { status: 400 });
+  }
   if (!body.supplierName || !body.supplierName.trim()) {
     return NextResponse.json({ error: "거래처명(supplierName) 필요" }, { status: 400 });
+  }
+
+  const currency = body.currency && VALID_CURRENCY.has(body.currency) ? body.currency : "CNY";
+  if (
+    currency !== "KRW" &&
+    (body.exchangeRateToKrw === undefined ||
+      body.exchangeRateToKrw === null ||
+      typeof body.exchangeRateToKrw !== "number" ||
+      body.exchangeRateToKrw <= 0 ||
+      !Number.isFinite(body.exchangeRateToKrw))
+  ) {
+    return NextResponse.json(
+      { error: "KRW가 아닌 통화는 exchangeRateToKrw(양의 유한수) 필요" },
+      { status: 400 }
+    );
   }
 
   const admin = createAdmin<Database>(supabaseUrl, serviceRoleKey);
 
   const erpTxNo = `MANUAL-${globalThis.crypto.randomUUID()}`;
+  const baseMemo = composeOrderSource(body.companyCode, "dashboard_manual");
+  const memoWithCurrency =
+    currency === "KRW"
+      ? `${baseMemo} · 통화:${currency}`
+      : `${baseMemo} · 통화:${currency} · 환율:1${currency}=${(body.exchangeRateToKrw as number).toLocaleString("ko-KR", { maximumFractionDigits: 6 })}KRW`;
+
   const payload: TablesInsert<"orders"> = {
     tx_date: body.purchaseDate,
     item_id: body.itemId!,
@@ -86,10 +135,10 @@ export async function POST(request: Request) {
     counterparty: body.supplierName.trim(),
     quantity: body.quantity!,
     unit_price: body.unitPrice,
+    supply_amount: body.supplyAmount ?? null,
+    vat: body.vatAmount ?? null,
     total_amount: body.grossTotal,
-    memo: body.memo?.trim()
-      ? `${composeOrderSource(body.companyCode, "dashboard_manual")} · ${body.memo.trim()}`
-      : composeOrderSource(body.companyCode, "dashboard_manual"),
+    memo: body.memo?.trim() ? `${memoWithCurrency} · ${body.memo.trim()}` : memoWithCurrency,
     status: "pending",
   };
 

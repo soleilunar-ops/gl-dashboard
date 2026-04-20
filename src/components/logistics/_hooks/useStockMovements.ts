@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/client";
 const NEW_TO_OLD_TX_TYPE: Record<string, string> = {
   purchase: "IN_PURCHASE",
   return_sale: "IN_RETURN",
+  production_in: "IN_PRODUCTION",
   sale: "OUT_SALE",
   return_purchase: "OUT_RETURN",
 };
@@ -58,6 +59,7 @@ function signedQty(orderTxType: string, quantity: number): number {
   switch (orderTxType) {
     case "purchase":
     case "return_sale":
+    case "production_in":
       return quantity;
     case "sale":
     case "return_purchase":
