@@ -4,6 +4,88 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* shadcn/ui 데이터 속성 기반 variants — node_modules/shadcn/dist/tailwind.css 인라인
+   (Turbopack이 "style" 조건 export 해석 불안정해서 직접 포함) */
+@theme inline {
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height, var(--accordion-panel-height, auto));
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height, var(--accordion-panel-height, auto));
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+@custom-variant data-open {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-closed {
+  &:where([data-state="closed"]),
+  &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-checked {
+  &:where([data-state="checked"]),
+  &:where([data-checked]:not([data-checked="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-unchecked {
+  &:where([data-state="unchecked"]),
+  &:where([data-unchecked]:not([data-unchecked="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-selected {
+  &:where([data-selected="true"]) {
+    @slot;
+  }
+}
+@custom-variant data-disabled {
+  &:where([data-disabled="true"]),
+  &:where([data-disabled]:not([data-disabled="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-active {
+  &:where([data-state="active"]),
+  &:where([data-active]:not([data-active="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
+  }
+}
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -81,6 +163,42 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* ─── Hotpack Season — 팔레트 A (쿨 블루, 대비 강화) ─── */
+  --hotpack-temp-1: #ffe8d0;
+  --hotpack-temp-2: #d4e8dc;
+  --hotpack-temp-3: #9dc8dc;
+  --hotpack-temp-4: #5b95c7;
+  --hotpack-temp-5: #2b6da3;
+  --hotpack-temp-6: #0d3d7a;
+  --hotpack-temp-7: #041a40;
+
+  --hotpack-line-temp: #041a40;
+  --hotpack-line-ma: #5b95c7;
+  --hotpack-zero-line: rgba(70, 130, 80, 0.55);
+  --hotpack-event-marker: rgba(10, 38, 71, 0.55);
+  --hotpack-tooltip-bg: rgba(248, 252, 255, 0.98);
+  --hotpack-tooltip-fg: #041a40;
+  --hotpack-tooltip-border: rgba(10, 38, 71, 0.3);
+  --hotpack-grid: rgba(10, 38, 71, 0.07);
+
+  --hotpack-keyword-1: #b84a2e;
+  --hotpack-keyword-2: #4b8a82;
+  --hotpack-keyword-3: #b88e5a;
+  --hotpack-keyword-4: #6b5a8e;
+  --hotpack-keyword-5: #7a8e4b;
+
+  --hotpack-trigger-critical: #b84a2e;
+  --hotpack-trigger-high: #d97757;
+  --hotpack-trigger-medium: #918e84;
+  --hotpack-trigger-low: #b5b2a8;
+
+  --hotpack-source-short: rgba(43, 109, 163, 0.08);
+  --hotpack-source-mid: rgba(43, 109, 163, 0.04);
+
+  --hotpack-health-good: oklch(0.65 0.16 145);
+  --hotpack-health-warn: oklch(0.76 0.15 80);
+  --hotpack-health-bad: var(--destructive);
 }
 
 .dark {
@@ -115,6 +233,37 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* ─── Hotpack Season — 다크 모드 (쿨 블루 반전) ─── */
+  --hotpack-temp-1: #3a2e20;
+  --hotpack-temp-2: #2d3d36;
+  --hotpack-temp-3: #3a5a6c;
+  --hotpack-temp-4: #5b95c7;
+  --hotpack-temp-5: #7bb3e0;
+  --hotpack-temp-6: #a8cef0;
+  --hotpack-temp-7: #d4e7fa;
+
+  --hotpack-line-temp: #d4e7fa;
+  --hotpack-zero-line: rgba(120, 200, 150, 0.5);
+  --hotpack-event-marker: rgba(212, 231, 250, 0.6);
+  --hotpack-tooltip-bg: rgba(15, 22, 40, 0.98);
+  --hotpack-tooltip-fg: #e8f0fc;
+  --hotpack-tooltip-border: rgba(168, 206, 240, 0.4);
+  --hotpack-grid: rgba(168, 206, 240, 0.08);
+
+  --hotpack-keyword-1: #e8806c;
+  --hotpack-keyword-2: #7fbab0;
+  --hotpack-keyword-3: #d9b080;
+  --hotpack-keyword-4: #9b89b9;
+  --hotpack-keyword-5: #a9bc7d;
+
+  --hotpack-trigger-critical: #e8806c;
+  --hotpack-trigger-high: #e3a082;
+  --hotpack-trigger-medium: #a8a5a0;
+  --hotpack-trigger-low: #6a6862;
+
+  --hotpack-source-short: rgba(91, 149, 199, 0.12);
+  --hotpack-source-mid: rgba(91, 149, 199, 0.06);
 }
 
 @layer base {

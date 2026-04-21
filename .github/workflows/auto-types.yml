@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   generate-types:
@@ -23,22 +24,28 @@ jobs:
           node-version: 20
 
       - name: Supabase CLI 설치
-        run: npm install -g supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
       - name: 타입 생성
         run: supabase gen types typescript --project-id ${{ secrets.SUPABASE_PROJECT_ID }} > supabase/types.ts
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      - name: 변경 확인 및 커밋
-        run: |
-          if git diff --quiet supabase/types.ts; then
-            echo "✅ 타입 변경 없음 — 커밋 생략"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add supabase/types.ts
-            git commit -m "[Bot] chore: supabase types 자동 갱신"
-            git push origin submain
-            echo "✅ supabase/types.ts 갱신 완료"
-          fi
+      - name: 변경 PR 생성 (변경 있을 시에만)
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "[Bot] chore: supabase types 자동 갱신"
+          title: "[Bot] chore: supabase types 자동 갱신"
+          body: |
+            Supabase 스키마 변경을 반영한 `supabase/types.ts` 자동 재생성입니다.
+
+            - 트리거: `workflow_dispatch` 수동 (또는 submain push 활성화 시)
+            - 변경 없으면 이 PR은 생성되지 않습니다.
+            - 머지 대상: `submain`
+          branch: bot/supabase-types-update
+          delete-branch: true
+          base: submain
+          author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          committer: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"

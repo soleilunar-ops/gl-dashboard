@@ -133,6 +133,8 @@ class TTSRequest(BaseModel):
 def _get_supabase_client() -> Any:
     """
     supabase-py 클라이언트를 SUPABASE_URL/SERVICE_ROLE_KEY 로 초기화.
+    Next.js 공유 .env.local 호환 위해 NEXT_PUBLIC_SUPABASE_URL fallback 지원
+    (bi_box_supabase_uploader.py 등 다른 모듈과 동일 패턴).
     환경변수 미설정 시 503 오류로 변환하여 호출부에 명확히 전달한다.
     """
     try:
@@ -143,12 +145,12 @@ def _get_supabase_client() -> Any:
             detail="supabase-py 패키지가 설치되지 않았습니다.",
         ) from exc
 
-    url = os.getenv("SUPABASE_URL", "").strip()
+    url = (os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL") or "").strip()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     if not url or not key:
         raise HTTPException(
             status_code=503,
-            detail="SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 환경변수가 설정되지 않았습니다.",
+            detail="SUPABASE_URL(or NEXT_PUBLIC_SUPABASE_URL) / SUPABASE_SERVICE_ROLE_KEY 환경변수가 설정되지 않았습니다.",
         )
     return create_client(url, key)
 
@@ -156,20 +158,72 @@ def _get_supabase_client() -> Any:
 # ────────────────────────────────────────────
 # 엔드포인트
 # ────────────────────────────────────────────
+# ────────────────────────────────────────────
+# forecast_model_a 행 → ForecastItem 변환
+# ────────────────────────────────────────────
+def _row_to_forecast_item(row: dict[str, Any]) -> ForecastItem:
+    """
+    v6 스키마의 forecast_model_a 테이블 행을 ForecastItem 응답으로 변환.
+
+    legacy `forecasts` 테이블 컬럼 매핑:
+    - product_id          ← sku_id (string)
+    - forecast_date       ← week_start (date)
+    - predicted_qty       ← weekly_sales_qty_forecast (numeric → int 반올림)
+    - model_name          ← hardcode "lightgbm_weekly" (forecast_model_a는 단일 모델)
+    - confidence_lower    ← lower_bound
+    - confidence_upper    ← upper_bound
+    - confidence_level    ← confidence_interval (DEFAULT 0.95)
+    - model_version       ← model_version (동일)
+    """
+    def _to_int(v: Any) -> int | None:
+        if v is None:
+            return None
+        try:
+            return int(round(float(v)))
+        except (TypeError, ValueError):
+            return None
+
+    def _to_float(v: Any) -> float | None:
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    return ForecastItem(
+        product_id=str(row.get("sku_id", "")),
+        forecast_date=row.get("week_start"),
+        predicted_qty=_to_int(row.get("weekly_sales_qty_forecast")),
+        model_name="lightgbm_weekly",
+        confidence_lower=_to_int(row.get("lower_bound")),
+        confidence_upper=_to_int(row.get("upper_bound")),
+        confidence_level=_to_float(row.get("confidence_interval")),
+        model_version=row.get("model_version"),
+    )
+
+
 @router.get("/latest", response_model=list[ForecastItem])
 def get_latest_forecast(
     limit: int = Query(default=50, ge=1, le=500),
-    model_name: str | None = Query(default=None),
+    model_name: str | None = Query(default=None),  # noqa: ARG001 — legacy 호환용, v6에선 단일 모델
 ) -> list[ForecastItem]:
-    """최근 예측 결과 N건 조회."""
+    """최근 예측 결과 N건 조회 (forecast_model_a 기반)."""
     supabase = _get_supabase_client()
-    query = supabase.table("forecasts").select("*").order("forecast_date", desc=True).limit(limit)
-    if model_name:
-        query = query.eq("model_name", model_name)
+    query = (
+        supabase.table("forecast_model_a")
+        .select(
+            "sku_id, week_start, model_version, weekly_sales_qty_forecast,"
+            "lower_bound, upper_bound, confidence_interval"
+        )
+        .order("week_start", desc=True)
+        .order("generated_at", desc=True)
+        .limit(limit)
+    )
 
     res = query.execute()
     rows: list[dict[str, Any]] = res.data or []
-    return [ForecastItem(**r) for r in rows]
+    return [_row_to_forecast_item(r) for r in rows]
 
 
 @router.get("/weekly", response_model=list[ForecastItem])
@@ -177,24 +231,28 @@ def get_weekly_forecast(
     weeks: int = Query(default=4, ge=1, le=16),
     product_id: str | None = Query(default=None),
 ) -> list[ForecastItem]:
-    """오늘 이후 N주 예측치 조회."""
+    """오늘 이후 N주 예측치 조회 (forecast_model_a 기반)."""
     supabase = _get_supabase_client()
     KST = timezone(timedelta(hours=9))
     today = datetime.now(KST).date().isoformat()
 
     query = (
-        supabase.table("forecasts")
-        .select("*")
-        .gte("forecast_date", today)
-        .order("forecast_date", desc=False)
+        supabase.table("forecast_model_a")
+        .select(
+            "sku_id, week_start, model_version, weekly_sales_qty_forecast,"
+            "lower_bound, upper_bound, confidence_interval"
+        )
+        .gte("week_start", today)
+        .order("week_start", desc=False)
         .limit(weeks * 200)
     )
     if product_id:
-        query = query.eq("product_id", product_id)
+        # legacy product_id → v6 sku_id 매핑
+        query = query.eq("sku_id", product_id)
 
     res = query.execute()
     rows: list[dict[str, Any]] = res.data or []
-    return [ForecastItem(**r) for r in rows]
+    return [_row_to_forecast_item(r) for r in rows]
 
 
 @router.get("/insight", response_model=InsightResponse)

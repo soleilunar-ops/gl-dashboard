@@ -25,7 +25,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">—</p>
-            <p className="text-muted-foreground text-xs">products 테이블 연동 예정</p>
+            <p className="text-muted-foreground text-xs">item_master 연동 예정</p>
           </CardContent>
         </Card>
 
@@ -36,7 +36,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">—</p>
-            <p className="text-muted-foreground text-xs">stock_movements 연동 예정</p>
+            <p className="text-muted-foreground text-xs">stock_movement 연동 예정</p>
           </CardContent>
         </Card>
 
@@ -47,7 +47,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">—</p>
-            <p className="text-muted-foreground text-xs">coupang_performance 연동 예정</p>
+            <p className="text-muted-foreground text-xs">daily_performance 연동 예정</p>
           </CardContent>
         </Card>
 
