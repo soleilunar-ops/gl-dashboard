@@ -248,6 +248,7 @@ export type Database = {
           sku_name: string | null
           units_sold: number | null
           updated_at: string | null
+          upload_id: number | null
           vendor_item_id: string | null
         }
         Insert: {
@@ -271,6 +272,7 @@ export type Database = {
           sku_name?: string | null
           units_sold?: number | null
           updated_at?: string | null
+          upload_id?: number | null
           vendor_item_id?: string | null
         }
         Update: {
@@ -294,9 +296,18 @@ export type Database = {
           sku_name?: string | null
           units_sold?: number | null
           updated_at?: string | null
+          upload_id?: number | null
           vendor_item_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "coupang_daily_performance_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       coupang_delivery_detail: {
         Row: {
@@ -315,6 +326,7 @@ export type Database = {
           tax_amount: number | null
           total_supply_amount: number | null
           unit_price: number | null
+          upload_id: number | null
         }
         Insert: {
           created_at?: string | null
@@ -332,6 +344,7 @@ export type Database = {
           tax_amount?: number | null
           total_supply_amount?: number | null
           unit_price?: number | null
+          upload_id?: number | null
         }
         Update: {
           created_at?: string | null
@@ -349,6 +362,66 @@ export type Database = {
           tax_amount?: number | null
           total_supply_amount?: number | null
           unit_price?: number | null
+          upload_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coupang_delivery_detail_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coupang_sku_ai_analysis_snapshots: {
+        Row: {
+          base_op_date: string
+          body: string
+          center_label: string
+          center_query: string | null
+          created_at: string
+          gl_erp_code: string | null
+          id: string
+          item_id: number | null
+          period_end: string | null
+          period_start: string | null
+          sku_display_name: string | null
+          sku_id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          base_op_date: string
+          body: string
+          center_label: string
+          center_query?: string | null
+          created_at?: string
+          gl_erp_code?: string | null
+          id?: string
+          item_id?: number | null
+          period_end?: string | null
+          period_start?: string | null
+          sku_display_name?: string | null
+          sku_id: string
+          title?: string
+          user_id: string
+        }
+        Update: {
+          base_op_date?: string
+          body?: string
+          center_label?: string
+          center_query?: string | null
+          created_at?: string
+          gl_erp_code?: string | null
+          id?: string
+          item_id?: number | null
+          period_end?: string | null
+          period_start?: string | null
+          sku_display_name?: string | null
+          sku_id?: string
+          title?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -381,6 +454,7 @@ export type Database = {
           sns_return_units: number | null
           sns_units_sold: number | null
           units_sold: number | null
+          upload_id: number | null
           vendor_item_id: string
           vendor_item_name: string | null
         }
@@ -412,6 +486,7 @@ export type Database = {
           sns_return_units?: number | null
           sns_units_sold?: number | null
           units_sold?: number | null
+          upload_id?: number | null
           vendor_item_id: string
           vendor_item_name?: string | null
         }
@@ -443,6 +518,7 @@ export type Database = {
           sns_return_units?: number | null
           sns_units_sold?: number | null
           units_sold?: number | null
+          upload_id?: number | null
           vendor_item_id?: string
           vendor_item_name?: string | null
         }
@@ -453,6 +529,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sku_master"
             referencedColumns: ["sku_id"]
+          },
+          {
+            foreignKeyName: "daily_performance_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "v_hotpack_skus"
+            referencedColumns: ["sku_id"]
+          },
+          {
+            foreignKeyName: "daily_performance_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -498,6 +588,246 @@ export type Database = {
         }
         Relationships: []
       }
+      ecount_glpharm_purchase_excel: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string
+          date_from: string
+          date_to: string
+          doc_date: string | null
+          doc_no: string | null
+          erp_code: string | null
+          id: number
+          memo: string | null
+          product_name: string | null
+          qty: number | null
+          supply_amount: number | null
+          total_amount: number | null
+          unit_price: number | null
+          unit_price_vat: number | null
+          vat_amount: number | null
+        }
+        Insert: {
+          company_code: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from: string
+          date_to: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string
+          date_to?: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Relationships: []
+      }
+      ecount_glpharm_sales_excel: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string
+          date_from: string
+          date_to: string
+          doc_date: string | null
+          doc_no: string | null
+          erp_code: string | null
+          id: number
+          memo: string | null
+          product_name: string | null
+          qty: number | null
+          supply_amount: number | null
+          total_amount: number | null
+          unit_price: number | null
+          unit_price_vat: number | null
+          vat_amount: number | null
+        }
+        Insert: {
+          company_code: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from: string
+          date_to: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string
+          date_to?: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Relationships: []
+      }
+      ecount_hnb_purchase_excel: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string
+          date_from: string
+          date_to: string
+          doc_date: string | null
+          doc_no: string | null
+          erp_code: string | null
+          id: number
+          memo: string | null
+          product_name: string | null
+          qty: number | null
+          supply_amount: number | null
+          total_amount: number | null
+          unit_price: number | null
+          unit_price_vat: number | null
+          vat_amount: number | null
+        }
+        Insert: {
+          company_code: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from: string
+          date_to: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string
+          date_to?: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Relationships: []
+      }
+      ecount_hnb_sales_excel: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string
+          date_from: string
+          date_to: string
+          doc_date: string | null
+          doc_no: string | null
+          erp_code: string | null
+          id: number
+          memo: string | null
+          product_name: string | null
+          qty: number | null
+          supply_amount: number | null
+          total_amount: number | null
+          unit_price: number | null
+          unit_price_vat: number | null
+          vat_amount: number | null
+        }
+        Insert: {
+          company_code: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from: string
+          date_to: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string
+          date_to?: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Relationships: []
+      }
       ecount_production_outsource: {
         Row: {
           company_code: string
@@ -517,6 +847,7 @@ export type Database = {
           total_amount: number | null
           unit_price: number | null
           unit_price_vat: number | null
+          upload_id: number | null
           vat_amount: number | null
         }
         Insert: {
@@ -537,6 +868,7 @@ export type Database = {
           total_amount?: number | null
           unit_price?: number | null
           unit_price_vat?: number | null
+          upload_id?: number | null
           vat_amount?: number | null
         }
         Update: {
@@ -557,9 +889,18 @@ export type Database = {
           total_amount?: number | null
           unit_price?: number | null
           unit_price_vat?: number | null
+          upload_id?: number | null
           vat_amount?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ecount_production_outsource_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ecount_production_receipt: {
         Row: {
@@ -567,11 +908,13 @@ export type Database = {
           crawled_at: string | null
           date_from: string
           date_to: string
+          doc_date: string | null
           factory_name: string | null
           id: number
           product_name: string | null
           qty: number | null
           receipt_no: string | null
+          upload_id: number | null
           warehouse_name: string | null
           work_order: string | null
         }
@@ -580,11 +923,13 @@ export type Database = {
           crawled_at?: string | null
           date_from: string
           date_to: string
+          doc_date?: string | null
           factory_name?: string | null
           id?: never
           product_name?: string | null
           qty?: number | null
           receipt_no?: string | null
+          upload_id?: number | null
           warehouse_name?: string | null
           work_order?: string | null
         }
@@ -593,15 +938,25 @@ export type Database = {
           crawled_at?: string | null
           date_from?: string
           date_to?: string
+          doc_date?: string | null
           factory_name?: string | null
           id?: never
           product_name?: string | null
           qty?: number | null
           receipt_no?: string | null
+          upload_id?: number | null
           warehouse_name?: string | null
           work_order?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ecount_production_receipt_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ecount_purchase: {
         Row: {
@@ -622,6 +977,7 @@ export type Database = {
           total_amount: number | null
           unit_price: number | null
           unit_price_vat: number | null
+          upload_id: number | null
           vat_amount: number | null
         }
         Insert: {
@@ -642,6 +998,7 @@ export type Database = {
           total_amount?: number | null
           unit_price?: number | null
           unit_price_vat?: number | null
+          upload_id?: number | null
           vat_amount?: number | null
         }
         Update: {
@@ -658,6 +1015,75 @@ export type Database = {
           product_name?: string | null
           qty?: number | null
           spec?: string | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          upload_id?: number | null
+          vat_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ecount_purchase_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ecount_purchase_excel: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string
+          date_from: string
+          date_to: string
+          doc_date: string | null
+          doc_no: string | null
+          erp_code: string | null
+          id: number
+          memo: string | null
+          product_name: string | null
+          qty: number | null
+          supply_amount: number | null
+          total_amount: number | null
+          unit_price: number | null
+          unit_price_vat: number | null
+          vat_amount: number | null
+        }
+        Insert: {
+          company_code: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from: string
+          date_to: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string
+          date_to?: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
           supply_amount?: number | null
           total_amount?: number | null
           unit_price?: number | null
@@ -685,6 +1111,7 @@ export type Database = {
           total_amount: number | null
           unit_price: number | null
           unit_price_vat: number | null
+          upload_id: number | null
           vat_amount: number | null
         }
         Insert: {
@@ -705,6 +1132,7 @@ export type Database = {
           total_amount?: number | null
           unit_price?: number | null
           unit_price_vat?: number | null
+          upload_id?: number | null
           vat_amount?: number | null
         }
         Update: {
@@ -725,6 +1153,75 @@ export type Database = {
           total_amount?: number | null
           unit_price?: number | null
           unit_price_vat?: number | null
+          upload_id?: number | null
+          vat_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ecount_sales_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ecount_sales_excel: {
+        Row: {
+          company_code: string
+          counterparty: string | null
+          crawled_at: string
+          date_from: string
+          date_to: string
+          doc_date: string | null
+          doc_no: string | null
+          erp_code: string | null
+          id: number
+          memo: string | null
+          product_name: string | null
+          qty: number | null
+          supply_amount: number | null
+          total_amount: number | null
+          unit_price: number | null
+          unit_price_vat: number | null
+          vat_amount: number | null
+        }
+        Insert: {
+          company_code: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from: string
+          date_to: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
+          vat_amount?: number | null
+        }
+        Update: {
+          company_code?: string
+          counterparty?: string | null
+          crawled_at?: string
+          date_from?: string
+          date_to?: string
+          doc_date?: string | null
+          doc_no?: string | null
+          erp_code?: string | null
+          id?: number
+          memo?: string | null
+          product_name?: string | null
+          qty?: number | null
+          supply_amount?: number | null
+          total_amount?: number | null
+          unit_price?: number | null
+          unit_price_vat?: number | null
           vat_amount?: number | null
         }
         Relationships: []
@@ -741,6 +1238,7 @@ export type Database = {
           inbound_qty: number | null
           memo: string | null
           outbound_qty: number | null
+          upload_id: number | null
         }
         Insert: {
           company_code?: string
@@ -753,6 +1251,7 @@ export type Database = {
           inbound_qty?: number | null
           memo?: string | null
           outbound_qty?: number | null
+          upload_id?: number | null
         }
         Update: {
           company_code?: string
@@ -765,6 +1264,84 @@ export type Database = {
           inbound_qty?: number | null
           memo?: string | null
           outbound_qty?: number | null
+          upload_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ecount_stock_ledger_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      excel_uploads: {
+        Row: {
+          category: string
+          company_code: string | null
+          error_message: string | null
+          error_rows: number | null
+          file_hash: string | null
+          file_name: string
+          file_size: number | null
+          id: number
+          inserted_rows: number | null
+          notes: string | null
+          period_end: string | null
+          period_start: string | null
+          processed_at: string | null
+          skipped_rows: number | null
+          status: string
+          storage_path: string | null
+          target_table: string | null
+          total_rows: number | null
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          category: string
+          company_code?: string | null
+          error_message?: string | null
+          error_rows?: number | null
+          file_hash?: string | null
+          file_name: string
+          file_size?: number | null
+          id?: number
+          inserted_rows?: number | null
+          notes?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          processed_at?: string | null
+          skipped_rows?: number | null
+          status?: string
+          storage_path?: string | null
+          target_table?: string | null
+          total_rows?: number | null
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          category?: string
+          company_code?: string | null
+          error_message?: string | null
+          error_rows?: number | null
+          file_hash?: string | null
+          file_name?: string
+          file_size?: number | null
+          id?: number
+          inserted_rows?: number | null
+          notes?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          processed_at?: string | null
+          skipped_rows?: number | null
+          status?: string
+          storage_path?: string | null
+          target_table?: string | null
+          total_rows?: number | null
+          uploaded_at?: string
+          uploaded_by?: string | null
         }
         Relationships: []
       }
@@ -811,6 +1388,13 @@ export type Database = {
             columns: ["sku_id"]
             isOneToOne: false
             referencedRelation: "sku_master"
+            referencedColumns: ["sku_id"]
+          },
+          {
+            foreignKeyName: "forecast_model_a_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "v_hotpack_skus"
             referencedColumns: ["sku_id"]
           },
         ]
@@ -864,6 +1448,13 @@ export type Database = {
             columns: ["sku_id"]
             isOneToOne: false
             referencedRelation: "sku_master"
+            referencedColumns: ["sku_id"]
+          },
+          {
+            foreignKeyName: "forecast_model_b_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "v_hotpack_skus"
             referencedColumns: ["sku_id"]
           },
         ]
@@ -1043,6 +1634,7 @@ export type Database = {
           return_rate: number | null
           return_reason: string | null
           sku_id: string
+          upload_id: number | null
         }
         Insert: {
           category_stockout_rate?: number | null
@@ -1062,6 +1654,7 @@ export type Database = {
           return_rate?: number | null
           return_reason?: string | null
           sku_id: string
+          upload_id?: number | null
         }
         Update: {
           category_stockout_rate?: number | null
@@ -1081,6 +1674,7 @@ export type Database = {
           return_rate?: number | null
           return_reason?: string | null
           sku_id?: string
+          upload_id?: number | null
         }
         Relationships: [
           {
@@ -1089,6 +1683,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sku_master"
             referencedColumns: ["sku_id"]
+          },
+          {
+            foreignKeyName: "inventory_operation_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "v_hotpack_skus"
+            referencedColumns: ["sku_id"]
+          },
+          {
+            foreignKeyName: "inventory_operation_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1144,6 +1752,13 @@ export type Database = {
             referencedColumns: ["sku_id"]
           },
           {
+            foreignKeyName: "item_coupang_mapping_coupang_sku_id_fkey"
+            columns: ["coupang_sku_id"]
+            isOneToOne: false
+            referencedRelation: "v_hotpack_skus"
+            referencedColumns: ["sku_id"]
+          },
+          {
             foreignKeyName: "item_coupang_mapping_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
@@ -1189,7 +1804,6 @@ export type Database = {
       }
       item_erp_mapping: {
         Row: {
-          confidence: string
           created_at: string
           erp_code: string | null
           erp_item_name: string | null
@@ -1197,13 +1811,9 @@ export type Database = {
           erp_system: string
           id: number
           item_id: number
-          mapping_status: string
           notes: string | null
-          verified_at: string | null
-          verified_by: string | null
         }
         Insert: {
-          confidence: string
           created_at?: string
           erp_code?: string | null
           erp_item_name?: string | null
@@ -1211,13 +1821,9 @@ export type Database = {
           erp_system: string
           id?: number
           item_id: number
-          mapping_status?: string
           notes?: string | null
-          verified_at?: string | null
-          verified_by?: string | null
         }
         Update: {
-          confidence?: string
           created_at?: string
           erp_code?: string | null
           erp_item_name?: string | null
@@ -1225,10 +1831,7 @@ export type Database = {
           erp_system?: string
           id?: number
           item_id?: number
-          mapping_status?: string
           notes?: string | null
-          verified_at?: string | null
-          verified_by?: string | null
         }
         Relationships: [
           {
@@ -1335,6 +1938,71 @@ export type Database = {
         }
         Relationships: []
       }
+      keyword_catalog: {
+        Row: {
+          category: string
+          created_at: string
+          display_name: string | null
+          is_active: boolean
+          keyword: string
+          notes: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          display_name?: string | null
+          is_active?: boolean
+          keyword: string
+          notes?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          display_name?: string | null
+          is_active?: boolean
+          keyword?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
+      keyword_trends: {
+        Row: {
+          created_at: string
+          id: number
+          issued_date: string | null
+          keyword: string
+          search_index: number
+          source: string
+          trend_date: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          issued_date?: string | null
+          keyword: string
+          search_index: number
+          source?: string
+          trend_date: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          issued_date?: string | null
+          keyword?: string
+          search_index?: number
+          source?: string
+          trend_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keyword_trends_keyword_fkey"
+            columns: ["keyword"]
+            isOneToOne: false
+            referencedRelation: "keyword_catalog"
+            referencedColumns: ["keyword"]
+          },
+        ]
+      }
       noncompliant_delivery: {
         Row: {
           barcode_error: number | null
@@ -1352,6 +2020,7 @@ export type Database = {
           units_confirmed: number | null
           units_received: number | null
           units_requested: number | null
+          upload_id: number | null
           vendor_id: string
           wrong_fc: number | null
           wrong_item: number | null
@@ -1374,6 +2043,7 @@ export type Database = {
           units_confirmed?: number | null
           units_received?: number | null
           units_requested?: number | null
+          upload_id?: number | null
           vendor_id: string
           wrong_fc?: number | null
           wrong_item?: number | null
@@ -1396,43 +2066,22 @@ export type Database = {
           units_confirmed?: number | null
           units_received?: number | null
           units_requested?: number | null
+          upload_id?: number | null
           vendor_id?: string
           wrong_fc?: number | null
           wrong_item?: number | null
           wrong_packaging?: number | null
           year_week?: string
         }
-        Relationships: []
-      }
-      order_excel_upload_logs: {
-        Row: {
-          company_code: string
-          created_at: string
-          file_name: string
-          id: string
-          inserted_count: number
-          skipped_count: number
-          total_input: number
-        }
-        Insert: {
-          company_code: string
-          created_at?: string
-          file_name: string
-          id?: string
-          inserted_count?: number
-          skipped_count?: number
-          total_input?: number
-        }
-        Update: {
-          company_code?: string
-          created_at?: string
-          file_name?: string
-          id?: string
-          inserted_count?: number
-          skipped_count?: number
-          total_input?: number
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "noncompliant_delivery_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orders: {
         Row: {
@@ -1452,6 +2101,8 @@ export type Database = {
           memo: string | null
           quantity: number
           rejected_reason: string | null
+          source_id: number | null
+          source_table: string
           status: string
           supply_amount: number | null
           total_amount: number | null
@@ -1477,6 +2128,8 @@ export type Database = {
           memo?: string | null
           quantity: number
           rejected_reason?: string | null
+          source_id?: number | null
+          source_table: string
           status?: string
           supply_amount?: number | null
           total_amount?: number | null
@@ -1502,6 +2155,8 @@ export type Database = {
           memo?: string | null
           quantity?: number
           rejected_reason?: string | null
+          source_id?: number | null
+          source_table?: string
           status?: string
           supply_amount?: number | null
           total_amount?: number | null
@@ -1566,6 +2221,7 @@ export type Database = {
           paid_amount: number | null
           season: string | null
           start_date: string | null
+          upload_id: number | null
           year_month: string
         }
         Insert: {
@@ -1578,6 +2234,7 @@ export type Database = {
           paid_amount?: number | null
           season?: string | null
           start_date?: string | null
+          upload_id?: number | null
           year_month: string
         }
         Update: {
@@ -1590,9 +2247,18 @@ export type Database = {
           paid_amount?: number | null
           season?: string | null
           start_date?: string | null
+          upload_id?: number | null
           year_month?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "promotion_ad_costs_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       promotion_coupon_contracts: {
         Row: {
@@ -1607,6 +2273,7 @@ export type Database = {
           season: string | null
           start_date: string | null
           updated_at: string | null
+          upload_id: number | null
         }
         Insert: {
           budget?: number | null
@@ -1620,6 +2287,7 @@ export type Database = {
           season?: string | null
           start_date?: string | null
           updated_at?: string | null
+          upload_id?: number | null
         }
         Update: {
           budget?: number | null
@@ -1633,8 +2301,17 @@ export type Database = {
           season?: string | null
           start_date?: string | null
           updated_at?: string | null
+          upload_id?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "promotion_coupon_contracts_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       promotion_milkrun_costs: {
         Row: {
@@ -1645,6 +2322,7 @@ export type Database = {
           id: number
           is_baseline: boolean | null
           season: string | null
+          upload_id: number | null
           year_month: string
         }
         Insert: {
@@ -1655,6 +2333,7 @@ export type Database = {
           id?: number
           is_baseline?: boolean | null
           season?: string | null
+          upload_id?: number | null
           year_month: string
         }
         Update: {
@@ -1665,9 +2344,18 @@ export type Database = {
           id?: number
           is_baseline?: boolean | null
           season?: string | null
+          upload_id?: number | null
           year_month?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "promotion_milkrun_costs_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       promotion_premium_data_costs: {
         Row: {
@@ -1676,6 +2364,7 @@ export type Database = {
           id: number
           is_baseline: boolean | null
           season: string | null
+          upload_id: number | null
           year_month: string
         }
         Insert: {
@@ -1684,6 +2373,7 @@ export type Database = {
           id?: number
           is_baseline?: boolean | null
           season?: string | null
+          upload_id?: number | null
           year_month: string
         }
         Update: {
@@ -1692,9 +2382,18 @@ export type Database = {
           id?: number
           is_baseline?: boolean | null
           season?: string | null
+          upload_id?: number | null
           year_month?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "promotion_premium_data_costs_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       regional_sales: {
         Row: {
@@ -1708,6 +2407,7 @@ export type Database = {
           sigungu: string | null
           sub_category: string | null
           units_sold: number | null
+          upload_id: number | null
           year_month: string
         }
         Insert: {
@@ -1721,6 +2421,7 @@ export type Database = {
           sigungu?: string | null
           sub_category?: string | null
           units_sold?: number | null
+          upload_id?: number | null
           year_month: string
         }
         Update: {
@@ -1734,9 +2435,18 @@ export type Database = {
           sigungu?: string | null
           sub_category?: string | null
           units_sold?: number | null
+          upload_id?: number | null
           year_month?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "regional_sales_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "excel_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       safety_stock_config: {
         Row: {
@@ -1775,6 +2485,13 @@ export type Database = {
             columns: ["sku_id"]
             isOneToOne: true
             referencedRelation: "sku_master"
+            referencedColumns: ["sku_id"]
+          },
+          {
+            foreignKeyName: "safety_stock_config_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: true
+            referencedRelation: "v_hotpack_skus"
             referencedColumns: ["sku_id"]
           },
         ]
@@ -1839,6 +2556,45 @@ export type Database = {
           sku_name?: string
           sub_category?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      station_catalog: {
+        Row: {
+          asos_stn_id: string
+          created_at: string
+          grid_nx: number | null
+          grid_ny: number | null
+          is_active: boolean
+          mid_land_reg_id: string | null
+          mid_temp_reg_id: string | null
+          notes: string | null
+          station_code: string
+          station_kor_name: string
+        }
+        Insert: {
+          asos_stn_id: string
+          created_at?: string
+          grid_nx?: number | null
+          grid_ny?: number | null
+          is_active?: boolean
+          mid_land_reg_id?: string | null
+          mid_temp_reg_id?: string | null
+          notes?: string | null
+          station_code: string
+          station_kor_name: string
+        }
+        Update: {
+          asos_stn_id?: string
+          created_at?: string
+          grid_nx?: number | null
+          grid_ny?: number | null
+          is_active?: boolean
+          mid_land_reg_id?: string | null
+          mid_temp_reg_id?: string | null
+          notes?: string | null
+          station_code?: string
+          station_kor_name?: string
         }
         Relationships: []
       }
@@ -1927,43 +2683,52 @@ export type Database = {
           },
         ]
       }
-      upload_history: {
+      tmp_docs: {
         Row: {
-          file_name: string | null
-          file_type: string | null
-          id: number
-          period_end: string | null
-          period_start: string | null
-          row_count: number | null
-          status: string | null
-          uploaded_at: string | null
-          uploaded_by: string | null
+          content: string
+          created_at: string | null
+          filename: string
         }
         Insert: {
-          file_name?: string | null
-          file_type?: string | null
-          id?: number
-          period_end?: string | null
-          period_start?: string | null
-          row_count?: number | null
-          status?: string | null
-          uploaded_at?: string | null
-          uploaded_by?: string | null
+          content: string
+          created_at?: string | null
+          filename: string
         }
         Update: {
-          file_name?: string | null
-          file_type?: string | null
-          id?: number
-          period_end?: string | null
-          period_start?: string | null
-          row_count?: number | null
-          status?: string | null
-          uploaded_at?: string | null
-          uploaded_by?: string | null
+          content?: string
+          created_at?: string | null
+          filename?: string
         }
         Relationships: []
       }
-      weather_daily: {
+      trigger_config: {
+        Row: {
+          description: string | null
+          is_active: boolean
+          threshold: number
+          trigger_key: string
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          description?: string | null
+          is_active?: boolean
+          threshold: number
+          trigger_key: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          description?: string | null
+          is_active?: boolean
+          threshold?: number
+          trigger_key?: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      weather_daily_legacy: {
         Row: {
           avg_temp: number | null
           created_at: string | null
@@ -2149,6 +2914,13 @@ export type Database = {
             referencedRelation: "sku_master"
             referencedColumns: ["sku_id"]
           },
+          {
+            foreignKeyName: "winter_validation_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "v_hotpack_skus"
+            referencedColumns: ["sku_id"]
+          },
         ]
       }
     }
@@ -2189,6 +2961,18 @@ export type Database = {
         }
         Relationships: []
       }
+      v_cron_job_status: {
+        Row: {
+          active: boolean | null
+          jobid: number | null
+          jobname: string | null
+          last_message: string | null
+          last_run: string | null
+          last_status: string | null
+          schedule: string | null
+        }
+        Relationships: []
+      }
       v_current_stock: {
         Row: {
           base_cost: number | null
@@ -2221,6 +3005,111 @@ export type Database = {
         }
         Relationships: []
       }
+      v_hotpack_data_freshness: {
+        Row: {
+          days_behind: number | null
+          latest_date: string | null
+          source: string | null
+        }
+        Relationships: []
+      }
+      v_hotpack_season_daily: {
+        Row: {
+          date: string | null
+          day_of_season: number | null
+          diurnal_range: number | null
+          dow: number | null
+          gmv: number | null
+          humidity_avg: number | null
+          order_count: number | null
+          page_views: number | null
+          precipitation: number | null
+          season: string | null
+          snowfall: number | null
+          temp_avg: number | null
+          temp_max: number | null
+          temp_min: number | null
+          units_sold: number | null
+        }
+        Relationships: []
+      }
+      v_hotpack_season_stats: {
+        Row: {
+          avg_daily_units: number | null
+          days_in_data: number | null
+          first_arctic: string | null
+          first_freeze: string | null
+          first_sub_10: string | null
+          first_sub_5: string | null
+          first_sub_minus_5: string | null
+          peak_date: string | null
+          peak_tmin: number | null
+          peak_units: number | null
+          r_linear: number | null
+          r_log: number | null
+          season: string | null
+          season_end: string | null
+          season_highest_temp: number | null
+          season_lowest_temp: number | null
+          season_start: string | null
+          total_gmv: number | null
+          total_units: number | null
+        }
+        Relationships: []
+      }
+      v_hotpack_skus: {
+        Row: {
+          brand: string | null
+          category: string | null
+          sku_id: string | null
+          sku_name: string | null
+        }
+        Insert: {
+          brand?: string | null
+          category?: never
+          sku_id?: string | null
+          sku_name?: string | null
+        }
+        Update: {
+          brand?: string | null
+          category?: never
+          sku_id?: string | null
+          sku_name?: string | null
+        }
+        Relationships: []
+      }
+      v_hotpack_trigger_effects: {
+        Row: {
+          avg_baseline: number | null
+          avg_when_fired: number | null
+          fired_days: number | null
+          multiplier: number | null
+          precision_pct: number | null
+          season: string | null
+          trigger_key: string | null
+        }
+        Relationships: []
+      }
+      v_hotpack_triggers: {
+        Row: {
+          cold_shock: boolean | null
+          compound: boolean | null
+          date: string | null
+          dow: number | null
+          first_freeze: boolean | null
+          max_keyword_ratio: number | null
+          prev_units: number | null
+          search_spike_any: boolean | null
+          search_spike_hotpack: boolean | null
+          season: string | null
+          spiked_keywords: string | null
+          temp_max: number | null
+          temp_min: number | null
+          tmin_delta: number | null
+          units_sold: number | null
+        }
+        Relationships: []
+      }
       v_item_full: {
         Row: {
           base_date: string | null
@@ -2229,15 +3118,9 @@ export type Database = {
           channel_variant: string | null
           coupang_mappings: Json | null
           current_stock: number | null
-          gl_confidence: string | null
           gl_erp_code: string | null
-          gl_pharm_confidence: string | null
           gl_pharm_erp_code: string | null
-          gl_pharm_status: string | null
-          gl_status: string | null
-          hnb_confidence: string | null
           hnb_erp_code: string | null
-          hnb_status: string | null
           is_active: boolean | null
           item_id: number | null
           item_name_norm: string | null
@@ -2269,6 +3152,45 @@ export type Database = {
           seq_no: number | null
         }
         Relationships: []
+      }
+      v_keyword_daily_with_ma: {
+        Row: {
+          category: string | null
+          keyword: string | null
+          ma_7d: number | null
+          ratio_to_ma: number | null
+          search_index: number | null
+          trend_date: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keyword_trends_keyword_fkey"
+            columns: ["keyword"]
+            isOneToOne: false
+            referencedRelation: "keyword_catalog"
+            referencedColumns: ["keyword"]
+          },
+        ]
+      }
+      v_keyword_trends_active: {
+        Row: {
+          category: string | null
+          display_name: string | null
+          issued_date: string | null
+          keyword: string | null
+          search_index: number | null
+          source: string | null
+          trend_date: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keyword_trends_keyword_fkey"
+            columns: ["keyword"]
+            isOneToOne: false
+            referencedRelation: "keyword_catalog"
+            referencedColumns: ["keyword"]
+          },
+        ]
       }
       v_orders_approved: {
         Row: {
@@ -2547,6 +3469,13 @@ export type Database = {
             referencedRelation: "sku_master"
             referencedColumns: ["sku_id"]
           },
+          {
+            foreignKeyName: "daily_performance_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "v_hotpack_skus"
+            referencedColumns: ["sku_id"]
+          },
         ]
       }
       v_sales_weather: {
@@ -2583,6 +3512,13 @@ export type Database = {
             referencedRelation: "sku_master"
             referencedColumns: ["sku_id"]
           },
+          {
+            foreignKeyName: "daily_performance_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "v_hotpack_skus"
+            referencedColumns: ["sku_id"]
+          },
         ]
       }
       v_stock_alert: {
@@ -2605,6 +3541,13 @@ export type Database = {
             columns: ["sku_id"]
             isOneToOne: false
             referencedRelation: "sku_master"
+            referencedColumns: ["sku_id"]
+          },
+          {
+            foreignKeyName: "inventory_operation_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "v_hotpack_skus"
             referencedColumns: ["sku_id"]
           },
         ]
@@ -2795,6 +3738,15 @@ export type Database = {
       }
     }
     Functions: {
+      fn_current_season: {
+        Args: never
+        Returns: {
+          end_date: string
+          season: string
+          start_date: string
+          status: string
+        }[]
+      }
       gl_warehouse_daily_series: {
         Args: { p_from: string; p_to: string }
         Returns: {
@@ -2803,6 +3755,16 @@ export type Database = {
           outbound_qty: number
         }[]
       }
+      trigger_sync_keyword_trends: {
+        Args: { p_days_back?: number; p_season?: string }
+        Returns: string
+      }
+      trigger_sync_weather_asos: {
+        Args: { p_days_back?: number }
+        Returns: string
+      }
+      trigger_sync_weather_mid: { Args: never; Returns: string }
+      trigger_sync_weather_short: { Args: never; Returns: string }
     }
     Enums: {
       [_ in never]: never
