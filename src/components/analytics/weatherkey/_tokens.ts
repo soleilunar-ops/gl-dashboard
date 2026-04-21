@@ -67,17 +67,18 @@ export type TriggerName = keyof typeof TRIGGER_COLORS;
 export type TriggerLevel = (typeof TRIGGER_COLORS)[TriggerName]["level"];
 
 // 중복 발동 시 이 순서로 우선 1개만 전면 카드로 노출.
+// search_spike_* 양쪽 모두 UI 노출에서 제외:
+//  - search_spike_hotpack 정밀도 30% (PM 결정 2026-04-21)
+//  - search_spike_any 적중률 27% — 경보로 무의미, 노이즈 (PM 결정 2026-04-22)
 export const TRIGGER_PRIORITY: readonly TriggerName[] = [
   "compound",
   "cold_shock",
   "first_freeze",
-  "search_spike_hotpack",
-  "search_spike_any",
 ] as const;
 
 export const TRIGGER_LABELS: Record<TriggerName, string> = {
-  cold_shock: "한파 급강",
-  compound: "복합 발동",
+  cold_shock: "갑작스러운 추위",
+  compound: "한파+영하 동시",
   first_freeze: "첫 영하",
   search_spike_hotpack: "핫팩 검색 급등",
   search_spike_any: "관련 키워드 급등",

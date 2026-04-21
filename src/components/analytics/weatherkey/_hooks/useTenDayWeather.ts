@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { HookResult, WeatherSource } from "../_types";
+import { useMockDate } from "./useMockDate";
 
 export type TenDayRow = {
   weather_date: string;
@@ -24,7 +25,11 @@ const SOURCE_PRIORITY: Record<WeatherSource, number> = {
 };
 
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // 로컬 타임존 기준 — toISOString()은 UTC라 KST 새벽에 전날로 밀림
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function rangeDays(centerIsoToday: string, before: number, after: number): string[] {
@@ -44,6 +49,7 @@ function rangeDays(centerIsoToday: string, before: number, after: number): strin
  */
 export function useTenDayWeather(): HookResult<TenDayRow[]> {
   const supabase = useMemo(() => createClient(), []);
+  const { getNow } = useMockDate();
   const [data, setData] = useState<TenDayRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +58,7 @@ export function useTenDayWeather(): HookResult<TenDayRow[]> {
     setLoading(true);
     setError(null);
 
-    const today = isoDate(new Date());
+    const today = isoDate(getNow());
     const from = rangeDays(today, 7, 10)[0];
     const to = rangeDays(today, 7, 10).at(-1)!;
 
@@ -99,7 +105,7 @@ export function useTenDayWeather(): HookResult<TenDayRow[]> {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, getNow]);
 
   useEffect(() => {
     void load();

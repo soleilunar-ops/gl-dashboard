@@ -1,4 +1,7 @@
-import type { Database, Tables, Views } from "@/lib/supabase/types";
+import type { Database, Tables } from "@/lib/supabase/types";
+
+// Supabase generate_typescript_types는 Views helper를 자동 export하지 않아 자체 정의.
+type Views<T extends keyof Database["public"]["Views"]> = Database["public"]["Views"][T]["Row"];
 
 // 뷰 Row 타입 alias
 export type SeasonDaily = Views<"v_hotpack_season_daily">;
@@ -6,6 +9,7 @@ export type SeasonStats = Views<"v_hotpack_season_stats">;
 export type HotpackSkusRow = Views<"v_hotpack_skus">;
 export type TriggerDay = Views<"v_hotpack_triggers">;
 export type TriggerEffect = Views<"v_hotpack_trigger_effects">;
+export type WeatherStateLift = Views<"v_weather_state_lift">;
 export type DataFreshness = Views<"v_hotpack_data_freshness">;
 export type CronJobStatus = Views<"v_cron_job_status">;
 export type KeywordDailyWithMa = Views<"v_keyword_daily_with_ma">;

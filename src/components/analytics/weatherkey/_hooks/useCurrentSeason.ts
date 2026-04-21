@@ -68,16 +68,24 @@ export function useCurrentSeason(): HookResult<SeasonResolution> {
       if (upcomingRes.error) throw new Error(upcomingRes.error.message);
 
       const active = rpcRes.data?.find((r) => r.status === "active");
+      const upcomingRow = upcomingRes.data?.[0];
+      const closed = closedRes.data?.[0];
       let current: CurrentSeasonInfo | null = null;
 
+      // 2월 말 시즌 종료 후 자동 롤오버: active 없으면 다음 예정 시즌을 디폴트로 승격
       if (active) {
         current = toInfo(active.season, "active", active.start_date, active.end_date);
-      } else {
-        const closed = closedRes.data?.[0];
-        if (closed) current = toInfo(closed.season, "closed", closed.start_date, closed.end_date);
+      } else if (upcomingRow) {
+        current = toInfo(
+          upcomingRow.season,
+          "upcoming",
+          upcomingRow.start_date,
+          upcomingRow.end_date
+        );
+      } else if (closed) {
+        current = toInfo(closed.season, "closed", closed.start_date, closed.end_date);
       }
 
-      const upcomingRow = upcomingRes.data?.[0];
       const next: CurrentSeasonInfo | null = upcomingRow
         ? toInfo(upcomingRow.season, "upcoming", upcomingRow.start_date, upcomingRow.end_date)
         : null;
