@@ -1459,6 +1459,36 @@ export type Database = {
           },
         ]
       }
+      hotpack_llm_reports: {
+        Row: {
+          body_md: string
+          generated_at: string
+          id: string
+          kind: string
+          model: string
+          prompt_hash: string
+          season: string
+        }
+        Insert: {
+          body_md: string
+          generated_at?: string
+          id?: string
+          kind: string
+          model: string
+          prompt_hash: string
+          season: string
+        }
+        Update: {
+          body_md?: string
+          generated_at?: string
+          id?: string
+          kind?: string
+          model?: string
+          prompt_hash?: string
+          season?: string
+        }
+        Relationships: []
+      }
       import_leadtime: {
         Row: {
           bl_number: string | null
@@ -2608,6 +2638,7 @@ export type Database = {
           movement_date: string
           movement_type: string
           quantity_delta: number
+          real_quantity: number | null
           running_stock: number | null
           source_id: number | null
           source_table: string
@@ -2621,6 +2652,7 @@ export type Database = {
           movement_date: string
           movement_type: string
           quantity_delta: number
+          real_quantity?: number | null
           running_stock?: number | null
           source_id?: number | null
           source_table: string
@@ -2634,6 +2666,7 @@ export type Database = {
           movement_date?: string
           movement_type?: string
           quantity_delta?: number
+          real_quantity?: number | null
           running_stock?: number | null
           source_id?: number | null
           source_table?: string
@@ -3616,6 +3649,40 @@ export type Database = {
           },
         ]
       }
+      v_weather_bin_matrix: {
+        Row: {
+          avg_units: number | null
+          n_days: number | null
+          season: string | null
+          tdiff_bin: string | null
+          tmax_bin: string | null
+          tmax_hi: number | null
+          tmax_lo: number | null
+        }
+        Relationships: []
+      }
+      v_weather_daily_state: {
+        Row: {
+          date: string | null
+          diurnal_range: number | null
+          is_big_tdiff: boolean | null
+          is_cold_wave: boolean | null
+          is_freeze: boolean | null
+          is_rain_only: boolean | null
+          is_snow: boolean | null
+          is_warm: boolean | null
+          precipitation: number | null
+          season: string | null
+          snowfall: number | null
+          tdiff_bin: string | null
+          temp_avg: number | null
+          temp_max: number | null
+          temp_min: number | null
+          tmax_bin: string | null
+          units_sold: number | null
+        }
+        Relationships: []
+      }
       v_weather_forecast: {
         Row: {
           apparent_temp_avg: number | null
@@ -3733,6 +3800,18 @@ export type Database = {
           temp_min?: number | null
           weather_date?: string | null
           wind_avg?: number | null
+        }
+        Relationships: []
+      }
+      v_weather_state_lift: {
+        Row: {
+          avg_season: number | null
+          avg_when_fired: number | null
+          fired_days: number | null
+          multiplier: number | null
+          season: string | null
+          state_key: string | null
+          state_label: string | null
         }
         Relationships: []
       }

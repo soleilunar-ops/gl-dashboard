@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarController,
   BarElement,
@@ -21,6 +21,7 @@ import { Chart } from "react-chartjs-2";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useHighlightQuery } from "./_hooks/useHighlightQuery";
 import { useSeasonDaily } from "./_hooks/useSeasonDaily";
 import { useSeasonStats } from "./_hooks/useSeasonStats";
 import { CHART_TOKENS, TEMP_BANDS, tempCategory } from "./_tokens";
@@ -45,7 +46,8 @@ interface Props {
 
 type DataPoint = { date: Date; temp: number; sales: number };
 type EventMarker = { name: string; date: string; featured?: boolean };
-type RangePreset = { label: string; from: string; to: string };
+type XRange = { min: number; max: number };
+type RangePreset = { label: string; range: XRange | null };
 
 function rowsToPoints(rows: SeasonDaily[]): DataPoint[] {
   const out: DataPoint[] = [];
@@ -70,20 +72,28 @@ function deriveEvents(stats: SeasonStats | null): EventMarker[] {
 
 function derivePresets(points: DataPoint[]): RangePreset[] {
   if (points.length === 0) return [];
-  const first = points[0].date;
   const last = points[points.length - 1].date;
-  const startYear = first.getFullYear();
-  const toIso = (d: Date) => d.toISOString().slice(0, 10);
+  const startYear = points[0].date.getFullYear();
+  const ts = (iso: string) => new Date(iso).getTime();
 
   const last30Start = new Date(last);
   last30Start.setDate(last.getDate() - 30);
 
   return [
-    { label: "전체", from: toIso(first), to: toIso(last) },
-    { label: "가을 9–11월", from: `${startYear}-09-01`, to: `${startYear}-12-01` },
-    { label: "피크 11–1월", from: `${startYear}-11-01`, to: `${startYear + 1}-02-01` },
-    { label: "겨울 12–2월", from: `${startYear}-12-01`, to: `${startYear + 1}-03-01` },
-    { label: "최근 30일", from: toIso(last30Start), to: toIso(last) },
+    { label: "전체", range: null },
+    {
+      label: "피크 11–2월",
+      range: { min: ts(`${startYear}-11-01`), max: ts(`${startYear + 1}-02-08`) },
+    },
+    {
+      label: "가을 9–11월",
+      range: { min: ts(`${startYear}-09-01`), max: ts(`${startYear}-12-01`) },
+    },
+    {
+      label: "겨울 12–2월",
+      range: { min: ts(`${startYear}-12-01`), max: ts(`${startYear + 1}-03-01`) },
+    },
+    { label: "최근 30일", range: { min: last30Start.getTime(), max: last.getTime() } },
   ];
 }
 
@@ -106,27 +116,36 @@ function formatMmdd(iso: string | null | undefined): string {
 export default function SeasonTimelineChart({ season }: Props) {
   const { data: daily, loading: dailyLoading, error: dailyError } = useSeasonDaily(season);
   const { data: stats } = useSeasonStats(season);
+  const { highlighted, setHighlight } = useHighlightQuery();
   const chartRef = useRef<ChartJS<"bar"> | null>(null);
 
   const points = useMemo(() => rowsToPoints(daily), [daily]);
   const events = useMemo(() => deriveEvents(stats.current), [stats.current]);
   const presets = useMemo(() => derivePresets(points), [points]);
 
-  const peakWindow = useMemo(() => {
+  const peakWindow = useMemo<XRange | null>(() => {
     if (points.length === 0) return null;
     const startYear = points[0].date.getFullYear();
     return {
       min: new Date(`${startYear}-11-01`).getTime(),
-      max: new Date(`${startYear + 1}-02-01`).getTime(),
+      max: new Date(`${startYear + 1}-02-08`).getTime(),
     };
   }, [points]);
 
+  const [xRange, setXRange] = useState<XRange | null>(null);
+  const initialZoomApplied = useRef(false);
+
+  // 시즌 바뀌면 초기 줌 재적용 플래그 리셋
   useEffect(() => {
-    if (!peakWindow) return;
-    const id = window.requestAnimationFrame(() => {
-      chartRef.current?.zoomScale("x", peakWindow);
-    });
-    return () => window.cancelAnimationFrame(id);
+    initialZoomApplied.current = false;
+  }, [season]);
+
+  // points 도착 시 1회만 peakWindow로 초기 줌
+  useEffect(() => {
+    if (peakWindow && !initialZoomApplied.current) {
+      setXRange(peakWindow);
+      initialZoomApplied.current = true;
+    }
   }, [peakWindow]);
 
   const chartData = useMemo(() => {
@@ -185,6 +204,21 @@ export default function SeasonTimelineChart({ season }: Props) {
         },
       },
     };
+
+    if (highlighted) {
+      const dayStart = new Date(`${highlighted}T00:00:00`).getTime();
+      const dayEnd = new Date(`${highlighted}T23:59:59`).getTime();
+      annotations["highlight"] = {
+        type: "box",
+        xMin: dayStart,
+        xMax: dayEnd,
+        xScaleID: "x",
+        backgroundColor: "rgba(43, 109, 163, 0.18)",
+        borderColor: "rgba(43, 109, 163, 0.9)",
+        borderWidth: 2,
+        drawTime: "beforeDatasetsDraw",
+      };
+    }
 
     events.forEach((e, i) => {
       annotations[`event-${i}`] = {
@@ -272,6 +306,8 @@ export default function SeasonTimelineChart({ season }: Props) {
       scales: {
         x: {
           type: "time",
+          min: xRange?.min,
+          max: xRange?.max,
           time: {
             unit: "week",
             displayFormats: { week: "M/d", day: "M/d", month: "yyyy. M월" },
@@ -312,15 +348,10 @@ export default function SeasonTimelineChart({ season }: Props) {
         },
       },
     };
-  }, [events, points]);
+  }, [events, points, xRange, highlighted]);
 
-  const zoomRange = (from: string, to: string) => {
-    chartRef.current?.zoomScale("x", {
-      min: new Date(from).getTime(),
-      max: new Date(to).getTime(),
-    });
-  };
-  const resetZoom = () => chartRef.current?.resetZoom();
+  const applyRange = (range: XRange | null) => setXRange(range);
+  const resetToPeak = () => setXRange(peakWindow);
 
   if (dailyLoading) {
     return (
@@ -358,7 +389,7 @@ export default function SeasonTimelineChart({ season }: Props) {
   }
   if (s?.r_log != null) {
     const strength = Math.abs(s.r_log) >= 0.8 ? "강한" : Math.abs(s.r_log) >= 0.5 ? "중간" : "약한";
-    insightParts.push(`기온-판매 ${strength} 음의 상관(${s.r_log.toFixed(2)})`);
+    insightParts.push(`기온-판매 연관도 ${strength} (${s.r_log.toFixed(2)})`);
   }
   if (s?.first_freeze) {
     insightParts.push(`첫 영하일 ${formatMmdd(s.first_freeze)}`);
@@ -380,14 +411,24 @@ export default function SeasonTimelineChart({ season }: Props) {
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => zoomRange(p.from, p.to)}
+                onClick={() => applyRange(p.range)}
               >
                 {p.label}
               </Button>
             ))}
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={resetZoom}>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={resetToPeak}>
               초기화
             </Button>
+            {highlighted && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-[color:var(--hotpack-trigger-high)]"
+                onClick={() => setHighlight(null)}
+              >
+                × 하이라이트 해제 ({highlighted})
+              </Button>
+            )}
           </div>
         )}
 

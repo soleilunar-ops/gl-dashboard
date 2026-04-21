@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal, RefreshCw } from "lucide-react";
+import { Calendar, MoreHorizontal, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useDataHealth } from "./_hooks/useDataHealth";
+import { useMockDate } from "./_hooks/useMockDate";
 
 /**
  * 상단바 ⋯ 팝오버. cron 잡 4종 상태 + 수동 리프레시.
@@ -19,6 +20,7 @@ import { useDataHealth } from "./_hooks/useDataHealth";
  */
 export default function AdminPopover() {
   const { data, loading, refetch } = useDataHealth();
+  const { mockDate, setMockDate, enabled: mockEnabled } = useMockDate();
 
   return (
     <DropdownMenu>
@@ -80,6 +82,66 @@ export default function AdminPopover() {
         <DropdownMenuItem onSelect={() => refetch()} className="text-xs">
           <RefreshCw className="mr-2 h-3.5 w-3.5" /> 상태 다시 불러오기
         </DropdownMenuItem>
+
+        {mockEnabled && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="flex items-center gap-1.5 text-xs">
+              <Calendar className="h-3.5 w-3.5" /> 개발 · Mock Date
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <div
+              className="flex flex-col gap-2 px-2 py-2"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <input
+                type="date"
+                value={mockDate ?? ""}
+                onChange={(e) => setMockDate(e.target.value || null)}
+                className="border-input bg-background w-full rounded-md border px-2 py-1 text-xs"
+              />
+              <div className="flex flex-wrap gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  onClick={() => setMockDate("2026-12-04")}
+                >
+                  12/4 시뮬
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  onClick={() => setMockDate("2026-12-08")}
+                >
+                  12/8 추위 당일
+                </Button>
+                {mockDate && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 text-[11px]"
+                    onClick={() => setMockDate(null)}
+                  >
+                    <X className="h-3 w-3" /> 해제
+                  </Button>
+                )}
+              </div>
+              <div className="text-muted-foreground text-[10px] leading-relaxed">
+                {mockDate ? (
+                  <>
+                    ⚠️ 현재 <b>{mockDate}</b>로 위장 중 — 예보 스캔·10일 창이 이 날짜 기준으로
+                    작동합니다.
+                  </>
+                ) : (
+                  <>실제 날짜 사용 중. 프로덕션 빌드에선 이 블록이 감춰집니다.</>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

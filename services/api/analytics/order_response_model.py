@@ -70,6 +70,12 @@ def build_model_b_training_data(
     cat_sales["sales_growth_4w"] = (cat_sales["total_sales"] - avg_4w) / avg_4w.replace(0, np.nan)
 
     # 시즌·달력 피처
+    # TODO(계산 이상 ⑤): season_flag 이진 구분만으로 비시즌(5~9월) 학습 샘플이 과소 대표.
+    #   현재 학습 데이터 1년치 기준 비시즌 유효 주차가 성수기보다 적어 모델이
+    #   비시즌 패턴을 과소 학습할 위험. 개선안:
+    #     1) 월 단위 onehot 또는 카테고리형 month 피처로 확장
+    #     2) 성수기/비시즌 별도 모델 분리
+    #     3) 2년치 축적 후 클래스 불균형 재평가
     cat_sales["month"] = cat_sales["week_start"].dt.month
     cat_sales["season_flag"] = cat_sales["month"].apply(
         lambda m: 1 if m in (10, 11, 12, 1, 2) else 0

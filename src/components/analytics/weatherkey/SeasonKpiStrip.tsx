@@ -74,7 +74,7 @@ function buildCards(current: SeasonStats | null, baseline: SeasonStats | null) {
           : undefined,
     },
     {
-      label: "기온-판매 민감도",
+      label: "기온-판매 연관도",
       value: current?.r_log != null ? current.r_log.toFixed(3) : "–",
       delta: rLogDelta(current?.r_log, baseline?.r_log),
       hint: baseline?.r_log != null ? `25시즌 ${baseline.r_log.toFixed(3)} (강함)` : undefined,
@@ -122,7 +122,7 @@ export default function SeasonKpiStrip({ season }: Props) {
 
   if (error) {
     return (
-      <div className="text-destructive rounded-md border p-3 text-sm">KPI 조회 실패: {error}</div>
+      <div className="text-destructive rounded-md border p-3 text-sm">지표 조회 실패: {error}</div>
     );
   }
 
@@ -165,7 +165,7 @@ function buildInsightSentence(current: SeasonStats | null, baseline: SeasonStats
   if (current?.r_log != null) {
     const abs = Math.abs(current.r_log);
     const strength = abs >= 0.8 ? "강함" : abs >= 0.5 ? "보통" : "약함";
-    parts.push(`기온 민감도 ${strength}`);
+    parts.push(`기온-판매 연관도 ${strength}`);
   }
   if (parts.length === 0) return "";
   return `25시즌 대비 ${parts.join(" · ")}`;
