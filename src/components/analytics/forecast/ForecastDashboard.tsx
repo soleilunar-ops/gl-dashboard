@@ -9,6 +9,10 @@ import {
   Package,
   Snowflake,
   Boxes,
+  Volume2,
+  Pause,
+  Square,
+  Loader2,
 } from "lucide-react";
 import {
   Line,
@@ -26,7 +30,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useForecast, type DailySales, type WeeklyPrediction } from "./_hooks/useForecast";
+import { useTTSPlayer, TTS_VOICES, type TTSVoice } from "./_hooks/useTTSPlayer";
 import { FASTAPI_URL } from "@/lib/constants";
 
 export default function ForecastDashboard() {
@@ -144,6 +157,8 @@ export default function ForecastDashboard() {
 // AI 인사이트 카드
 // ────────────────────────────────────────────
 function InsightCard({ insight, loading }: { insight: string | null; loading: boolean }) {
+  const tts = useTTSPlayer();
+
   if (loading) {
     return (
       <Card className="border-blue-200 bg-blue-50/50">
@@ -179,14 +194,74 @@ function InsightCard({ insight, loading }: { insight: string | null; loading: bo
       <CardHeader className="flex flex-row items-center gap-2 pb-2">
         <Sparkles className="h-5 w-5 text-blue-600" />
         <CardTitle className="text-base font-semibold text-blue-900">AI 발주 인사이트</CardTitle>
-        <Badge variant="secondary" className="ml-auto text-xs">
-          GPT-4o-mini
-        </Badge>
+        <div className="ml-auto flex items-center gap-2">
+          <TTSControls tts={tts} />
+          <Badge variant="secondary" className="text-xs">
+            GPT-4o-mini
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent>
         <p className="text-sm leading-relaxed whitespace-pre-line">{insight}</p>
+        {tts.error && <p className="text-destructive mt-2 text-xs">음성 재생 오류: {tts.error}</p>}
       </CardContent>
     </Card>
+  );
+}
+
+function TTSControls({ tts }: { tts: ReturnType<typeof useTTSPlayer> }) {
+  const { state, voice, setVoice, play, pause, stop } = tts;
+
+  const voiceSelector = (
+    <Select value={voice} onValueChange={(v) => setVoice(v as TTSVoice)}>
+      <SelectTrigger size="sm" className="h-8 w-[140px] text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {TTS_VOICES.map((v) => (
+          <SelectItem key={v.value} value={v.value} className="text-xs">
+            {v.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
+  let actionButton;
+  if (state === "loading") {
+    actionButton = (
+      <Button size="sm" variant="outline" disabled className="gap-1.5">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        합성 중
+      </Button>
+    );
+  } else if (state === "playing") {
+    actionButton = (
+      <div className="flex gap-1">
+        <Button size="sm" variant="outline" onClick={pause} className="gap-1.5">
+          <Pause className="h-3.5 w-3.5" />
+          일시정지
+        </Button>
+        <Button size="sm" variant="ghost" onClick={stop} className="px-2">
+          <Square className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    );
+  } else {
+    const label = state === "paused" ? "이어서 재생" : "음성 브리핑";
+    actionButton = (
+      <Button size="sm" variant="outline" onClick={play} className="gap-1.5">
+        <Volume2 className="h-3.5 w-3.5" />
+        {label}
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {voiceSelector}
+      {actionButton}
+    </div>
   );
 }
 

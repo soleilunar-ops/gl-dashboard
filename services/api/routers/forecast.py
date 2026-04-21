@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -108,6 +109,22 @@ class PackDistributionItem(BaseModel):
     pack_size: int  # 포장 단위 (개)
     units_sold: int  # 해당 포장 단위 총 판매량
     pct: float  # 카테고리 내 비중(%)
+
+
+class BriefingTextResponse(BaseModel):
+    text: str  # TTS 낭독용 텍스트 (오늘 날씨 + AI 인사이트)
+    date: str  # 기준 일자 (YYYY-MM-DD, KST)
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., max_length=3000, description="낭독할 텍스트 (최대 3000자)")
+    voice: str = Field(default="shimmer", description="alloy | ash | coral | echo | fable | nova | onyx | sage | shimmer")
+    model: str = Field(default="gpt-4o-mini-tts", description="gpt-4o-mini-tts (자연스러움, 스타일 지시 지원) | tts-1-hd | tts-1")
+    instructions: str | None = Field(
+        default=None,
+        description="gpt-4o-mini-tts 한정 스타일 지시문 (톤/속도/감정)",
+        max_length=500,
+    )
 
 
 # ────────────────────────────────────────────
@@ -234,6 +251,150 @@ def get_forecast_insight(
         insight=insight,
         generated_at=datetime.now(KST).isoformat(),
         source=source,
+    )
+
+
+@router.get("/briefing-text", response_model=BriefingTextResponse)
+def get_briefing_text() -> BriefingTextResponse:
+    """
+    오늘 날씨 + AI 인사이트를 TTS 낭독용 텍스트로 조립.
+
+    - 날씨: v_weather_hybrid의 오늘(KST) 1행 (없으면 "오늘 날씨 정보 없음")
+    - 인사이트: /forecast/insight 와 동일 생성 로직
+    """
+    try:
+        from analytics.insight_generator import (
+            build_insight_context_from_local,
+            build_insight_context_from_supabase,
+            generate_forecast_insight,
+        )
+    except ImportError:
+        from services.api.analytics.insight_generator import (
+            build_insight_context_from_local,
+            build_insight_context_from_supabase,
+            generate_forecast_insight,
+        )
+
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).date()
+
+    # ── 오늘 날씨 ──
+    weather_line = "오늘 날씨 정보를 가져오지 못했습니다."
+    try:
+        sb = _get_supabase_client()
+        wres = (
+            sb.table("v_weather_hybrid")
+            .select("weather_date,temp_avg,temp_min,temp_max,rain")
+            .eq("weather_date", today.isoformat())
+            .limit(1).execute()
+        )
+        wrow = (wres.data or [None])[0]
+        if wrow:
+            t_avg = wrow.get("temp_avg")
+            t_min = wrow.get("temp_min")
+            t_max = wrow.get("temp_max")
+            rain = wrow.get("rain") or 0
+            parts = [f"오늘 {today.month}월 {today.day}일 날씨입니다."]
+            if t_avg is not None:
+                parts.append(f"평균 기온 섭씨 {float(t_avg):.1f}도,")
+            if t_min is not None and t_max is not None:
+                parts.append(f"최저 {float(t_min):.1f}도에서 최고 {float(t_max):.1f}도,")
+            if float(rain) > 0:
+                parts.append(f"예상 강수량 {float(rain):.0f}밀리미터입니다.")
+            else:
+                parts.append("강수 예보는 없습니다.")
+            weather_line = " ".join(parts)
+    except Exception:
+        pass
+
+    # ── 인사이트 ──
+    ctx = None
+    try:
+        sb2 = _get_supabase_client()
+        ctx = build_insight_context_from_supabase(sb2)
+    except Exception:
+        ctx = None
+    if ctx is None:
+        ctx = build_insight_context_from_local(
+            forecast_csv=str(PROCESSED_DIR / "forecast_round4.csv"),
+            model_b_csv=str(PROCESSED_DIR / "model_b_category_forecast.csv"),
+            weather_cache=str(PROCESSED_DIR / "asos_weather_cache.csv"),
+            bi_box_dir=str(PROJECT_ROOT / "data" / "raw" / "coupang" / "bi_box"),
+        )
+    insight = generate_forecast_insight(ctx)
+
+    # TTS 낭독용: 계산식 전체 대신 "권장:"으로 시작하는 결론 한 줄만 추출
+    summary = _extract_recommendation_line(insight)
+    text = f"{weather_line} {summary}" if summary else f"{weather_line} 오늘 발주 권장 데이터를 생성하지 못했습니다."
+    return BriefingTextResponse(text=text, date=today.isoformat())
+
+
+def _extract_recommendation_line(insight: str) -> str:
+    """
+    인사이트 본문에서 TTS 낭독용 결론 문장을 뽑는다.
+    우선순위: "권장:"으로 시작하는 줄 → 마지막 비어있지 않은 줄.
+    마크다운 기호(**, *, _, #)를 제거해 TTS가 "별표"로 읽지 않도록 한다.
+    """
+    import re
+
+    if not insight:
+        return ""
+    lines = [ln.strip() for ln in insight.splitlines() if ln.strip()]
+    target = ""
+    for ln in lines:
+        stripped = re.sub(r"[*_#`]+", "", ln).strip()
+        if stripped.startswith("권장") or "권장:" in stripped:
+            target = stripped
+            break
+    if not target and lines:
+        target = re.sub(r"[*_#`]+", "", lines[-1]).strip()
+    # "..." 같은 생략 기호를 음성용으로 순화
+    target = target.replace("...", " 등").replace("…", " 등")
+    return target
+
+
+@router.post("/tts")
+def synthesize_tts(req: TTSRequest):
+    """
+    OpenAI TTS 음성 합성. mp3 스트림 반환.
+
+    - model: tts-1-hd 기본 (고품질, 100만자당 $30)
+    - voice: nova 기본 (한국어 자연스러움)
+    - 입력 길이 제한: 3000자 (OpenAI 한도 4096, 안전마진)
+    """
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY 환경변수가 설정되지 않았습니다.")
+
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text 가 비어 있습니다.")
+
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"openai 패키지 미설치: {exc}") from exc
+
+    try:
+        client = OpenAI(api_key=api_key)
+        kwargs: dict[str, Any] = {
+            "model": req.model,
+            "voice": req.voice,
+            "input": text,
+            "response_format": "mp3",
+        }
+        # gpt-4o-mini-tts 만 instructions 지원
+        if req.instructions and req.model.startswith("gpt-4o"):
+            kwargs["instructions"] = req.instructions
+        response = client.audio.speech.create(**kwargs)
+        audio_bytes = response.content
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"OpenAI TTS 호출 실패: {exc}") from exc
+
+    return StreamingResponse(
+        iter([audio_bytes]),
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store"},
     )
 
 
