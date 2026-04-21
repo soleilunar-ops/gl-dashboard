@@ -278,44 +278,103 @@ async def confirm_connection_status_popup(page: Page) -> bool:
 
 async def extract_table_data(page: Page, menu: EcountMenu) -> list[dict]:
     """이카운트 구매현황/판매현황 데이터 추출."""
+    # 변경 이유: 최상위 문서의 빈 tr만 잡으면 s_page를 건너뛰고, iframe 갱신 시 ElementHandle이 끊겨 Target closed가 납니다.
     rows_data: list[dict] = []
     try:
+        if page.is_closed():
+            print("[Ecount] 테이블 추출 스킵: 페이지가 닫혔습니다.")
+            return rows_data
         await asyncio.sleep(0.8)
-        rows = await page.query_selector_all("tr")
-        context_label = "top"
-        if not rows:
-            for frame in page.frames:
-                if not frame.url or frame.url == "about:blank":
-                    continue
-                try:
-                    frame_rows = await frame.query_selector_all("tr")
-                    if frame_rows:
-                        rows = frame_rows
-                        context_label = f"frame({frame.name or 'unnamed'})"
-                        break
-                except Exception:
-                    continue
 
-        if not rows:
-            print("[Ecount] tr 요소 없음 - 그리드가 div 기반일 가능성.")
-            return rows_data
+        async def _matrix_from_root(root: Page | Frame) -> list[list[str]]:
+            try:
+                return await root.evaluate(
+                    """() => {
+                        const trs = [...document.querySelectorAll('tr')];
+                        const rows = [];
+                        for (const tr of trs) {
+                            const tds = [...tr.querySelectorAll('td, th')];
+                            if (tds.length) {
+                                rows.push(tds.map(t => (t.innerText || '').trim()));
+                            } else {
+                                const t = (tr.innerText || '').trim();
+                                if (t) {
+                                    rows.push(
+                                        t.split(/[\\t\\n]/).map(s => s.trim()).filter(Boolean)
+                                    );
+                                }
+                            }
+                        }
+                        return rows.filter(r => r.length && r.some(c => c));
+                    }"""
+                )
+            except Exception as e:
+                msg = str(e).lower()
+                if "closed" in msg or "detached" in msg:
+                    print(f"[Ecount] 테이블 추출 중 컨텍스트 무효화: {e}")
+                    return []
+                raise
 
-        print(f"[Ecount] tr {len(rows)}개 감지 (context={context_label})")
-        parsed_rows: list[list[str]] = []
-        for tr in rows:
-            tr_cells = await tr.query_selector_all("td, th")
-            cells: list[str] = []
-            if tr_cells:
-                for cell in tr_cells:
-                    cells.append((await cell.inner_text()).strip())
-            else:
-                row_text = (await tr.inner_text()).strip()
-                if row_text:
-                    cells = [c.strip() for c in row_text.split("\t")]
-            if any(cells):
-                parsed_rows.append(cells)
+        roots_order: list[Page | Frame] = []
+        sp = page.frame(name="s_page")
+        if sp is not None:
+            try:
+                u = sp.url or ""
+                if u and u != "about:blank":
+                    roots_order.append(sp)
+            except Exception:
+                pass
+        roots_order.append(page)
+        for fr in page.frames:
+            if fr is sp:
+                continue
+            try:
+                fu = fr.url or ""
+            except Exception:
+                continue
+            if not fu or fu == "about:blank":
+                continue
+            if fr not in roots_order:
+                roots_order.append(fr)
+
+        scored: list[tuple[tuple[int, int], str, list[list[str]]]] = []
+        for root in roots_order:
+            try:
+                candidate = await _matrix_from_root(root)
+            except Exception:
+                continue
+            if not candidate:
+                continue
+            name = getattr(root, "name", None) or "unnamed"
+            label = "top" if root == page else f"frame({name})"
+            is_sp = sp is not None and root == sp
+            scored.append(((len(candidate), 1 if is_sp else 0), label, candidate))
+
+        if scored:
+            scored.sort(key=lambda x: x[0], reverse=True)
+            _, context_label, parsed_rows = scored[0]
+        else:
+            parsed_rows = []
+            context_label = "none"
+
+        # s_page가 늦게 붙는 경우: 상단 tr만 잡혔으면 잠시 대기 후 iframe만 재시도
+        if sp is not None and len(parsed_rows) <= 3:
+            try:
+                u = sp.url or ""
+                if u and u != "about:blank":
+                    await asyncio.sleep(1.5)
+                    extra = await _matrix_from_root(sp)
+                    if extra and len(extra) > len(parsed_rows):
+                        parsed_rows = extra
+                        context_label = "frame(s_page)(late)"
+            except Exception:
+                pass
+
         if not parsed_rows:
+            print("[Ecount] tr 요소 없음 - 그리드가 div 기반이거나 로딩 미완료.")
             return rows_data
+
+        print(f"[Ecount] 행 {len(parsed_rows)}개 감지 (context={context_label})")
 
         header_hints = ["일자", "품목코드", "품목명", "거래처", "수량", "금액"]
         header_idx = -1
@@ -360,37 +419,113 @@ async def extract_table_data(page: Page, menu: EcountMenu) -> list[dict]:
         return rows_data
 
 
+async def trigger_search_f8_only(page: Page) -> None:
+    """구매현황/판매현황에서 날짜 조작 없이 검색(F8)만 실행."""
+    clicked = False
+    frames = [page, *page.frames]
+    for fr in frames:
+        try:
+            label = await fr.evaluate(
+                """() => {
+                    const cands = [...document.querySelectorAll(
+                        'button, a, div[role="button"], span[role="button"]'
+                    )];
+                    const btn = cands.find(b => {
+                        const t = (b.innerText || '').trim();
+                        return t === '검색(F8)' || t.startsWith('검색(F8)');
+                    });
+                    if (btn) { btn.click(); return 'ok'; }
+                    const byId = document.getElementById('header_search');
+                    if (byId) { byId.click(); return 'header_search'; }
+                    return null;
+                }"""
+            )
+            if label:
+                print(f"[Ecount] 검색 실행: {label}")
+                clicked = True
+                break
+        except Exception:
+            continue
+    if not clicked:
+        await page.keyboard.press("F8")
+    await asyncio.sleep(2.0)
+
+
 async def apply_date_filter(page: Page, date_from: str, date_to: str) -> None:
     """날짜 필터: 이카운트 커스텀 드롭다운 + input 제어."""
+    # 변경 이유: 날짜·검색 UI는 s_page iframe 안에 있어 메인 document만 보면 타임아웃·오동작이 납니다.
     try:
+        if page.is_closed():
+            return
         y1, m1, d1 = date_from.split("-")
         y2, m2, d2 = date_to.split("-")
         await page.wait_for_load_state("domcontentloaded", timeout=10000)
 
-        ready = False
+        ready_root: Page | Frame | None = None
         for _ in range(40):
-            try:
-                count = await page.evaluate(
-                    """() => {
-                        const y = document.querySelectorAll('button.btn-selectbox[data-id="year"]').length;
-                        const m = document.querySelectorAll('button.btn-selectbox[data-id="month"]').length;
-                        const d = document.querySelectorAll('input#day').length;
-                        return { y, m, d };
-                    }"""
-                )
-                if count["y"] >= 2 and count["m"] >= 2 and count["d"] >= 2:
-                    ready = True
-                    break
-            except Exception:
-                pass
+            roots: list[Page | Frame] = []
+            sp = page.frame(name="s_page")
+            if sp is not None:
+                try:
+                    u = sp.url or ""
+                    if u and u != "about:blank":
+                        roots.append(sp)
+                except Exception:
+                    pass
+            roots.append(page)
+            for root in roots:
+                try:
+                    count = await root.evaluate(
+                        """() => {
+                            const y = document.querySelectorAll('button.btn-selectbox[data-id="year"]').length;
+                            const m = document.querySelectorAll('button.btn-selectbox[data-id="month"]').length;
+                            const d = document.querySelectorAll('input#day').length;
+                            return { y, m, d };
+                        }"""
+                    )
+                    if count["y"] >= 2 and count["m"] >= 2 and count["d"] >= 2:
+                        ready_root = root
+                        break
+                except Exception:
+                    continue
+            if ready_root is not None:
+                break
             await asyncio.sleep(0.25)
-        if not ready:
-            print("[Ecount] [WARN] 날짜 컴포넌트 타임아웃 - 필터 스킵")
+
+        if ready_root is None:
+            print("[Ecount] [WARN] 날짜 컴포넌트 타임아웃 - 검색(F8)만 시도")
+            await trigger_search_f8_only(page)
             return
+
+        root = ready_root
+
+        async def _click_dropdown_item(target_text: str) -> bool:
+            for doc in (root, page):
+                try:
+                    clicked = await doc.evaluate(
+                        """([txt]) => {
+                            const popups = [...document.querySelectorAll(
+                                'ul.dropdown-menu.show.dropdown-menu-selectbox'
+                            )];
+                            const visible = popups.find(p => p.offsetParent !== null);
+                            if (!visible) return { ok: false };
+                            const anchors = [...visible.querySelectorAll('li > a')];
+                            const hit = anchors.find(a => (a.innerText || '').trim() === txt);
+                            if (!hit) return { ok: false };
+                            hit.click();
+                            return { ok: true };
+                        }""",
+                        [target_text],
+                    )
+                    if isinstance(clicked, dict) and clicked.get("ok"):
+                        return True
+                except Exception:
+                    continue
+            return False
 
         async def _pick_dropdown(data_id: str, index: int, target_text: str) -> bool:
             try:
-                btn_locator = page.locator(
+                btn_locator = root.locator(
                     f'button.btn-selectbox[data-id="{data_id}"]'
                 ).nth(index)
                 current = (await btn_locator.locator(".selectbox-label").inner_text()).strip()
@@ -398,22 +533,7 @@ async def apply_date_filter(page: Page, date_from: str, date_to: str) -> None:
                     return True
                 await btn_locator.click()
                 await asyncio.sleep(0.2)
-                clicked = await page.evaluate(
-                    """([txt]) => {
-                        const popups = [...document.querySelectorAll(
-                            'ul.dropdown-menu.show.dropdown-menu-selectbox'
-                        )];
-                        const visible = popups.find(p => p.offsetParent !== null);
-                        if (!visible) return { ok: false };
-                        const anchors = [...visible.querySelectorAll('li > a')];
-                        const hit = anchors.find(a => (a.innerText || '').trim() === txt);
-                        if (!hit) return { ok: false };
-                        hit.click();
-                        return { ok: true };
-                    }""",
-                    [target_text],
-                )
-                if not clicked.get("ok"):
+                if not await _click_dropdown_item(target_text):
                     await page.keyboard.press("Escape")
                     return False
                 await asyncio.sleep(0.15)
@@ -423,7 +543,7 @@ async def apply_date_filter(page: Page, date_from: str, date_to: str) -> None:
 
         async def _set_day(index: int, target_day: str) -> bool:
             try:
-                locator = page.locator("input#day").nth(index)
+                locator = root.locator("input#day").nth(index)
                 current = (await locator.input_value()).strip()
                 if current == target_day:
                     return True
@@ -445,26 +565,28 @@ async def apply_date_filter(page: Page, date_from: str, date_to: str) -> None:
         await asyncio.sleep(0.2)
 
         search_clicked = False
-        try:
-            result = await page.evaluate(
-                """() => {
-                    const candidates = [...document.querySelectorAll(
-                        'button, a, div[role="button"], span[role="button"]'
-                    )];
-                    const btn = candidates.find(b => {
-                        const t = (b.innerText || '').trim();
-                        return t === '검색(F8)' || t.startsWith('검색(F8)');
-                    });
-                    if (btn) { btn.click(); return '검색(F8)'; }
-                    const byId = document.getElementById('header_search');
-                    if (byId) { byId.click(); return 'header_search'; }
-                    return null;
-                }"""
-            )
-            if result:
-                search_clicked = True
-        except Exception:
-            pass
+        for doc in (root, page):
+            try:
+                result = await doc.evaluate(
+                    """() => {
+                        const candidates = [...document.querySelectorAll(
+                            'button, a, div[role="button"], span[role="button"]'
+                        )];
+                        const btn = candidates.find(b => {
+                            const t = (b.innerText || '').trim();
+                            return t === '검색(F8)' || t.startsWith('검색(F8)');
+                        });
+                        if (btn) { btn.click(); return '검색(F8)'; }
+                        const byId = document.getElementById('header_search');
+                        if (byId) { byId.click(); return 'header_search'; }
+                        return null;
+                    }"""
+                )
+                if result:
+                    search_clicked = True
+                    break
+            except Exception:
+                continue
         if not search_clicked:
             await page.keyboard.press("F8")
         await asyncio.sleep(2.0)
@@ -577,26 +699,24 @@ async def crawl(
     date_to: str,
     cookie_path: str,
     credentials: dict,
+    *,
+    skip_date_filter: bool = False,
 ) -> dict[str, object]:
     """실제 크롤링 로직. 별도 프로세스 안에서만 호출."""
+    # 변경 이유: skip_date_filter 시 ERP 기본 기간·조건으로 조회(날짜 드롭다운 조작 생략).
     menu_enum = EcountMenu(menu)
     results: list[dict] = []
     async with async_playwright() as p:
         print(f"\n[Ecount] '{menu_enum.value}' 크롤링 시작 ({date_from} ~ {date_to})")
         remove_cookie_file(cookie_path)
-        context_kwargs: dict[str, object] = {
-            "user_agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            "locale": "ko-KR",
-            "timezone_id": "Asia/Seoul",
-            "accept_downloads": True,
-        }
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        )
         browser = await p.chromium.launch(headless=False)
         context = await browser.new_context(
-            user_agent=str(context_kwargs["user_agent"]),
+            user_agent=user_agent,
             locale="ko-KR",
             timezone_id="Asia/Seoul",
             accept_downloads=True,
@@ -655,7 +775,11 @@ async def crawl(
                 xlsx_bytes = await download_excel_bytes(page, cc, menu_enum.value)
                 return {"extractor": "excel", "bytes": xlsx_bytes}
 
-            await apply_date_filter(page, date_from, date_to)
+            if skip_date_filter:
+                print("[Ecount] 날짜 필터 생략 - 화면 기본 조건 그대로 테이블 추출")
+                await asyncio.sleep(0.8)
+            else:
+                await apply_date_filter(page, date_from, date_to)
             results = await extract_table_data(page, menu_enum)
             crawled_at = datetime.now().isoformat()
             cc = str(credentials.get("company_code") or "")
@@ -680,52 +804,30 @@ def run_in_new_process(
     date_to: str,
     cookie_path: str,
     credentials: dict,
+    skip_date_filter: bool = False,
 ) -> dict[str, object]:
     """ProcessPoolExecutor 진입점."""
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    return asyncio.run(crawl(menu, date_from, date_to, cookie_path, credentials))
+    return asyncio.run(
+        crawl(
+            menu,
+            date_from,
+            date_to,
+            cookie_path,
+            credentials,
+            skip_date_filter=skip_date_filter,
+        )
+    )
 
 
 def resolve_menu_page_type(menu: EcountMenu) -> str:
-    """메뉴별 페이지 유형."""
+    """메뉴별 페이지 유형 (멀티 세션 크롤은 excel_only / search_excel 만 사용)."""
     if menu == EcountMenu.생산입고조회:
         return "excel_only"
     if menu in (EcountMenu.구매현황, EcountMenu.판매현황):
         return "search_excel"
-    return "filter_excel"
-
-
-async def trigger_search_f8_only(page: Page) -> None:
-    """구매현황/판매현황에서 날짜 조작 없이 검색(F8)만 실행."""
-    clicked = False
-    frames = [page, *page.frames]
-    for fr in frames:
-        try:
-            label = await fr.evaluate(
-                """() => {
-                    const cands = [...document.querySelectorAll(
-                        'button, a, div[role="button"], span[role="button"]'
-                    )];
-                    const btn = cands.find(b => {
-                        const t = (b.innerText || '').trim();
-                        return t === '검색(F8)' || t.startsWith('검색(F8)');
-                    });
-                    if (btn) { btn.click(); return 'ok'; }
-                    const byId = document.getElementById('header_search');
-                    if (byId) { byId.click(); return 'header_search'; }
-                    return null;
-                }"""
-            )
-            if label:
-                print(f"[Ecount] 검색 실행: {label}")
-                clicked = True
-                break
-        except Exception:
-            continue
-    if not clicked:
-        await page.keyboard.press("F8")
-    await asyncio.sleep(2.0)
+    raise ValueError(f"지원하지 않는 메뉴: {menu!r}")
 
 
 def extract_base_and_sid_from_url(url: str) -> tuple[str, str]:
@@ -889,25 +991,10 @@ async def run_menu_once_in_session(
         cc = str(credentials.get("company_code") or "unknown")
         xlsx_bytes = await download_excel_bytes(page, cc, menu.value)
         return page, {"extractor": "excel", "bytes": xlsx_bytes}
-    if page_type == "filter_excel":
-        await apply_date_filter(page, date_from, date_to)
-        cc = str(credentials.get("company_code") or "unknown")
-        xlsx_bytes = await download_excel_bytes(page, cc, menu.value)
-        return page, {"extractor": "excel", "bytes": xlsx_bytes}
 
-    await apply_date_filter(page, date_from, date_to)
-    rows = await extract_table_data(page, menu)
-    crawled_at = datetime.now().isoformat()
-    cc = str(credentials.get("company_code") or "")
-    cl = str(credentials.get("company_label") or "")
-    for row in rows:
-        row["_menu"] = menu.value
-        row["_date_from"] = date_from
-        row["_date_to"] = date_to
-        row["_crawled_at"] = crawled_at
-        row["_company_code"] = cc
-        row["_company_label"] = cl
-    return page, {"extractor": "table", "rows": rows}
+    raise ValueError(
+        f"지원하지 않는 page_type: {page_type!r} (excel_only 또는 search_excel 만 허용)"
+    )
 
 
 async def recreate_login_context(

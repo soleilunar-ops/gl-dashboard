@@ -53,6 +53,48 @@ from ecount_steps.sales_core import (
 )
 
 logger = structlog.get_logger()
+CSV_CUTOFF_DATE = "2026-04-08"
+
+
+def _resolve_table_name(
+    menu: EcountMenu,
+    company_code: str,
+    table_overrides: dict[str, str] | None = None,
+) -> str:
+    # 변경 이유: 3사 공통 테이블 사용 원칙으로 메뉴 기준 테이블만 선택합니다.
+    if table_overrides and menu.value in table_overrides:
+        overridden = str(table_overrides[menu.value]).strip()
+        if overridden:
+            return overridden
+    if menu == EcountMenu.생산입고조회 and company_code in {"glpharm", "hnb"}:
+        raise ValueError(
+            f"기업 '{company_code}'는 생산입고조회 테이블을 사용하지 않습니다. "
+            "생산입고조회는 gl 기업에서만 실행하세요."
+        )
+    return TABLE_MAP.get(menu, f"ecount_{menu.value}")
+
+
+def _filter_rows_after_csv_cutoff(
+    rows: list[dict[str, object]],
+    cutoff_date: str = CSV_CUTOFF_DATE,
+) -> list[dict[str, object]]:
+    # 변경 이유: CSV 적재 구간(<= 컷오프)과 ERP 크롤링 구간(> 컷오프)을 분리해 중복 적재를 방지합니다.
+    if not rows:
+        return rows
+    kept: list[dict[str, object]] = []
+    dropped = 0
+    for row in rows:
+        doc_date = str(row.get("doc_date") or "").strip()
+        if not doc_date:
+            kept.append(row)
+            continue
+        if doc_date <= cutoff_date:
+            dropped += 1
+            continue
+        kept.append(row)
+    if dropped:
+        print(f"[Ecount] CSV 구간 제외: {dropped}행 (doc_date <= {cutoff_date})")
+    return kept
 
 
 def _normalize_table_rows_for_menu(
@@ -210,6 +252,8 @@ class EcountCrawler:
         date_to: str | None = None,
         save_to_db: bool = True,
         company: str | EcountCompanyCode | None = None,
+        *,
+        skip_date_filter: bool = False,
     ) -> dict:
         import concurrent.futures
 
@@ -248,6 +292,7 @@ class EcountCrawler:
                 date_to,
                 run_cookie_path,
                 run_credentials,
+                skip_date_filter,
             )
 
         rows: list[dict[str, object]] = []
@@ -265,6 +310,16 @@ class EcountCrawler:
             if isinstance(maybe_rows, list):
                 rows = [dict(r) for r in maybe_rows if isinstance(r, dict)]
 
+        if menu in (EcountMenu.구매현황, EcountMenu.판매현황) and rows:
+            rows = _normalize_table_rows_for_menu(
+                menu,
+                rows,
+                effective_code,
+                date_from or "",
+                date_to or "",
+            )
+        # 변경 이유: ERP 크롤링은 사용자가 지정한 검색 기간 결과를 그대로 저장합니다.
+
         result: dict[str, object] = {
             "menu": menu.value,
             "rows": rows,
@@ -273,7 +328,7 @@ class EcountCrawler:
         }
 
         if save_to_db and rows:
-            table_name = TABLE_MAP.get(menu, f"ecount_{menu.value}")
+            table_name = _resolve_table_name(menu, effective_code)
             if self.supabase is None:
                 return {
                     "menu": menu.value,
@@ -289,6 +344,27 @@ class EcountCrawler:
                     company_code=effective_code,
                     date_from=date_from,
                     date_to=date_to,
+                    csv_cutoff_date=CSV_CUTOFF_DATE,
+                )
+            elif menu == EcountMenu.구매현황:
+                save_result = await _replace_purchase_excel_rows_core(
+                    supabase=self.supabase,
+                    table_name=table_name,
+                    records=rows,
+                    company_code=effective_code,
+                    date_from=date_from or "",
+                    date_to=date_to or "",
+                    csv_cutoff_date=CSV_CUTOFF_DATE,
+                )
+            elif menu == EcountMenu.판매현황:
+                save_result = await _replace_sales_excel_rows_core(
+                    supabase=self.supabase,
+                    table_name=table_name,
+                    records=rows,
+                    company_code=effective_code,
+                    date_from=date_from or "",
+                    date_to=date_to or "",
+                    csv_cutoff_date=CSV_CUTOFF_DATE,
                 )
             else:
                 save_result = await _save_to_supabase(rows, table_name, self.supabase)
@@ -406,11 +482,8 @@ class EcountCrawler:
                                 await asyncio.sleep(1.0)
 
                     rows: list[dict[str, object]] = []
-                    if payload and payload.get("extractor") == "table":
-                        maybe_rows = payload.get("rows")
-                        if isinstance(maybe_rows, list):
-                            rows = [dict(r) for r in maybe_rows if isinstance(r, dict)]
-                    elif payload and payload.get("extractor") == "excel":
+                    # 변경 이유: run_menu_once_in_session은 excel_only/search_excel(엑셀)만 반환합니다.
+                    if payload and payload.get("extractor") == "excel":
                         blob = payload.get("bytes")
                         if isinstance(blob, (bytes, bytearray)) and len(blob) > 0:
                             if menu == EcountMenu.생산입고조회:
@@ -434,14 +507,7 @@ class EcountCrawler:
                                     date_from=date_from,
                                     date_to=date_to,
                                 )
-                    if payload and payload.get("extractor") == "table":
-                        rows = _normalize_table_rows_for_menu(
-                            menu=menu,
-                            rows=rows,
-                            company_code=effective_code,
-                            date_from=date_from,
-                            date_to=date_to,
-                        )
+                    # 변경 이유: 멀티 세션 크롤링도 검색 기간 결과를 원본 그대로 저장합니다.
 
                     result: dict[str, object] = {
                         "menu": menu.value,
@@ -452,9 +518,7 @@ class EcountCrawler:
                     }
 
                     if save_to_db and rows and self.supabase is not None:
-                        table_name = TABLE_MAP.get(menu, f"ecount_{menu.value}")
-                        if table_overrides and menu.value in table_overrides:
-                            table_name = str(table_overrides[menu.value]).strip() or table_name
+                        table_name = _resolve_table_name(menu, effective_code, table_overrides)
                         extractor = payload.get("extractor") if isinstance(payload, dict) else None
                         if menu == EcountMenu.생산입고조회:
                             save_res = await _replace_production_receipt_rows_core(
@@ -464,6 +528,7 @@ class EcountCrawler:
                                 company_code=effective_code,
                                 date_from=date_from,
                                 date_to=date_to,
+                                csv_cutoff_date=CSV_CUTOFF_DATE,
                             )
                         elif menu == EcountMenu.구매현황 and extractor == "excel":
                             save_res = await _replace_purchase_excel_rows_core(
@@ -473,6 +538,7 @@ class EcountCrawler:
                                 company_code=effective_code,
                                 date_from=date_from,
                                 date_to=date_to,
+                                csv_cutoff_date=CSV_CUTOFF_DATE,
                             )
                         elif menu == EcountMenu.판매현황 and extractor == "excel":
                             save_res = await _replace_sales_excel_rows_core(
@@ -482,9 +548,15 @@ class EcountCrawler:
                                 company_code=effective_code,
                                 date_from=date_from,
                                 date_to=date_to,
+                                csv_cutoff_date=CSV_CUTOFF_DATE,
                             )
                         else:
-                            save_res = await _save_to_supabase(rows, table_name, self.supabase)
+                            save_res = {
+                                "inserted": 0,
+                                "error": (
+                                    f"멀티세션 저장 분기 없음: menu={menu.value}, extractor={extractor!r}"
+                                ),
+                            }
                         result["inserted"] = int(save_res.get("inserted", 0) or 0)
                         result["error"] = save_res.get("error") or result["error"]
                     results.append(result)
@@ -535,6 +607,11 @@ if __name__ == "__main__":
         help=f"기업 코드 ({', '.join(known_company_codes)}) 또는 all",
     )
     parser.add_argument("--no-db", action="store_true", help="DB 저장 스킵")
+    parser.add_argument(
+        "--no-date-filter",
+        action="store_true",
+        help="날짜 드롭다운·검색(F8) 자동 조작 없이 화면 기본값 그대로 추출",
+    )
     parser.add_argument("--debug", action="store_true", help="디버그 로그 출력")
     args = parser.parse_args()
 
@@ -561,6 +638,7 @@ if __name__ == "__main__":
                 date_from=args.date_from,
                 date_to=args.date_to,
                 save_to_db=not args.no_db,
+                skip_date_filter=args.no_date_filter,
             )
             print(f"\n결과({code}): {result['inserted']}행 저장 | 에러: {result['error']}")
             for row in result["rows"][:3]:

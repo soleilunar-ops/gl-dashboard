@@ -47,6 +47,7 @@ class EcountCompanyCode(str, Enum):
 
 
 TABLE_MAP = {
+    # 변경 이유: 3사 데이터를 메뉴별 공통 테이블로 통합하고 회사 구분은 company_code 컬럼으로 관리합니다.
     EcountMenu.구매현황: "ecount_purchase",
     EcountMenu.판매현황: "ecount_sales",
     EcountMenu.생산입고조회: "ecount_production_receipt",

@@ -3,24 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-/**
- * 신 스키마(HANDOVER v6) 매핑 메모
- * - 구 `transactions` → `orders`
- *   - id, item_id, tx_date 그대로
- *   - qty → quantity, note → memo
- *   - tx_type(IN_x / OUT_x) → purchase/sale/return_purchase/return_sale (양방향 매핑)
- *   - erp_synced: 신 스키마에 미존재 → 항상 1 (orders는 크롤러/CSV 적재만, 수동 입력 없음)
- * - 구 `inventory_snapshots` → `item_master.base_stock_qty + base_date`
- *   - HANDOVER v6 원칙: base_date(2026-04-08) 이전 거래는 stock_movement 트리거 skip → 재고 계산 제외
- *   - open_qty 계산은 base_stock_qty + 누적 변동(base_date < tx_date < from)
- */
-
-const NEW_TO_OLD_TX_TYPE: Record<string, string> = {
-  purchase: "IN_PURCHASE",
-  return_sale: "IN_RETURN",
-  sale: "OUT_SALE",
-  return_purchase: "OUT_RETURN",
-};
+/** stock_movement 원장 기반 재고 수불 훅 */
 
 export type StockMovementSummary = {
   open_qty: number;
@@ -42,33 +25,31 @@ export type StockMovementRow = {
   running_balance: number;
 };
 
-type OrderRow = {
+type MovementRow = {
   id: number;
-  item_id: number;
-  tx_date: string;
-  tx_type: string;
-  quantity: number;
-  counterparty: string | null;
+  movement_date: string;
+  movement_type: string;
+  quantity_delta: number;
+  real_quantity?: number | null;
+  source_table: string;
+  source_id: number | null;
   memo: string | null;
-  unit_price: number | null;
-  is_internal: boolean;
 };
 
-function signedQty(orderTxType: string, quantity: number): number {
-  switch (orderTxType) {
-    case "purchase":
-    case "return_sale":
-      return quantity;
-    case "sale":
-    case "return_purchase":
-      return -quantity;
-    default:
-      return 0;
-  }
+function signedQty(quantityDelta: number): number {
+  return quantityDelta;
 }
 
-function toOldTxType(newType: string): string {
-  return NEW_TO_OLD_TX_TYPE[newType] ?? newType;
+function toLedgerTxType(movementType: string, quantityDelta: number): string {
+  if (quantityDelta >= 0) {
+    if (movementType === "return_sale") return "IN_RETURN";
+    if (movementType === "adjust") return "IN_ADJUST";
+    return "IN_PURCHASE";
+  }
+
+  if (movementType === "return_purchase") return "OUT_RETURN";
+  if (movementType === "adjust") return "OUT_ADJUST";
+  return "OUT_SALE";
 }
 
 export function useStockMovements(
@@ -113,61 +94,94 @@ export function useStockMovements(
     const baseQty = master?.base_stock_qty ?? 0;
     const baseDate = master?.base_date ?? null;
 
-    // 2. 거래 내역 (외부 거래만 — is_internal=false. base_date 이후 거래만 재고 변동)
-    //    UI 표시용으로 from~to 범위를 받지만, open_qty 계산을 위해 base_date+1 ~ to 범위로 조회
+    // 2. stock_movement 원장 조회 (승인 반영된 실제 재고 변동)
     const queryFrom = baseDate ? baseDate : "1970-01-01";
 
-    const { data: orderRows, error: orderError } = await supabase
-      .from("orders")
+    // real_quantity 컬럼이 있는 환경을 우선 시도하고, 없으면 기존 컬럼으로 폴백
+    const movementWithRealQuery = await supabase
+      .from("stock_movement")
       .select(
-        "id, item_id, tx_date, tx_type, quantity, counterparty, memo, unit_price, is_internal"
+        "id, movement_date, movement_type, quantity_delta, real_quantity, source_table, source_id, memo"
       )
       .eq("item_id", itemId)
-      .eq("is_internal", false)
-      .gt("tx_date", queryFrom)
-      .lte("tx_date", to)
-      .order("tx_date", { ascending: true })
+      .gt("movement_date", queryFrom)
+      .lte("movement_date", to)
+      .order("movement_date", { ascending: true })
       .order("id", { ascending: true });
 
-    if (orderError) {
-      console.error("입출고 조회 실패:", orderError.message);
-      setError(orderError.message);
+    let movementRows = movementWithRealQuery.data;
+    let movementError = movementWithRealQuery.error;
+
+    if (movementError) {
+      const movementFallbackQuery = await supabase
+        .from("stock_movement")
+        .select("id, movement_date, movement_type, quantity_delta, source_table, source_id, memo")
+        .eq("item_id", itemId)
+        .gt("movement_date", queryFrom)
+        .lte("movement_date", to)
+        .order("movement_date", { ascending: true })
+        .order("id", { ascending: true });
+      movementRows = movementFallbackQuery.data;
+      movementError = movementFallbackQuery.error;
+    }
+
+    if (movementError) {
+      console.error("입출고 조회 실패:", movementError.message);
+      setError(movementError.message);
       setSummary({ open_qty: 0, total_in: 0, total_out: 0, close_qty: 0 });
       setRows([]);
       setLoading(false);
       return;
     }
 
-    const allOrders = (orderRows ?? []) as OrderRow[];
+    const allMovements = (movementRows ?? []) as MovementRow[];
 
-    // open_qty 계산: base_stock_qty + base_date+1 ~ from-1 사이 거래의 누적 변동
+    const resolveSignedDelta = (movement: MovementRow): number => {
+      const hasRealQuantity =
+        typeof movement.real_quantity === "number" && Number.isFinite(movement.real_quantity);
+      const baseQty = hasRealQuantity
+        ? Math.abs(movement.real_quantity as number)
+        : Math.abs(movement.quantity_delta);
+
+      // 요청 규칙: sale는 차감(-), purchase는 가산(+)
+      if (movement.movement_type === "sale") return -baseQty;
+      if (movement.movement_type === "purchase") return baseQty;
+
+      // 그 외 유형은 기존 delta 부호를 유지
+      const sign = movement.quantity_delta >= 0 ? 1 : -1;
+      return sign * baseQty;
+    };
+
+    // open_qty 계산: base_stock_qty + base_date+1 ~ from-1 사이 누적 변동
     let openQty = baseQty;
-    for (const o of allOrders) {
-      if (o.tx_date >= from) break;
-      openQty += signedQty(o.tx_type, o.quantity);
+    for (const movement of allMovements) {
+      if (movement.movement_date >= from) break;
+      openQty += signedQty(resolveSignedDelta(movement));
     }
 
-    // from ~ to 범위 거래에 대해 running_balance 계산
-    const periodOrders = allOrders.filter((o) => o.tx_date >= from);
+    // from ~ to 범위 변동에 대해 running_balance 계산
+    const periodMovements = allMovements.filter((movement) => movement.movement_date >= from);
 
     let totalIn = 0;
     let totalOut = 0;
     let running = openQty;
-    const withBalance: StockMovementRow[] = periodOrders.map((o) => {
-      const delta = signedQty(o.tx_type, o.quantity);
+    const withBalance: StockMovementRow[] = periodMovements.map((movement) => {
+      const delta = signedQty(resolveSignedDelta(movement));
+      const absQty = Math.abs(delta);
       running += delta;
-      if (delta > 0) totalIn += o.quantity;
-      else if (delta < 0) totalOut += o.quantity;
+      if (delta > 0) totalIn += absQty;
+      else if (delta < 0) totalOut += absQty;
+
       return {
-        id: o.id,
-        item_id: o.item_id,
-        tx_date: o.tx_date,
-        tx_type: toOldTxType(o.tx_type),
-        qty: o.quantity,
-        counterparty: o.counterparty,
-        note: o.memo,
-        unit_price: o.unit_price,
-        erp_synced: 1,
+        id: movement.id,
+        item_id: itemId,
+        tx_date: movement.movement_date,
+        tx_type: toLedgerTxType(movement.movement_type, delta),
+        qty: absQty,
+        counterparty: null,
+        note: movement.memo,
+        unit_price: null,
+        erp_synced: movement.source_table === "orders" && movement.source_id !== null ? 1 : 0,
         running_balance: running,
       };
     });

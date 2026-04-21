@@ -10,10 +10,6 @@ from datetime import datetime
 from ecount_runtime_core import EcountCrawler, EcountMenu
 
 HNB_COMPANY_CODE = "hnb"
-HNB_TABLE_OVERRIDES: dict[str, str] = {
-    EcountMenu.구매현황.value: "ecount_hnb_purchase_excel",
-    EcountMenu.판매현황.value: "ecount_hnb_sales_excel",
-}
 
 
 class HnbEcountCrawler:
@@ -38,7 +34,6 @@ class HnbEcountCrawler:
             date_to=date_to,
             save_to_db=save_to_db,
             page_types={EcountMenu.구매현황.value: "search_excel"},
-            table_overrides=HNB_TABLE_OVERRIDES,
             retry_per_menu=retry_per_menu,
         )
         if results:
@@ -67,7 +62,6 @@ class HnbEcountCrawler:
             date_to=date_to,
             save_to_db=save_to_db,
             page_types={EcountMenu.판매현황.value: "search_excel"},
-            table_overrides=HNB_TABLE_OVERRIDES,
             retry_per_menu=retry_per_menu,
         )
         if results:

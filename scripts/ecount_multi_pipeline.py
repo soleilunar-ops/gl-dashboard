@@ -21,19 +21,26 @@ class StepRunner(Protocol):
     ) -> dict[str, object]: ...
 
 
-def _build_default_steps(company_code: str) -> list[tuple[str, StepRunner]]:
+def _build_pipeline_steps(company_code: str) -> list[tuple[str, StepRunner]]:
     """
-    기본 파이프라인 단계.
-    순서: 생산입고조회 -> 구매현황 -> 판매현황
+    기업별 파이프라인 단계.
+    - gl: 생산입고조회 -> 구매현황 -> 판매현황
+    - glpharm, hnb: 구매현황 -> 판매현황 (생산입고조회 없음)
     """
-    production = ProductionReceiptCrawler(company_code=company_code)
+    normalized = normalize_company_code(company_code)
     purchase = PurchaseCrawler(company_code=company_code)
     sales = SalesCrawler(company_code=company_code)
-    return [
-        ("생산입고조회", production),
-        ("구매현황", purchase),
-        ("판매현황", sales),
-    ]
+    steps: list[tuple[str, StepRunner]] = []
+    if normalized == "gl":
+        production = ProductionReceiptCrawler(company_code=company_code)
+        steps.append(("생산입고조회", production))
+    steps.extend(
+        [
+            ("구매현황", purchase),
+            ("판매현황", sales),
+        ]
+    )
+    return steps
 
 
 async def run_pipeline(
@@ -47,7 +54,7 @@ async def run_pipeline(
     멀티 파이프라인 실행.
     변경 이유: 메뉴별 별도 크롤러 모듈을 순차 실행하도록 구조를 분리합니다.
     """
-    steps = _build_default_steps(company_code=company_code)
+    steps = _build_pipeline_steps(company_code=company_code)
     results: list[dict[str, object]] = []
 
     print("\n" + "=" * 60)
@@ -77,9 +84,11 @@ async def run_pipeline(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Ecount 멀티 파이프라인 (생산입고조회 -> 구매현황 -> 판매현황)"
+        description=(
+            "Ecount 멀티 파이프라인: gl은 생산입고+구매+판매, glpharm/hnb는 구매+판매만"
+        )
     )
-    parser.add_argument("--company", default="gl", help="기업 코드 (기본: gl)")
+    parser.add_argument("--company", default="gl", help="기업 코드 gl / glpharm / hnb (기본: gl)")
     parser.add_argument("--from", dest="date_from", default="2024-01-01")
     parser.add_argument(
         "--to",
