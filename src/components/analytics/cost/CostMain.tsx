@@ -6,7 +6,6 @@ import ChannelMarginChart from "./ChannelMarginChart";
 import ChannelTable from "./ChannelTable";
 import CurrentPriceCard from "./CurrentPriceCard";
 import InputPanel, { type InputState } from "./InputPanel";
-import QShipMarginChart from "./QShipMarginChart";
 import StrategyCards from "./StrategyCards";
 import { useChannelRates } from "./_hooks/useChannelRates";
 import { useExchangeRate } from "./_hooks/useExchangeRate";
@@ -130,7 +129,6 @@ export default function CostMain() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ChannelMarginChart rates={channels.rates} baseInput={marginInput} />
-        <QShipMarginChart baseInput={marginInput} />
       </div>
 
       <ChannelTable

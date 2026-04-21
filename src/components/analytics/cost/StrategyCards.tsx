@@ -11,30 +11,26 @@ import { calcMargin, type MarginInput, type MarginResult } from "./_hooks/useMar
 
 type StrategyLabel = "보수" | "안정" | "공격";
 
-type StrategyDef = {
-  label: StrategyLabel;
-  defaultRate: number;
-};
-
-const STRATEGIES: StrategyDef[] = [
-  { label: "보수", defaultRate: 0.2 },
-  { label: "안정", defaultRate: 0.15 },
-  { label: "공격", defaultRate: 0.05 },
-];
-
 type Props = {
-  /** targetMargin은 하위에서 각 전략 목표율로 덮어쓰므로 MarginInput 그대로 수용 */
+  /** targetMargin은 하위에서 선택 전략 목표율로 덮어쓰므로 MarginInput 그대로 수용 */
   base: MarginInput;
   targets: [number, number, number];
   onTargetChange: (index: 0 | 1 | 2, value: number) => void;
 };
 
-/** 권장가 제안 3카드 — 변경 이유: 보수/안정/공격 전략별 동시 비교 */
+/** 권장가 제안 단일 카드 — 변경 이유: 게이지 값에 따라 전략명을 보수/안정/공격으로 자동 분류 */
 export default function StrategyCards({ base, targets, onTargetChange }: Props) {
-  const results: MarginResult[] = useMemo(
-    () => targets.map((t) => calcMargin({ ...base, targetMargin: t })),
-    [base, targets]
+  const selectedTarget = targets[2];
+  const result: MarginResult = useMemo(
+    () => calcMargin({ ...base, targetMargin: selectedTarget }),
+    [base, selectedTarget]
   );
+
+  const strategyLabel: StrategyLabel = useMemo(() => {
+    if (selectedTarget >= 0.15) return "보수";
+    if (selectedTarget >= 0.1) return "안정";
+    return "공격";
+  }, [selectedTarget]);
 
   return (
     <Card>
@@ -42,17 +38,12 @@ export default function StrategyCards({ base, targets, onTargetChange }: Props) 
         <CardTitle className="text-base">권장가 제안</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          {STRATEGIES.map((s, idx) => (
-            <StrategyCard
-              key={s.label}
-              label={s.label}
-              target={targets[idx]}
-              onChange={(v) => onTargetChange(idx as 0 | 1 | 2, v)}
-              result={results[idx]}
-            />
-          ))}
-        </div>
+        <StrategyCard
+          label={strategyLabel}
+          target={selectedTarget}
+          onChange={(v) => onTargetChange(2, v)}
+          result={result}
+        />
       </CardContent>
     </Card>
   );

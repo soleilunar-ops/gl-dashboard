@@ -62,8 +62,8 @@ interface Props {
 const ORDER_TABLE_COLUMNS = [
   { header: "계약일", source: "tx_date" },
   { header: "품목코드 및 품목명", source: "erp_code_item_name" },
-  { header: "수량", source: "quantity" },
-  { header: "단가(통화)", source: "unit_price" },
+  { header: "수량(실입고/계약)", source: "quantity" },
+  { header: "금액(통화)", source: "unit_price" },
   { header: "공급가액", source: "supply_amount" },
   { header: "부가세", source: "vat" },
   { header: "합계", source: "total_amount" },
@@ -72,7 +72,8 @@ const ORDER_TABLE_COLUMNS = [
 
 type OrderTableColumnSource = (typeof ORDER_TABLE_COLUMNS)[number]["source"];
 
-const COL_COUNT = 2 + ORDER_TABLE_COLUMNS.length + 1;
+/** 체크박스 + 상태 + 기업 + 거래유형 + 데이터열 + 서류 — 변경 이유: 기업 구분 열 추가 */
+const COL_COUNT = 4 + ORDER_TABLE_COLUMNS.length + 1;
 
 function formatNumber(n: number | null | undefined): string {
   if (n === null || n === undefined) return "—";
@@ -95,6 +96,26 @@ function formatContractDate(raw: string | null | undefined): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : raw;
 }
 
+/** 구매/판매/생산/반품 표시 — 변경 이유: tx_type_label 우선, ERP 원천 행과 뷰 행 모두 지원 */
+function dealTypeLabel(r: OrderDashboardRow): string {
+  const label = r.tx_type_label?.trim();
+  if (label) return label;
+  const t = r.tx_type;
+  if (t === "purchase") return "구매";
+  if (t === "sale") return "판매";
+  if (t === "production_in") return "생산";
+  if (t === "return_sale" || t === "return_purchase") return "반품";
+  return "—";
+}
+
+/** 기업 코드 한글화 — 변경 이유: 표에서 erp_system 코드를 사용자 친화 라벨로 표시 */
+function companyLabel(r: OrderDashboardRow): string {
+  if (r.erp_system === "gl") return "지엘";
+  if (r.erp_system === "gl_pharm" || r.erp_system === "glpharm") return "지엘팜";
+  if (r.erp_system === "hnb") return "에이치앤비";
+  return "—";
+}
+
 function effectiveReceivedQty(r: OrderDashboardRow, overlay: DashboardMemoOverlay): number {
   if (overlay.rq !== undefined) return overlay.rq;
   if (r.stock_movement_id != null && r.quantity_delta != null) {
@@ -109,13 +130,25 @@ function receiptRatio(contractQty: number, receivedQty: number): number {
 }
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
-type StatusOverride = "auto" | "cancelled";
+type StatusOverride = "auto" | "cancelled" | "completed";
+
+const AUTO_APPROVE_CUTOFF = "2026-04-08";
+
+/** 과거 계약 자동 완료 규칙 — 변경 이유: 2026-04-08 포함 이전 건은 승인완료(이행률 100%)로 처리 */
+function shouldAutoCompleteByDate(r: OrderDashboardRow): boolean {
+  const d = r.tx_date ? String(r.tx_date).slice(0, 10) : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  return d <= AUTO_APPROVE_CUTOFF;
+}
 
 function statusFromRow(
   r: OrderDashboardRow,
   ratio: number,
   override: StatusOverride
 ): { label: string; variant: BadgeVariant; className?: string } {
+  if (override === "completed") {
+    return { label: "승인완료", variant: "default" };
+  }
   if (override === "cancelled") {
     return { label: "승인취소", variant: "destructive" };
   }
@@ -293,18 +326,19 @@ export function OrdersTable({
 
   const dialogFiles = docOrderId !== null ? (attachmentsByOrder[docOrderId] ?? []) : [];
   const stickyBg = "bg-background";
-  const stickyHead = `${stickyBg} backdrop-blur-sm`;
+  const headCommon =
+    "h-10 px-2 align-middle font-medium text-center text-xs whitespace-nowrap [&:has([role=checkbox])]:pr-0";
+  const headMuted = "bg-muted/60";
+  const stickyHead = "bg-muted/80 backdrop-blur-sm";
 
   return (
     <div className="space-y-3">
       <div className="rounded-md border">
         <div className="relative max-w-full overflow-x-auto">
-          <Table className="min-w-[1100px]">
+          <Table className="min-w-[1260px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead
-                  className={`border-border sticky left-0 z-40 min-w-10 border-r ${stickyHead} text-center align-middle`}
-                >
+                <TableHead className={`${headCommon} ${headMuted} border-border min-w-10 border-r`}>
                   <div className="flex justify-center">
                     <Checkbox
                       checked={allSelected || (someSelected && "indeterminate")}
@@ -314,9 +348,21 @@ export function OrdersTable({
                   </div>
                 </TableHead>
                 <TableHead
-                  className={`border-border sticky left-10 z-40 min-w-[88px] border-r ${stickyHead} text-center`}
+                  className={`${headCommon} border-border sticky left-0 z-40 min-w-[88px] border-r ${stickyHead}`}
                 >
                   상태
+                </TableHead>
+                <TableHead
+                  className={`${headCommon} ${headMuted} border-border min-w-[84px] border-r`}
+                  title="erp_system"
+                >
+                  기업
+                </TableHead>
+                <TableHead
+                  className={`${headCommon} ${headMuted} border-border min-w-[72px] border-r`}
+                  title="tx_type · tx_type_label"
+                >
+                  거래유형
                 </TableHead>
                 {ORDER_TABLE_COLUMNS.map((col) => (
                   <TableHead
@@ -326,14 +372,12 @@ export function OrdersTable({
                         ? "erp_code · item_name (없으면 erp_item_name_raw)"
                         : `v_orders_dashboard.${col.source}`
                     }
-                    className="bg-muted/60 min-w-[100px] text-center text-xs whitespace-nowrap"
+                    className={`${headCommon} ${headMuted} min-w-[100px]`}
                   >
                     {col.header}
                   </TableHead>
                 ))}
-                <TableHead className="bg-muted/60 min-w-[88px] text-center text-xs whitespace-nowrap">
-                  서류
-                </TableHead>
+                <TableHead className={`${headCommon} ${headMuted} min-w-[88px]`}>서류</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -366,7 +410,10 @@ export function OrdersTable({
                   const contractQty = Number(r.quantity ?? 0);
                   const receivedQty = effectiveReceivedQty(r, overlay);
                   const ratio = receiptRatio(contractQty, receivedQty);
-                  const statusDisp = statusFromRow(r, ratio, "auto");
+                  const statusOverride: StatusOverride = shouldAutoCompleteByDate(r)
+                    ? "completed"
+                    : "auto";
+                  const statusDisp = statusFromRow(r, ratio, statusOverride);
 
                   return (
                     <TableRow
@@ -375,7 +422,7 @@ export function OrdersTable({
                       onClick={() => onRowFocus(r)}
                     >
                       <TableCell
-                        className={`border-border sticky left-0 z-30 min-w-10 border-r ${stickyBg} text-center align-middle`}
+                        className="border-border min-w-10 border-r text-center align-middle"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex justify-center">
@@ -387,7 +434,7 @@ export function OrdersTable({
                         </div>
                       </TableCell>
                       <TableCell
-                        className={`border-border sticky left-10 z-30 min-w-[88px] border-r ${stickyBg} text-center align-middle`}
+                        className={`border-border sticky left-0 z-30 min-w-[88px] border-r ${stickyBg} text-center align-middle`}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex justify-center">
@@ -395,6 +442,12 @@ export function OrdersTable({
                             {statusDisp.label}
                           </Badge>
                         </div>
+                      </TableCell>
+                      <TableCell className="border-border min-w-[84px] border-r text-center align-middle text-xs whitespace-nowrap">
+                        {companyLabel(r)}
+                      </TableCell>
+                      <TableCell className="border-border min-w-[72px] border-r text-center align-middle text-xs whitespace-nowrap">
+                        {dealTypeLabel(r)}
                       </TableCell>
                       {ORDER_TABLE_COLUMNS.map((col) => {
                         const src = col.source as OrderTableColumnSource;
@@ -497,7 +550,10 @@ export function OrdersTable({
           }
         }}
       >
-        <DialogContent showCloseButton className="flex max-h-[90vh] flex-col gap-4 sm:max-w-4xl">
+        <DialogContent
+          showCloseButton
+          className="flex max-h-[90vh] flex-col gap-4 overflow-y-auto sm:max-w-4xl"
+        >
           <DialogHeader>
             <DialogTitle>서류</DialogTitle>
             <DialogDescription>
@@ -505,7 +561,8 @@ export function OrdersTable({
               「저장」 후 다른 세션에서도 같은 목록으로 조회할 수 있습니다.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+          {/* 모달 전체 스크롤 허용 — 변경 이유: PDF 내부 스크롤 외에 다이얼로그 본문도 함께 이동 가능하게 처리 */}
+          <div className="flex flex-1 flex-col gap-3">
             <div className="space-y-1">
               <p className="text-xs font-medium">저장된 서류</p>
               <ul className="border-border bg-muted/20 max-h-28 space-y-2 overflow-y-auto rounded-md border p-2 text-xs">
@@ -551,7 +608,7 @@ export function OrdersTable({
                 type="file"
                 multiple
                 accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf"
-                className="text-muted-foreground file:bg-muted text-xs file:mr-2 file:rounded file:border file:px-2 file:py-1"
+                className="file:bg-muted text-xs text-transparent file:mr-2 file:rounded file:border file:px-2 file:py-1"
                 onChange={(e) => {
                   if (docOrderId === null) return;
                   const files = e.target.files ? Array.from(e.target.files) : [];

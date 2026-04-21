@@ -32,7 +32,7 @@ type Props = {
 
 type Row = {
   channel: string;
-  payoutRate: number;
+  feeText: string;
   recommendedPriceVAT: number;
   unitProfit: number;
   actualMargin: number;
@@ -59,7 +59,7 @@ export default function ChannelTable({
         const r = calcMargin({ ...baseInput, channelPayoutRate: ch.payoutRate });
         return {
           channel: ch.channelName,
-          payoutRate: ch.payoutRate,
+          feeText: ch.feeText ?? `${((1 - ch.payoutRate) * 100).toFixed(1)}%`,
           recommendedPriceVAT: r.recommendedPriceVAT,
           unitProfit: r.unitProfit,
           actualMargin: r.actualMargin,
@@ -140,7 +140,7 @@ export default function ChannelTable({
             {rows.map((row) => (
               <TableRow key={row.channel} className={row.isMarginAlert ? "bg-red-50" : ""}>
                 <TableCell className="font-medium">{row.channel}</TableCell>
-                <TableCell className="text-right">{(row.payoutRate * 100).toFixed(1)}%</TableCell>
+                <TableCell className="text-right">{row.feeText}</TableCell>
                 <TableCell className="text-right">
                   {row.isInfeasible
                     ? "—"

@@ -143,5 +143,17 @@ export async function POST(request: Request) {
     }
   }
 
+  if (rq !== undefined) {
+    // real_quantity 동기화 — 변경 이유: 재고 승인 카드 입력값을 stock_movement 별도 컬럼에 저장
+    const { error: smErr } = await admin
+      .from("stock_movement")
+      .update({ real_quantity: rq })
+      .eq("source_table", "orders")
+      .eq("source_id", orderId);
+    if (smErr) {
+      return NextResponse.json({ error: smErr.message }, { status: 500 });
+    }
+  }
+
   return NextResponse.json({ ok: true, orderId, overlay: next, autoApproved });
 }

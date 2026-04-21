@@ -8,7 +8,7 @@ import type { Tables } from "@/lib/supabase/types";
 export type OrderDashboardRow = Tables<"v_orders_dashboard">;
 
 export type OrderStatus = "pending" | "approved" | "rejected" | "all";
-export type OrderErpSystem = "gl" | "gl_pharm" | "hnb";
+export type OrderErpSystem = "gl" | "glpharm" | "gl_pharm" | "hnb";
 export type OrderTxType = "purchase" | "sale" | "return_sale" | "return_purchase" | "production_in";
 
 export interface UseOrdersOptions {
@@ -47,6 +47,18 @@ export function useOrders(opts: UseOrdersOptions): UseOrdersResult {
   const supabase = useMemo(() => createClient(), []);
 
   const { status, erpSystems, txTypes, itemSearch, dateFrom, dateTo, page, pageSize } = opts;
+  const normalizedErpSystems = useMemo<OrderErpSystem[]>(() => {
+    const set = new Set<OrderErpSystem>();
+    for (const code of erpSystems) {
+      if (code === "glpharm" || code === "gl_pharm") {
+        set.add("glpharm");
+        set.add("gl_pharm");
+      } else {
+        set.add(code);
+      }
+    }
+    return [...set];
+  }, [erpSystems]);
 
   const fetchRows = useCallback(
     async (pageIndexOverride?: number) => {
@@ -56,7 +68,7 @@ export function useOrders(opts: UseOrdersOptions): UseOrdersResult {
       const pageIndex = pageIndexOverride !== undefined ? pageIndexOverride : page;
 
       // 필터 토글이 모두 해제된 경우 = "배제" 의미 → 0건 반환 (쿼리 생략)
-      if (erpSystems.length === 0 || txTypes.length === 0) {
+      if (normalizedErpSystems.length === 0 || txTypes.length === 0) {
         setRows([]);
         setTotalCount(0);
         setLoading(false);
@@ -68,7 +80,7 @@ export function useOrders(opts: UseOrdersOptions): UseOrdersResult {
       if (status !== "all") {
         q = q.eq("status", status);
       }
-      q = q.in("erp_system", erpSystems);
+      q = q.in("erp_system", normalizedErpSystems);
       q = q.in("tx_type", txTypes);
       const searchTerm = itemSearch.trim();
       if (searchTerm) {
@@ -114,7 +126,7 @@ export function useOrders(opts: UseOrdersOptions): UseOrdersResult {
       }
       setLoading(false);
     },
-    [supabase, status, erpSystems, txTypes, itemSearch, dateFrom, dateTo, page, pageSize]
+    [supabase, status, normalizedErpSystems, txTypes, itemSearch, dateFrom, dateTo, page, pageSize]
   );
 
   useEffect(() => {

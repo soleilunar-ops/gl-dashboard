@@ -14,7 +14,7 @@ export function OrdersHeader({ status, onStatusChange }: Props) {
   const showAll = status === "all";
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="bg-card/95 sticky top-2 z-20 flex flex-wrap items-center justify-between gap-3 rounded-md border px-2 py-1 backdrop-blur-sm">
       <Tabs
         value={status === "all" ? "pending" : status}
         onValueChange={(v) => onStatusChange(v as OrderStatus)}

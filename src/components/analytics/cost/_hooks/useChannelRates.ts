@@ -7,17 +7,18 @@ import * as XLSX from "xlsx";
 export type ChannelRate = {
   channelName: string;
   payoutRate: number;
+  feeText?: string;
   note?: string;
 };
 
 /** 기본 채널 수수료 — 변경 이유: 엑셀 없이도 즉시 사용 */
 export const DEFAULT_CHANNEL_RATES: ChannelRate[] = [
-  { channelName: "쿠팡 로켓배송", payoutRate: 0.56, note: "매출 최우선" },
-  { channelName: "쿠팡 판매자로켓", payoutRate: 0.85 },
-  { channelName: "네이버 스마트스토어", payoutRate: 0.965 },
-  { channelName: "지마켓", payoutRate: 0.89 },
-  { channelName: "SSG닷컴", payoutRate: 0.88 },
-  { channelName: "카카오선물하기", payoutRate: 0.93 },
+  { channelName: "쿠팡 로켓배송", payoutRate: 0.56, feeText: "44%", note: "매출 최우선" },
+  { channelName: "쿠팡 판매자로켓", payoutRate: 0.85, feeText: "15%" },
+  { channelName: "네이버 스마트스토어", payoutRate: 0.965, feeText: "3.5%" },
+  { channelName: "지마켓", payoutRate: 0.89, feeText: "11%" },
+  { channelName: "SSG닷컴", payoutRate: 0.88, feeText: "12%" },
+  { channelName: "카카오선물하기", payoutRate: 0.93, feeText: "7%" },
 ];
 
 /** 단일 숫자 토큰 → 0~1 비율 — 변경 이유: % 표기·소수 혼용, >1이면 /100 */
@@ -169,7 +170,13 @@ function parseFirstSheet(workbook: XLSX.WorkBook): { rows: ChannelRate[]; error:
       if (n !== undefined && n !== "") note = String(n).trim();
     }
 
-    rows.push({ channelName, payoutRate: payout, note });
+    let feeText: string | undefined;
+    if (colMap.fee !== undefined) {
+      const feeCell = String(line[colMap.fee] ?? "").trim();
+      if (feeCell !== "") feeText = feeCell;
+    }
+
+    rows.push({ channelName, payoutRate: payout, feeText, note });
   }
 
   if (rows.length === 0) {

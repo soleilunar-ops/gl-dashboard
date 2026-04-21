@@ -1,19 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { ORDER_COMPANIES, type OrderCompanyCode } from "@/lib/orders/orderMeta";
 import type { OrderErpSystem } from "./_hooks/useOrders";
 import type { OrderErpDealKind } from "./OrderErpSyncPanel";
 
-/** 거래유형 버튼 고정 순서 */
-const ALL_DEAL_KINDS: OrderErpDealKind[] = ["purchase", "sales", "returns", "production"];
+/** 거래유형 버튼 고정 순서 — 변경 이유: 생산입고 필터 버튼 제거(후속 Supabase 테이블 매핑 시 정리) */
+const ALL_DEAL_KINDS: OrderErpDealKind[] = ["purchase", "sales", "returns"];
 
 interface Props {
   /** 상단 카드에서 허용된 기업(목록 버튼은 항상 노출, 여기 없으면 비활성) */
@@ -24,49 +22,13 @@ interface Props {
   narrowCompanies: OrderErpSystem[];
   /** 목록 조회에 쓸 거래유형(비어 있으면 상단 범위 전체와 동일) */
   narrowDealKinds: OrderErpDealKind[];
-  onToggleNarrowCompany: (code: OrderErpSystem) => void;
-  onToggleNarrowDealKind: (kind: OrderErpDealKind) => void;
+  onToggleNarrowCompany: (...args: [OrderErpSystem]) => void;
+  onToggleNarrowDealKind: (...args: [OrderErpDealKind]) => void;
   itemSearch: string;
-  onItemSearchChange: (val: string) => void;
-  dateFrom: string | null;
-  dateTo: string | null;
-  onDateChange: (from: string | null, to: string | null) => void;
+  onItemSearchChange: (...args: [string]) => void;
   variant?: "card" | "embedded";
   hideEmbeddedLabel?: boolean;
 }
-
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return isoDate(d);
-}
-
-const DATE_PRESETS: { label: string; compute: () => [string | null, string | null] }[] = [
-  { label: "최근 1주", compute: () => [daysAgo(7), isoDate(new Date())] },
-  { label: "최근 1개월", compute: () => [daysAgo(30), isoDate(new Date())] },
-  { label: "최근 3개월", compute: () => [daysAgo(90), isoDate(new Date())] },
-  {
-    label: "이번 분기",
-    compute: () => {
-      const d = new Date();
-      const q = Math.floor(d.getMonth() / 3);
-      const from = new Date(d.getFullYear(), q * 3, 1);
-      return [isoDate(from), isoDate(new Date())];
-    },
-  },
-  {
-    label: "작년",
-    compute: () => {
-      const y = new Date().getFullYear() - 1;
-      return [`${y}-01-01`, `${y}-12-31`];
-    },
-  },
-  { label: "전체", compute: () => [null, null] },
-];
 
 /** 거래유형 토글 라벨(상단 카드와 동일) */
 function dealKindLabel(kind: OrderErpDealKind): string {
@@ -97,14 +59,10 @@ export function OrdersListFilters({
   onToggleNarrowDealKind,
   itemSearch,
   onItemSearchChange,
-  dateFrom,
-  dateTo,
-  onDateChange,
   variant = "card",
   hideEmbeddedLabel = false,
 }: Props) {
   const [searchDraft, setSearchDraft] = useState(itemSearch);
-  const [calendarOpen, setCalendarOpen] = useState(false);
 
   useEffect(() => {
     setSearchDraft(itemSearch);
@@ -177,51 +135,7 @@ export function OrdersListFilters({
           />
         </div>
       </div>
-      <div>
-        <Label className="mb-1.5 block text-xs">기간</Label>
-        <div className="flex items-center gap-2">
-          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="font-normal">
-                <CalendarDays className="mr-1 h-4 w-4" />
-                {dateFrom ?? "전체"} ~ {dateTo ?? "전체"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <div className="flex border-b">
-                {DATE_PRESETS.map((p) => (
-                  <Button
-                    key={p.label}
-                    variant="ghost"
-                    size="sm"
-                    className="rounded-none"
-                    onClick={() => {
-                      const [from, to] = p.compute();
-                      onDateChange(from, to);
-                    }}
-                  >
-                    {p.label}
-                  </Button>
-                ))}
-              </div>
-              <Calendar
-                mode="range"
-                selected={{
-                  from: dateFrom ? new Date(dateFrom) : undefined,
-                  to: dateTo ? new Date(dateTo) : undefined,
-                }}
-                onSelect={(range) => {
-                  onDateChange(
-                    range?.from ? isoDate(range.from) : null,
-                    range?.to ? isoDate(range.to) : null
-                  );
-                }}
-                numberOfMonths={2}
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
+      {/* 기간 필터 제거 — 변경 이유: ERP 원천 조회 기간 지정 UI를 상단 데이터 연동 카드로 이동 */}
     </>
   );
 

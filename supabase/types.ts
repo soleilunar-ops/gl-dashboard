@@ -1895,6 +1895,7 @@ export type Database = {
           memo: string | null
           movement_date: string
           movement_type: string
+          real_quantity: number | null
           quantity_delta: number
           running_stock: number | null
           source_id: number | null
@@ -1908,6 +1909,7 @@ export type Database = {
           memo?: string | null
           movement_date: string
           movement_type: string
+          real_quantity?: number | null
           quantity_delta: number
           running_stock?: number | null
           source_id?: number | null
@@ -1921,6 +1923,7 @@ export type Database = {
           memo?: string | null
           movement_date?: string
           movement_type?: string
+          real_quantity?: number | null
           quantity_delta?: number
           running_stock?: number | null
           source_id?: number | null

@@ -2,27 +2,17 @@
   "cookies": [
     {
       "name": "_gcl_au",
-      "value": "1.1.1539243448.1776653709",
+      "value": "1.1.195715192.1776699329",
       "domain": ".ecount.com",
       "path": "/",
-      "expires": 1784429709,
+      "expires": 1784475328,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
     },
     {
-      "name": "IDE",
-      "value": "AHWqTUk3sE15s0tABnV1rJDRrerxbrP0_zzO0KXKkR5X4fEnKhxz6DzJZNL9Pt-P",
-      "domain": ".doubleclick.net",
-      "path": "/",
-      "expires": 1811213711.079112,
-      "httpOnly": true,
-      "secure": true,
-      "sameSite": "None"
-    },
-    {
       "name": "EcNewDeviceKey",
-      "value": "9141%262026-04-20%2011-55-12%26356",
+      "value": "6785%262026-04-21%2000-35-28%26575",
       "domain": ".ecount.com",
       "path": "/",
       "expires": -1,
@@ -31,8 +21,18 @@
       "sameSite": "Lax"
     },
     {
+      "name": "IDE",
+      "value": "AHWqTUkMvgaBVlh8eYLQTO_ueE6Y719bFA4S5wq13Is-xduDyiL5663LzWVttjB9",
+      "domain": ".doubleclick.net",
+      "path": "/",
+      "expires": 1811259329.222581,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
       "name": "SVID",
-      "value": "waiting-Login-LAB02|aeWVk",
+      "value": "Login-LCA04_5fa0b|aeZHx",
       "domain": "login.ecount.com",
       "path": "/",
       "expires": -1,
@@ -42,7 +42,7 @@
     },
     {
       "name": "ECOUNT_SessionId",
-      "value": "CC-ETOKS6kCZUHYR=37323635367c256561256232253863256563253861256134256564253861256238",
+      "value": "CC-ETOR4utkEfVgG=37323635367c256561256232253863256563253861256134256564253861256238",
       "domain": ".ecount.com",
       "path": "/",
       "expires": -1,
@@ -65,7 +65,7 @@
       "value": "Y",
       "domain": "logincc.ecount.com",
       "path": "/",
-      "expires": 1787021720,
+      "expires": 1787067332,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
@@ -75,44 +75,44 @@
       "value": "Y",
       "domain": "logincc.ecount.com",
       "path": "/",
-      "expires": 1787021720,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "_ga",
-      "value": "GA1.1.912763279.1776653721",
-      "domain": ".ecount.com",
-      "path": "/",
-      "expires": 1811213721.293327,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "_ga_66P85C00D9",
-      "value": "GS2.1.s1776653721$o1$g0$t1776653721$j60$l0$h0",
-      "domain": ".ecount.com",
-      "path": "/",
-      "expires": 1811213721.351647,
+      "expires": 1787067332,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
     },
     {
       "name": "_fbp",
-      "value": "fb.1.1776653721806.370550283478248117",
+      "value": "fb.1.1776699332380.638214909222270299",
       "domain": ".ecount.com",
       "path": "/",
-      "expires": 1784429721,
+      "expires": 1784475332,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga_66P85C00D9",
+      "value": "GS2.1.s1776699332$o1$g0$t1776699332$j60$l0$h0",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": 1811259332.501037,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga",
+      "value": "GA1.1.263328993.1776699332",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": 1811259332.502097,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
     },
     {
       "name": "SVID",
-      "value": "waiting-Login-LCC01|aeWVo",
+      "value": "Login-CC05_f74fd|aeZHy",
       "domain": "logincc.ecount.com",
       "path": "/",
       "expires": -1,
@@ -125,9 +125,9 @@
     {
       "origin": "https://logincc.ecount.com",
       "localStorage": [
-        { "name": "lastExternalReferrerTime", "value": "1776653721727" },
+        { "name": "lastExternalReferrerTime", "value": "1776699332365" },
         { "name": "loglevel:ecount-global-logger", "value": "INFO" },
-        { "name": "ec_new_device_key", "value": "9141&2026-04-20 11-55-12&356" },
+        { "name": "ec_new_device_key", "value": "6785&2026-04-21 00-35-28&575" },
         { "name": "lastExternalReferrer", "value": "other" }
       ]
     },
@@ -136,9 +136,9 @@
       "localStorage": [
         {
           "name": "_gcl_ls",
-          "value": "{\"schema\":\"gcl\",\"version\":1,\"gcl_ctr\":{\"value\":{\"value\":1,\"timeouts\":0,\"errors\":0,\"eopCount\":0,\"creationTimeMs\":1776653717662},\"expires\":1784429717662}}"
+          "value": "{\"schema\":\"gcl\",\"version\":1,\"gcl_ctr\":{\"value\":{\"value\":1,\"timeouts\":0,\"errors\":0,\"eopCount\":0,\"creationTimeMs\":1776699330556},\"expires\":1784475330556}}"
         },
-        { "name": "ec_new_device_key", "value": "9141&2026-04-20 11-55-12&356" },
+        { "name": "ec_new_device_key", "value": "6785&2026-04-21 00-35-28&575" },
         { "name": "loglevel:ecount-global-logger", "value": "INFO" }
       ]
     }

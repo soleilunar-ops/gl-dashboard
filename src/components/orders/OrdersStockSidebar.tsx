@@ -181,6 +181,7 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
   /** 실입고·실송금 입력 초기 동기화(이행률·저장과 공유) */
   const [rqDraft, setRqDraft] = useState("");
   const [rmDraft, setRmDraft] = useState("");
+  const [exchangeRateCnyKrw, setExchangeRateCnyKrw] = useState<number | null>(null);
   const [exchangeRateUsdKrw, setExchangeRateUsdKrw] = useState<number | null>(null);
   const [exchangeLoading, setExchangeLoading] = useState(false);
   const [exchangeError, setExchangeError] = useState<string | null>(null);
@@ -199,21 +200,35 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
     setExchangeError(null);
   }, [orderRow?.order_id]);
 
-  const fetchUsdKrwRate = useCallback(async () => {
+  const fetchFxRates = useCallback(async () => {
     setExchangeLoading(true);
     setExchangeError(null);
     try {
-      const res = await fetch("/api/exchange-rate?from=USD&to=KRW");
-      const data = (await res.json()) as { rate?: number; error?: string };
-      if (!res.ok || typeof data.rate !== "number") {
+      const [usdRes, cnyRes] = await Promise.all([
+        fetch("/api/exchange-rate?from=USD&to=KRW"),
+        fetch("/api/exchange-rate?from=CNY&to=KRW"),
+      ]);
+      const usdData = (await usdRes.json()) as { rate?: number; error?: string };
+      const cnyData = (await cnyRes.json()) as { rate?: number; error?: string };
+      if (
+        !usdRes.ok ||
+        !cnyRes.ok ||
+        typeof usdData.rate !== "number" ||
+        typeof cnyData.rate !== "number"
+      ) {
         setExchangeRateUsdKrw(null);
-        setExchangeError(data.error ?? "실시간 환율을 불러오지 못했습니다.");
+        setExchangeRateCnyKrw(null);
+        setExchangeError(
+          usdData.error ?? cnyData.error ?? "실시간 환율(CNY/USD)을 불러오지 못했습니다."
+        );
         return;
       }
-      setExchangeRateUsdKrw(data.rate);
+      setExchangeRateUsdKrw(usdData.rate);
+      setExchangeRateCnyKrw(cnyData.rate);
     } catch {
       setExchangeRateUsdKrw(null);
-      setExchangeError("실시간 환율을 불러오지 못했습니다.");
+      setExchangeRateCnyKrw(null);
+      setExchangeError("실시간 환율(CNY/USD)을 불러오지 못했습니다.");
     } finally {
       setExchangeLoading(false);
     }
@@ -329,11 +344,18 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
     return qtyApprovalPhaseBadge(orderRow.status, receivedCumulativeLive, cq);
   }, [orderRow, receivedCumulativeLive]);
 
+  const remainingQtyLive = useMemo(() => {
+    if (!orderRow) return 0;
+    const cq = Number(orderRow.quantity ?? 0);
+    const remain = cq - receivedCumulativeLive;
+    return remain > 0 ? remain : 0;
+  }, [orderRow, receivedCumulativeLive]);
+
   if (itemId === null) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">현재 재고</CardTitle>
+          <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-sm">품목 행을 선택하세요.</p>
@@ -346,7 +368,7 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">현재 재고</CardTitle>
+          <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <Skeleton className="h-4 w-full" />
@@ -360,7 +382,7 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">현재 재고</CardTitle>
+          <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-destructive text-sm">조회 실패: {error}</p>
@@ -373,7 +395,7 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">현재 재고</CardTitle>
+          <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-sm">품목 정보 없음</p>
@@ -398,7 +420,7 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">현재 재고</CardTitle>
+        <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
         <p className="text-muted-foreground text-xs">
           #{row.seq_no} · {name}
         </p>
@@ -475,37 +497,47 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
               <span className="text-muted-foreground mx-1">/</span>
               계약수량 <span className="text-foreground font-medium">{formatNum(contractQty)}</span>
             </p>
-            <Input
-              type="text"
-              inputMode="numeric"
-              className="h-8 text-right text-xs tabular-nums"
-              placeholder="누적 실입고 수량"
-              value={rqDraft}
-              onChange={(e) => setRqDraft(e.target.value)}
-              aria-label="누적 실입고 수량"
-              onBlur={(e) => {
-                const raw = e.target.value.replace(/,/g, "").trim();
-                const n = raw === "" ? 0 : Number(raw);
-                if (!Number.isFinite(n)) return;
-                void (async () => {
-                  const nextRq = Math.max(0, n);
-                  let nextRm = parseNumericInput(rmDraft) ?? 0;
-                  if (linkedContract) {
-                    nextRm = roundContractKrw((nextRq / contractQty) * contractAmt);
-                    setRmDraft(nextRm === 0 ? "" : String(nextRm));
-                  }
-                  const patch: Record<string, number | undefined> = { receivedQty: nextRq };
-                  if (linkedContract) patch.remittanceAmount = nextRm;
-                  const result = await postOverlay(oid, patch);
-                  if (result.ok) {
-                    if (result.autoApproved) {
-                      toast.success("계약 이행이 완료되어 승인완료 처리되었습니다.");
+            <div className="flex items-center gap-2">
+              <Input
+                type="text"
+                inputMode="numeric"
+                className="h-8 flex-1 text-right text-xs tabular-nums"
+                placeholder="누적 실입고 수량"
+                value={rqDraft}
+                onChange={(e) => setRqDraft(e.target.value)}
+                aria-label="누적 실입고 수량"
+                onBlur={(e) => {
+                  const raw = e.target.value.replace(/,/g, "").trim();
+                  const n = raw === "" ? 0 : Number(raw);
+                  if (!Number.isFinite(n)) return;
+                  void (async () => {
+                    const nextRq = Math.max(0, n);
+                    let nextRm = parseNumericInput(rmDraft) ?? 0;
+                    if (linkedContract) {
+                      nextRm = roundContractKrw((nextRq / contractQty) * contractAmt);
+                      setRmDraft(nextRm === 0 ? "" : String(nextRm));
                     }
-                    onOrderUpdated();
-                  }
-                })();
-              }}
-            />
+                    const patch: Record<string, number | undefined> = { receivedQty: nextRq };
+                    if (linkedContract) patch.remittanceAmount = nextRm;
+                    const result = await postOverlay(oid, patch);
+                    if (result.ok) {
+                      if (result.autoApproved) {
+                        toast.success("계약 이행이 완료되어 승인완료 처리되었습니다.");
+                      }
+                      onOrderUpdated();
+                    }
+                  })();
+                }}
+              />
+              {/* 남은 수량 표시 — 변경 이유: 계약 대비 잔여 수량을 우측 비활성 숫자로 즉시 확인 */}
+              <Input
+                readOnly
+                disabled
+                className="bg-muted h-8 w-[170px] text-right text-xs tabular-nums"
+                value={formatNum(remainingQtyLive)}
+                aria-label="남은 수량"
+              />
+            </div>
             {!linkedContract ? (
               <div className="space-y-1 pt-0.5">
                 <div className="text-muted-foreground flex justify-between text-[11px]">
@@ -604,9 +636,11 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
                 <p className="text-foreground font-medium tabular-nums">
                   {exchangeLoading ? (
                     <span className="text-muted-foreground text-xs">조회 중…</span>
-                  ) : exchangeRateUsdKrw !== null ? (
+                  ) : exchangeRateUsdKrw !== null && exchangeRateCnyKrw !== null ? (
                     <>
-                      1 USD ={" "}
+                      1 CNY ={" "}
+                      {exchangeRateCnyKrw.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} KRW
+                      <br />1 USD ={" "}
                       {exchangeRateUsdKrw.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} KRW
                     </>
                   ) : (
@@ -623,7 +657,7 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
                 variant="outline"
                 className="shrink-0"
                 disabled={exchangeLoading}
-                onClick={() => void fetchUsdKrwRate()}
+                onClick={() => void fetchFxRates()}
               >
                 실시간 환율 조회
               </Button>
