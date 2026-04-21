@@ -23,12 +23,15 @@ SYSTEM_PROMPT = """당신은 (주)지엘 하루온의 핫팩 재고관리 전문
 
 1. Model A "예측 판매량"은 판매 예측치이지 납품(발주)량이 아닙니다.
    권장 발주량은 반드시 컨텍스트의 "Model B 예상 발주요청량"을 기준으로 산출하세요.
-   Model B 값이 없으면 판매 예측 총량 × 0.6을 기준량으로 사용하세요.
+   Model B 값이 없으면 컨텍스트의 "fallback_ratio" 값을 판매 예측 총량에 곱하세요.
+   (fallback_ratio는 최근 4주 실측 납품/판매 비율이며, 없을 경우에만 0.6 사용)
 
 2. 제품 카테고리별 월별 계수를 반드시 적용하세요:
    - 각 제품에는 "[카테고리]: N개 (XX%) | 4월 계수 0.0524" 형식으로 카테고리와 월 계수가 제공됩니다.
    - 이 계수는 daily_performance 실데이터 기반(12월=1.00 정규화, 2025-04 이상치 제외)입니다.
-   - [붙이는 핫팩]은 의료용·연중수요로 비시즌에도 계수가 상대적으로 큽니다.
+   - [붙이는 핫팩]은 비시즌에도 수요가 존재해 다른 카테고리 대비 계수가 큽니다.
+     다만 실측 상관계수 -0.79로 기온 민감도 자체는 오히려 가장 강하므로
+     "기온과 무관한 연중 수요"로 단정하지 마세요.
    - [손난로] / [찜질팩] / [일반 핫팩]은 겨울 전용이며 비시즌 계수가 매우 작습니다.
    - 이 값들이 이미 계절성을 반영하므로 기온·한파 근거로 추가 조정하지 마세요.
 
@@ -45,7 +48,9 @@ SYSTEM_PROMPT = """당신은 (주)지엘 하루온의 핫팩 재고관리 전문
 
 ■ 마지막 줄 권장량 계산 공식 (반드시 이 공식으로 계산, 50 단위 반올림)
 
-- 기준량 = Model B 예상 발주요청량 (없으면 판매 예측 총량 × 0.6)
+- 기준량 = Model B 예상 발주요청량 (없으면 판매 예측 총량 × fallback_ratio)
+  - fallback_ratio: 컨텍스트의 "fallback_ratio" 값 (최근 4주 납품/판매 실측).
+    값이 제공되지 않을 때만 0.6 사용 (근거 부재, 임시 상수)
 - 모든 제품: 기준량 × (해당 제품 비중% / 100) × 해당 제품의 월별 계수
 - 월별 계수는 각 제품 줄에 "| {current_month}월 계수 0.XXXX" 형태로 이미 제공됩니다.
 
@@ -89,10 +94,12 @@ def _is_low_seasonal(category: str) -> bool:
 # 한계:
 #   - 1년치 단일 샘플이라 월별 분산 추정 불가.
 #   - 카테고리별 집계이지만 SKU 단위 편차는 반영 못함.
-#   TODO(2년치 누적 후): 월별 평균·분산 계산, 카테고리×SKU 단위 계수 재검증.
+#   TODO(계산 이상 ③ / 2년치 누적 후): 현재 카테고리 단위 계수라서 같은 카테고리
+#     내 SKU 간 편차(예: "붙이는 핫팩 50g" vs "붙이는 핫팩 100g")를 반영 못함.
+#     월별 평균·분산 산출, 카테고리×SKU 2단계 계수 재구축 필요.
 # ─────────────────────────────────────────────
 CATEGORY_MONTHLY_FACTOR: dict[str, dict[int, float]] = {
-    "붙이는 핫팩": {  # 의료용·연중수요. 비시즌에도 상대적으로 높음
+    "붙이는 핫팩": {  # 비시즌에도 수요 존재(의료용 포함). 기온 상관 -0.79로 겨울 민감도 동시 강함
         1: 1.2996, 2: 0.4188, 3: 0.2186, 4: 0.0524,
         5: 0.0007, 6: 0.0085, 7: 0.0161, 8: 0.0212, 9: 0.0245,
         10: 0.2596, 11: 0.7371, 12: 1.0000,
@@ -134,6 +141,7 @@ class InsightContext:
     confidence_range: str  # "90% 신뢰구간 ±1,046"
     season: str  # "비시즌(봄)" or "성수기(겨울)"
     current_month: int  # 현재 월
+    fallback_ratio: float | None = None  # 최근 4주 납품/판매 실측 비율 (Model B 없을 때 Model A × 이 값)
 
 
 def _compute_stockout_warn_threshold() -> float:
@@ -155,19 +163,26 @@ def _compute_stockout_warn_threshold() -> float:
 
 
 def _compute_confidence_range() -> str:
-    """val_mae를 최근 winter_validation 결과에서 읽어 동적으로 계산."""
+    """
+    val_mae를 최근 winter_validation_result.json에서 동적으로 읽어 90% 신뢰구간 폭 반환.
+
+    주의: 이 MAE는 SKU×주 단위이며, 카테고리 합산 발주량에는 직접 적용 불가.
+    참고용 표기에만 사용. 실측 결과 파일 없으면 "측정 불가"로 반환.
+    """
     import json
     from pathlib import Path as _P
     result_path = _P("data/processed/winter_validation_result.json")
-    val_mae = 636  # 합성 없는 기본 모델 MAE
-    if result_path.exists():
-        try:
-            data = json.loads(result_path.read_text(encoding="utf-8"))
-            val_mae = data.get("A_no_synthetic", {}).get("val_mae", val_mae)
-        except Exception:
-            pass
-    margin = int(round(val_mae * 1.645))  # [B] 정규분포 90% z값
-    return f"90% 신뢰구간 ±{margin:,}"
+    if not result_path.exists():
+        return "신뢰구간 측정 불가 (winter_validation_result.json 부재)"
+    try:
+        data = json.loads(result_path.read_text(encoding="utf-8"))
+        val_mae = data.get("A_no_synthetic", {}).get("val_mae")
+        if val_mae is None:
+            return "신뢰구간 측정 불가 (val_mae 키 없음)"
+        margin = int(round(float(val_mae) * 1.645))  # [B] 정규분포 90% z값
+        return f"Model A 판매 예측 SKU×주 MAE 기반 ±{margin:,} (발주 권장에는 직접 적용 불가)"
+    except Exception as ex:
+        return f"신뢰구간 측정 불가 ({ex})"
 
 
 def build_insight_context_from_local(
@@ -407,6 +422,9 @@ def build_insight_context_from_supabase(client) -> InsightContext | None:
 
     season = "성수기(겨울)" if current_month in (10, 11, 12, 1, 2) else "비시즌(봄/여름/가을)"
 
+    # fallback_ratio: 최근 4주 "카테고리 총 납품(Model B) / 판매 예측 총합(Model A)" 실측 비율
+    fallback_ratio = _compute_fallback_ratio_from_supabase(client)
+
     return InsightContext(
         forecast_period=period,
         total_predicted_qty=total_qty,
@@ -417,7 +435,39 @@ def build_insight_context_from_supabase(client) -> InsightContext | None:
         confidence_range=_compute_confidence_range(),
         season=season,
         current_month=current_month,
+        fallback_ratio=fallback_ratio,
     )
+
+
+def _compute_fallback_ratio_from_supabase(client) -> float | None:
+    """
+    "Model B 발주 / Model A 판매" 비율을 과거 4주 실측으로 계산.
+    Model B 없을 때 기준량 근사에 사용. 계산 실패 시 None.
+    """
+    try:
+        b = (
+            client.table("forecast_model_b")
+            .select("week_start,pred_ratio")
+            .is_("sku_id", "null")
+            .order("week_start", desc=True).limit(8).execute()
+        )
+        b_rows = b.data or []
+        if not b_rows:
+            return None
+        weeks = [r["week_start"][:10] for r in b_rows[:4]]
+
+        a = (
+            client.table("forecast_model_a")
+            .select("week_start,weekly_sales_qty_forecast")
+            .in_("week_start", weeks).execute()
+        )
+        a_total = sum(float(r.get("weekly_sales_qty_forecast") or 0) for r in (a.data or []))
+        b_total = sum(float(r.get("pred_ratio") or 0) for r in b_rows[:4])
+        if a_total <= 0:
+            return None
+        return round(b_total / a_total, 4)
+    except Exception:
+        return None
 
 
 def _context_to_user_prompt(ctx: InsightContext) -> str:
@@ -433,7 +483,12 @@ def _context_to_user_prompt(ctx: InsightContext) -> str:
     if ctx.model_b_order_qty is not None:
         lines.append(f"Model B 예상 발주요청량(납품 기준): {ctx.model_b_order_qty:,}개")
     else:
-        lines.append("Model B 예상 발주요청량: 데이터 없음 (판매 예측 × 0.6을 기준량으로 사용)")
+        # fallback_ratio가 계산됐으면 동적 사용, 없으면 근거 없는 0.6
+        ratio = ctx.fallback_ratio if ctx.fallback_ratio is not None else 0.6
+        source = "최근 4주 납품/판매 실측" if ctx.fallback_ratio is not None else "근거 없는 임시값"
+        lines.append(
+            f"Model B 예상 발주요청량: 데이터 없음. fallback_ratio={ratio:.3f} ({source})"
+        )
     if ctx.stockout_rate is not None:
         lines.append(f"최근 2주 품절률: {ctx.stockout_rate:.1%}")
 
