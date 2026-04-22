@@ -35,6 +35,9 @@ DEFAULT_EXOG_COLS = [
     "promotion_flag",
     "stock_flag",
     "price",
+    # NOTE 2026-04-20: temp_anomaly 피처 실험 결과 — overall MAE -2.5% 개선,
+    #   winter MAE +6% 악화 (겨울 극값 오버피팅). 학습에서 제외.
+    #   평년값(clim_*)은 local_feature_builder에서 CSV에 남겨 장기 예측 NaN fallback용으로만 유지.
 ]
 
 ModelKind = Literal["lightgbm", "linear"]

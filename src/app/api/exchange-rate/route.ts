@@ -1,68 +1,49 @@
 import { NextResponse } from "next/server";
 
-// 변경 이유: 환율 API 키를 클라이언트에 노출하지 않고 서버에서 안전하게 조회하기 위해 추가했습니다.
-interface ExchangeRateApiResponse {
-  result: string;
-  conversion_rates?: Record<string, number>;
+/** exchangerate-api.com v6 pair 응답 최소 형태 */
+interface PairApiBody {
+  result?: string;
+  conversion_rate?: number;
   "error-type"?: string;
 }
 
+/**
+ * 통화→KRW 환율 조회 (서버만 EXCHANGE_RATE_KEY 사용)
+ * GET ?from=USD&to=KRW — to 생략 시 KRW
+ */
 export async function GET(request: Request) {
-  const apiKey = process.env.EXCHANGE_RATE_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { message: "EXCHANGE_RATE_KEY가 설정되지 않았습니다." },
-      { status: 500 }
-    );
+  const key = process.env.EXCHANGE_RATE_KEY?.trim();
+  if (!key) {
+    return NextResponse.json({ error: "EXCHANGE_RATE_KEY 미설정", rate: null }, { status: 500 });
   }
 
   const { searchParams } = new URL(request.url);
-  const base = searchParams.get("base") ?? "CNY";
-  const target = searchParams.get("target") ?? "KRW";
+  const from = (searchParams.get("from") ?? "USD").trim().toUpperCase();
+  const to = (searchParams.get("to") ?? "KRW").trim().toUpperCase();
 
-  const ALLOWED_BASES = ["CNY", "USD", "JPY", "EUR"];
-  if (!ALLOWED_BASES.includes(base)) {
-    return NextResponse.json({ message: "지원하지 않는 통화입니다." }, { status: 400 });
+  if (from === to) {
+    return NextResponse.json({ rate: 1, from, to, updatedAt: null });
   }
 
+  const url = `https://v6.exchangerate-api.com/v6/${key}/pair/${from}/${to}`;
+
   try {
-    const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/${base}`, {
-      cache: "no-store",
-    });
+    const res = await fetch(url, { cache: "no-store" });
+    const body = (await res.json()) as PairApiBody;
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { message: `환율 API 응답 실패 (${response.status})` },
-        { status: 502 }
-      );
-    }
-
-    const payload = (await response.json()) as ExchangeRateApiResponse;
-    if (payload.result !== "success" || !payload.conversion_rates) {
-      return NextResponse.json(
-        {
-          message: "환율 API 데이터 형식 오류",
-          detail: payload["error-type"] ?? "unknown",
-        },
-        { status: 502 }
-      );
-    }
-
-    const rate = payload.conversion_rates[target];
-    if (typeof rate !== "number" || !Number.isFinite(rate)) {
-      return NextResponse.json({ message: `${target} 환율을 찾을 수 없습니다.` }, { status: 404 });
+    if (!res.ok || body.result !== "success" || typeof body.conversion_rate !== "number") {
+      const hint = body["error-type"] ?? body.result ?? `HTTP ${res.status}`;
+      return NextResponse.json({ error: `환율 API 오류: ${hint}`, rate: null }, { status: 502 });
     }
 
     return NextResponse.json({
-      base,
-      target,
-      rate,
-      fetchedAt: new Date().toISOString(),
+      rate: body.conversion_rate,
+      from,
+      to,
+      updatedAt: new Date().toISOString(),
     });
-  } catch {
-    return NextResponse.json(
-      { message: "환율 API 호출 중 네트워크 오류가 발생했습니다." },
-      { status: 502 }
-    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "네트워크 오류";
+    return NextResponse.json({ error: msg, rate: null }, { status: 502 });
   }
 }

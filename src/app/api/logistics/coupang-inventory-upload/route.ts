@@ -71,6 +71,25 @@ function toInventoryInserts(rows: ParsedRocketInventoryRow[]): InvInsert[] {
   }));
 }
 
+async function fetchExistingOpDates(
+  admin: ReturnType<typeof createAdmin<Database>>,
+  opDates: string[]
+): Promise<Set<string>> {
+  if (opDates.length === 0) return new Set<string>();
+  const existing = new Set<string>();
+  for (const batch of chunk(opDates, 200)) {
+    const { data, error } = await admin
+      .from("inventory_operation")
+      .select("op_date")
+      .in("op_date", batch);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      if (row.op_date) existing.add(row.op_date);
+    }
+  }
+  return existing;
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -159,8 +178,25 @@ export async function POST(request: Request) {
     }
   }
 
+  const allOpDates = [...new Set(rows.map((r) => r.op_date))].sort();
+  let existingOpDates: Set<string>;
+  try {
+    existingOpDates = await fetchExistingOpDates(admin, allOpDates);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "기존 날짜 조회 실패";
+    return NextResponse.json(
+      { error: `inventory_operation 중복 점검 실패: ${message}`, parseWarnings, skippedEmptySku },
+      { status: 500 }
+    );
+  }
+
+  // 이미 저장된 기준일은 건너뛰어, 백필 이후 재업로드 시 날짜 중복 저장을 방지한다.
+  const rowsToInsert = rows.filter((r) => !existingOpDates.has(r.op_date));
+  const skippedExistingDateRows = rows.length - rowsToInsert.length;
+  const skippedExistingDates = [...existingOpDates].sort();
+
   let upserted = 0;
-  const invBatches = chunk(toInventoryInserts(rows), 250);
+  const invBatches = chunk(toInventoryInserts(rowsToInsert), 250);
   for (const batch of invBatches) {
     const { error: invErr } = await admin.from("inventory_operation").upsert(batch, {
       onConflict: "op_date,sku_id,center",
@@ -178,8 +214,6 @@ export async function POST(request: Request) {
     upserted += batch.length;
   }
 
-  const opDates = [...new Set(rows.map((r) => r.op_date))].sort();
-
   return NextResponse.json({
     ok: true,
     fileName,
@@ -187,8 +221,11 @@ export async function POST(request: Request) {
     skuMasterTouched: skuRows.length,
     inputRows: rawRows.length,
     uniqueRows: rows.length,
+    insertedRows: rowsToInsert.length,
+    skippedExistingDateRows,
     skippedEmptySku,
-    op_dates: opDates,
+    op_dates: allOpDates,
+    skippedExistingDates,
     parseWarnings,
   });
 }

@@ -24,7 +24,15 @@ PROCESSED = Path("data/processed")
 
 
 def load_combined_training_data() -> pd.DataFrame:
-    """합성 2024 + 실 2025~2026 결합."""
+    """
+    합성 2024 + 실 2025~2026 결합.
+
+    TODO(계산 이상 ④): real과 synth의 결측 처리 방식 불일치.
+      - real: 실제 NaN 존재 → fillna(실측 통계)
+      - synth: 존재하지 않는 컬럼을 강제로 np.nan 주입 → 그 후 동일 fillna
+      결과적으로 real·synth 결측 분포가 다르게 학습 데이터에 섞임.
+      개선 방향: synth 생성 단계에서 real 실측 통계로 샘플링하여 결측 없이 주입.
+    """
     real = pd.read_csv(PROCESSED / "weekly_feature_table.csv", parse_dates=["week_start"])
     synth = pd.read_csv(PROCESSED / "synthetic_2024_weekly.csv", parse_dates=["week_start"])
 
@@ -33,8 +41,13 @@ def load_combined_training_data() -> pd.DataFrame:
     for c in missing_cols:
         synth[c] = np.nan
 
-    # first_snow_flag: 합성에 자동 부여 (시즌 내 첫 snow>0 주)
-    if "first_snow_flag" in synth.columns:
+    # first_snow_flag: 합성 CSV에 이미 값이 있으면 유지 (합성 생성기가 이벤트 배수와
+    # 동기화해 주입함). 값이 없거나 전부 0이면 fallback으로 재계산.
+    if "first_snow_flag" in synth.columns and synth["first_snow_flag"].sum() > 0:
+        # 합성 생성기가 이미 flag를 부여했으므로 그대로 사용
+        pass
+    else:
+        # 구버전 합성 CSV fallback: 시즌 내 첫 snow>0 주
         synth["first_snow_flag"] = 0
         synth["season_year"] = synth["week_start"].apply(
             lambda d: d.year if d.month >= 10 else d.year - 1
@@ -58,6 +71,17 @@ def load_combined_training_data() -> pd.DataFrame:
             df["weekly_min_price"] = df["weekly_min_price"].fillna(real_price_median)
         if "weekly_bi_box_share_mean" in df.columns:
             df["weekly_bi_box_share_mean"] = df["weekly_bi_box_share_mean"].fillna(1.0)
+
+    # Phase A: synth에도 ISO week별 평년값(temp_anomaly) 주입 (real 평년값 재사용)
+    if "clim_temp_mean" in real.columns and "temp_mean" in synth.columns:
+        real_iso = real["week_start"].dt.isocalendar().week.astype(int)
+        clim_lookup = (
+            real.assign(iso_week=real_iso)
+                .groupby("iso_week")["clim_temp_mean"].first().to_dict()
+        )
+        synth_iso = synth["week_start"].dt.isocalendar().week.astype(int)
+        synth["clim_temp_mean"] = synth_iso.map(clim_lookup)
+        synth["temp_anomaly"] = synth["temp_mean"] - synth["clim_temp_mean"]
 
     # synthetic 플래그 추가
     real["is_synthetic"] = 0
@@ -108,6 +132,7 @@ def run_winter_validation_comparison() -> dict:
             "cold_days_7d", "temp_range", "promotion_flag",
             "weekly_min_price", "weekly_bi_box_share_mean", "weekly_stockout_flag",
             "first_snow_flag",
+            # NOTE: temp_anomaly 실험 2026-04-20 — winter MAE +6% 악화로 제외
         ),
     )
 

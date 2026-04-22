@@ -1,0 +1,1519 @@
+"""
+GL-RADS | Ecount ERP 크롤러 (v2.8.1 — doc_date 파싱 수정)
+대상: https://login.ecount.com
+추출: 구매현황 / 판매현황 / 재고수불부
+저장: Supabase (ecount_purchase / ecount_sales / ecount_stock_ledger)
+
+───────────────────────────────────────────────────────────────
+v2 변경 요약 (vs v1)
+  - 추출 방식: DOM tr 파싱 → 엑셀 다운로드 (BytesIO + pandas)
+  - 기업 코드: glpharm → gl_pharm (item_erp_mapping.erp_system 과 정합)
+  - 메뉴 확장: 재고수불부 추가 (지엘 전용)
+  - 메뉴 해시: prg_id + depth 메뉴별 override (재고수불부 depth=2)
+  - 기업별 메뉴 매트릭스: 지엘(구매+재고수불부), 지엘팜/HNB(구매+판매)
+  - 품목 필터링: Supabase item_erp_mapping 기준 클라이언트 필터 (A안)
+  - 날짜 필터 축소: 시작 년=2024, 시작 월=01만 조작. 나머지 UI 기본값 유지
+  - Supabase 저장: 기간 단위 replace (DELETE → INSERT)
+  - 실행 전략: 기업 단위 병렬 (asyncio.gather) + 기업 내 메뉴 순차
+  - 컬럼 정규화: COLUMN_NORMALIZE[company][menu] 맵 단일 진실 공급원
+───────────────────────────────────────────────────────────────
+"""
+from __future__ import annotations
+
+import os
+import sys
+import io
+import asyncio
+import random
+import json
+from datetime import datetime
+from enum import Enum
+from typing import Any
+
+import pandas as pd
+import structlog
+from playwright.async_api import async_playwright, Page, Download
+from supabase import create_client, Client
+
+logger = structlog.get_logger()
+
+# ──────────────────────────────────────────────
+# .env.local 로드
+# ──────────────────────────────────────────────
+try:
+    from dotenv import load_dotenv  # type: ignore
+
+    _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _ENV_LOCAL = os.path.join(_PROJECT_ROOT, ".env.local")
+    if os.path.exists(_ENV_LOCAL):
+        load_dotenv(dotenv_path=_ENV_LOCAL, override=False)
+        print(f"[Ecount] 환경변수 로드: {_ENV_LOCAL}")
+    else:
+        print(f"[Ecount] .env.local 미발견: {_ENV_LOCAL}")
+except Exception:
+    pass
+
+SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+
+# ──────────────────────────────────────────────
+# Enum / 메뉴 정의
+# ──────────────────────────────────────────────
+class EcountMenu(str, Enum):
+    구매현황 = "purchase"
+    판매현황 = "sales"
+    재고수불부 = "stock_ledger"
+
+
+class EcountCompanyCode(str, Enum):
+    """item_erp_mapping.erp_system 값과 동일."""
+
+    gl = "gl"
+    gl_pharm = "gl_pharm"
+    hnb = "hnb"
+
+
+# 메뉴 → Supabase 테이블
+TABLE_MAP: dict[EcountMenu, str] = {
+    EcountMenu.구매현황: "ecount_purchase",
+    EcountMenu.판매현황: "ecount_sales",
+    EcountMenu.재고수불부: "ecount_stock_ledger",
+}
+
+# 메뉴 해시 (prg_id + depth). 기업 공통. 기업별 override는 env로.
+MENU_HASH: dict[EcountMenu, dict[str, str]] = {
+    EcountMenu.구매현황: {"prg_id": "E040305", "depth": "4"},
+    EcountMenu.판매현황: {"prg_id": "E040207", "depth": "4"},
+    EcountMenu.재고수불부: {"prg_id": "C000035", "depth": "2"},
+}
+
+_DEFAULT_MENU_TREE: dict[str, str] = {
+    "menu_type": "MENUTREE_000004",
+    "menu_seq": "MENUTREE_000513",
+    "group_seq": "MENUTREE_000031",
+}
+
+# 기업별 메뉴 매트릭스 — 지엘은 판매현황 없음, 지엘팜/HNB는 재고수불부 없음
+COMPANY_MENUS: dict[str, list[EcountMenu]] = {
+    "gl": [EcountMenu.구매현황, EcountMenu.재고수불부],
+    "gl_pharm": [EcountMenu.구매현황, EcountMenu.판매현황],
+    "hnb": [EcountMenu.구매현황, EcountMenu.판매현황],
+}
+
+# 기업 레지스트리: (코드, 라벨, env 접두사)
+COMPANY_REGISTRY: list[tuple[EcountCompanyCode, str, str]] = [
+    (EcountCompanyCode.gl, "지엘", "ECOUNT_GL"),
+    (EcountCompanyCode.gl_pharm, "지엘팜", "ECOUNT_GL_PHARM"),
+    (EcountCompanyCode.hnb, "에이치앤비", "ECOUNT_HNB"),
+]
+
+
+# ──────────────────────────────────────────────
+# 컬럼 정규화 맵 — 엑셀 헤더 → Supabase 컬럼
+# 원본에 존재하지 않는 헤더는 무시됨 (KeyError 안 남)
+# ──────────────────────────────────────────────
+COLUMN_NORMALIZE: dict[str, dict[str, dict[str, str]]] = {
+    "gl": {
+        "purchase": {
+            "년/월/일": "doc_date",
+            "품목코드": "erp_code",
+            "품명 및 규격": "product_name",
+            "수량": "qty",
+            "단가": "unit_price",
+            "포함단가": "unit_price_vat",
+            "공급가액": "supply_amount",
+            "부가세": "vat_amount",
+            "합계": "total_amount",
+            "적요": "memo",
+            "구매처명": "counterparty",
+        },
+        "stock_ledger": {
+            "일자": "doc_date",
+            "거래처명": "counterparty",
+            "적요": "memo",
+            "입고수량": "inbound_qty",
+            "출고수량": "outbound_qty",
+        },
+    },
+    "gl_pharm": {
+        "purchase": {
+            "일자-No.": "doc_date",  # "2024-01-15-1" → doc_date + doc_no 분리
+            "품목코드": "erp_code",
+            "품목명(규격)": "product_name",
+            "수량": "qty",
+            "단가": "unit_price",
+            "공급가액": "supply_amount",
+            "부가세": "vat_amount",
+            "합계": "total_amount",
+            "거래처명": "counterparty",
+        },
+        "sales": {
+            "일자-No.": "doc_date",
+            "품목코드": "erp_code",
+            "품목명(규격)": "product_name",
+            "수량": "qty",
+            "단가": "unit_price",
+            "공급가액": "supply_amount",
+            "부가세": "vat_amount",
+            "합계": "total_amount",
+            "거래처명": "counterparty",
+        },
+    },
+    "hnb": {
+        "purchase": {
+            "년/월/일": "doc_date",
+            "품목코드": "erp_code",
+            "품명 및 규격": "product_name",
+            "수량": "qty",
+            "단가": "unit_price",
+            "단가(vat포함)": "unit_price_vat",
+            "공급가액": "supply_amount",
+            "부가세": "vat_amount",
+            "합계": "total_amount",
+            "구매처명": "counterparty",
+        },
+        "sales": {
+            "년/월/일": "doc_date",
+            "품목코드": "erp_code",
+            "품명 및 규격": "product_name",
+            "수량": "qty",
+            "단가": "unit_price",
+            "공급가액": "supply_amount",
+            "부가세": "vat_amount",
+            "합계": "total_amount",
+            "판매처명": "counterparty",
+        },
+    },
+}
+
+NUMERIC_COLS = (
+    "qty",
+    "unit_price",
+    "unit_price_vat",
+    "supply_amount",
+    "vat_amount",
+    "total_amount",
+    "inbound_qty",
+    "outbound_qty",
+)
+
+
+# ──────────────────────────────────────────────
+# 기업 코드 헬퍼
+# ──────────────────────────────────────────────
+def normalize_company_code(company_code: str | EcountCompanyCode | None) -> str:
+    if company_code is None:
+        return EcountCompanyCode.gl_pharm.value
+    if isinstance(company_code, EcountCompanyCode):
+        return company_code.value
+    return company_code.strip().lower().replace("-", "_")
+
+
+def company_env_prefix(company_code: str | EcountCompanyCode | None) -> str | None:
+    normalized = normalize_company_code(company_code)
+    for co, _label, prefix in COMPANY_REGISTRY:
+        if co.value == normalized:
+            return prefix
+    return None
+
+
+def company_label(company_code: str) -> str:
+    normalized = normalize_company_code(company_code)
+    for co, label, _p in COMPANY_REGISTRY:
+        if co.value == normalized:
+            return label
+    return normalized
+
+
+def credentials_bundle_for_company(
+    company_code: str | EcountCompanyCode | None,
+) -> dict[str, Any] | None:
+    normalized = normalize_company_code(company_code)
+    prefix = company_env_prefix(normalized)
+    if prefix is None:
+        return None
+    com = (os.getenv(f"{prefix}_COM_CODE") or "").strip()
+    uid = (os.getenv(f"{prefix}_USER_ID") or "").strip()
+    pw = (os.getenv(f"{prefix}_USER_PW") or "").strip()
+    if not com or not uid or not pw:
+        return None
+    return {
+        "com_code": com,
+        "user_id": uid,
+        "password": pw,
+        "company_code": normalized,
+        "company_label": company_label(normalized),
+        "menu_navigation": _load_menu_navigation(prefix),
+    }
+
+
+def list_configured_company_codes() -> list[str]:
+    return [
+        co.value
+        for co, _l, _p in COMPANY_REGISTRY
+        if credentials_bundle_for_company(co.value) is not None
+    ]
+
+
+def cookie_path_for_company(company_code: str | EcountCompanyCode | None) -> str:
+    normalized = normalize_company_code(company_code)
+    cookie_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "storage", "cookies"
+    )
+    return os.path.join(cookie_dir, f"ecount_session_{normalized}.json")
+
+
+# ──────────────────────────────────────────────
+# 메뉴 네비게이션 (env override 지원)
+# ──────────────────────────────────────────────
+def _nav_block(prefix: str, block: str, menu: EcountMenu) -> dict[str, str]:
+    hash_base = MENU_HASH[menu]
+    result = {
+        **_DEFAULT_MENU_TREE,
+        "prg_id": hash_base["prg_id"],
+        "depth": hash_base["depth"],
+    }
+    for py_key, env_suffix in (
+        ("prg_id", "PRG_ID"),
+        ("menu_type", "MENU_TYPE"),
+        ("menu_seq", "MENU_SEQ"),
+        ("group_seq", "GROUP_SEQ"),
+        ("depth", "DEPTH"),
+    ):
+        val = os.getenv(f"{prefix}_{block}_{env_suffix}")
+        if val and val.strip():
+            result[py_key] = val.strip()
+    return result
+
+
+def _load_menu_navigation(prefix: str) -> dict[str, dict[str, str]]:
+    return {
+        EcountMenu.구매현황.value: _nav_block(prefix, "PURCHASE", EcountMenu.구매현황),
+        EcountMenu.판매현황.value: _nav_block(prefix, "SALES", EcountMenu.판매현황),
+        EcountMenu.재고수불부.value: _nav_block(
+            prefix, "STOCK_LEDGER", EcountMenu.재고수불부
+        ),
+    }
+
+
+def resolve_menu_navigation(
+    menu_enum: EcountMenu, credentials: dict[str, Any]
+) -> dict[str, str]:
+    nav_root = credentials.get("menu_navigation")
+    if not isinstance(nav_root, dict):
+        raise ValueError("credentials에 menu_navigation이 없습니다.")
+    block = nav_root.get(menu_enum.value)
+    if not isinstance(block, dict):
+        raise ValueError(f"menu_navigation[{menu_enum.value}] 없음")
+    return block
+
+
+# ──────────────────────────────────────────────
+# ProcessPoolExecutor 진입점
+# uvicorn SelectorEventLoop ↔ Playwright 충돌 회피용
+# ──────────────────────────────────────────────
+def _run_in_new_process(
+    menu: str,
+    date_from: str,
+    date_to: str,
+    cookie_path: str,
+    credentials: dict,
+) -> bytes | None:
+    """자식 프로세스에서 _crawl_to_xlsx 실행. raw xlsx bytes 반환."""
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    return asyncio.run(
+        _crawl_to_xlsx(menu, date_from, date_to, cookie_path, credentials)
+    )
+
+
+# ──────────────────────────────────────────────
+# 로그인 / 세션
+# ──────────────────────────────────────────────
+async def _dismiss_login_popup(page: Page) -> bool:
+    """
+    이카운트 로그인 직후 뜨는 팝업 자동 처리.
+
+    대표적 케이스 (지엘 계정 실사 2026-04-18 확인):
+      ① "접속현황" 팝업 — "동일한 ID로 현재 접속중인 사용자가 존재합니다" 경고.
+         반드시 [확인] 버튼을 눌러야 기존 세션 로그아웃되고 새 세션이 수립됨.
+         X / 닫기 로 끄면 ERP 진입 실패.
+      ② 공지사항 / 안내 팝업 — 단순 X 또는 닫기 버튼.
+
+    전략 우선순위:
+      1. "확인" 텍스트 버튼 (접속현황 팝업 처리 — 최우선)
+      2. title / aria-label 에 "닫기" 또는 "close"
+      3. .close / .btn-close / .modal-close / .dialog-close
+      4. X / × / ✕ / ✖ 텍스트 버튼
+      5. ESC 키 폴백
+    """
+    dismissed_count = 0
+    for attempt in range(3):  # 팝업 여러 개 순차 대응
+        try:
+            res = await page.evaluate(
+                r"""() => {
+                    const tryClick = (el, strategy) => {
+                        if (!el || typeof el.click !== 'function') return null;
+                        el.click();
+                        return {
+                            strategy,
+                            text: (el.innerText || el.title || el.getAttribute('aria-label') || '')
+                                .trim().slice(0, 40),
+                        };
+                    };
+
+                    const isVisible = (el) => {
+                        if (!el) return false;
+                        const s = getComputedStyle(el);
+                        return s.display !== 'none' && s.visibility !== 'hidden' &&
+                               el.offsetParent !== null;
+                    };
+
+                    // 1. "확인" 버튼 — 최우선 (접속현황 팝업의 로그아웃 강제 액션)
+                    const confirmBtn = [...document.querySelectorAll(
+                        'button, a, input[type="button"], input[type="submit"]'
+                    )].find(el => {
+                        if (!isVisible(el)) return false;
+                        const t = (el.innerText || el.value || '').trim();
+                        return t === '확인';
+                    });
+                    const r1 = tryClick(confirmBtn, 'confirm');
+                    if (r1) return r1;
+
+                    // 2. title / aria-label 속성
+                    for (const attr of ['title', 'aria-label']) {
+                        const el = [...document.querySelectorAll(`[${attr}]`)].find(e => {
+                            if (!isVisible(e)) return false;
+                            const v = (e.getAttribute(attr) || '').toLowerCase();
+                            return v.includes('닫기') || v.includes('close');
+                        });
+                        const r = tryClick(el, attr);
+                        if (r) return r;
+                    }
+
+                    // 3. close 관련 클래스
+                    const byClass = [...document.querySelectorAll(
+                        '.close, .btn-close, .modal-close, .dialog-close, button.close, .popup-close'
+                    )].find(isVisible);
+                    const r3 = tryClick(byClass, 'class');
+                    if (r3) return r3;
+
+                    // 4. X / × / ✕ / ✖ 텍스트
+                    const xTexts = ['X', '×', '✕', '✖'];
+                    const byText = [...document.querySelectorAll(
+                        'button, a, span[role="button"], div[role="button"]'
+                    )].find(e => {
+                        if (!isVisible(e)) return false;
+                        const t = (e.innerText || e.textContent || '').trim();
+                        return xTexts.includes(t);
+                    });
+                    const r4 = tryClick(byText, 'x-text');
+                    if (r4) return r4;
+
+                    return { strategy: null };
+                }"""
+            )
+            if res and res.get("strategy"):
+                dismissed_count += 1
+                strategy = res["strategy"]
+                print(
+                    f"[Ecount] 팝업 처리 ({attempt + 1}회): "
+                    f"{strategy} / '{res.get('text', '')}'"
+                )
+                # "확인" 클릭은 서버측 로그아웃 처리 시간 필요
+                wait_sec = 2.0 if strategy == "confirm" else 0.8
+                await asyncio.sleep(wait_sec)
+                continue
+
+            # JS 전략 모두 실패 → ESC 폴백
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(0.5)
+            break
+        except Exception as e:
+            print(f"[Ecount] 팝업 처리 예외 ({attempt + 1}회): {e}")
+            break
+
+    if dismissed_count:
+        print(f"[Ecount] 팝업 총 {dismissed_count}회 처리")
+        return True
+    print("[Ecount] 처리할 팝업 없음")
+    return False
+
+
+async def _login(page: Page, credentials: dict) -> bool:
+    try:
+        await page.goto(
+            "https://login.ecount.com/Login/?lan_type=ko-KR/",
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        await asyncio.sleep(random.uniform(0.4, 0.8))
+        await page.fill("#com_code", credentials["com_code"])
+        await page.fill("#id", credentials["user_id"])
+        await page.fill("#passwd", credentials["password"])
+        await page.click("#save")
+
+        # v2.2: 로그인 후 세션 수립 완료 대기
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
+        try:
+            await page.wait_for_url(
+                lambda u: "/Login" not in u and u.rstrip("/") != "https://login.ecount.com",
+                timeout=10000,
+            )
+        except Exception:
+            pass
+        # [최적화 v2.6] 랜딩 페이지 안정화 2.0~3.0 → 1.2~1.8
+        await asyncio.sleep(random.uniform(1.2, 1.8))
+
+        if "login.ecount.com" in page.url and "logincc" not in page.url:
+            err = await page.query_selector("#error_msg, .login_error")
+            if err:
+                msg = await err.get_attribute("value") or await err.inner_text()
+                print(f"[Ecount] 로그인 실패: {msg}")
+            return False
+
+        print(f"[Ecount] 로그인 성공: {page.url}")
+
+        # v2.3: erp_login 랜딩에 뜨는 모달 팝업 닫기 (핵심)
+        if "erp_login" in page.url or "/app.login/" in page.url:
+            await _dismiss_login_popup(page)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
+            # [최적화 v2.6] 팝업 처리 후 대기 1.0 → 0.5
+            await asyncio.sleep(0.5)
+            print(f"[Ecount] 팝업 처리 후 URL: {page.url}")
+
+        return True
+    except Exception as e:
+        print(f"[Ecount] 로그인 예외: {e}")
+        return False
+
+
+async def _check_session(page: Page) -> bool:
+    try:
+        await page.goto(
+            "https://login.ecount.com/Login/?lan_type=ko-KR/",
+            wait_until="domcontentloaded",
+            timeout=20000,
+        )
+        await asyncio.sleep(random.uniform(0.3, 0.5))
+        login_form = await page.query_selector('input[name="COM_CODE"], #COM_CODE')
+        if login_form or "Login" in page.url:
+            return False
+        return True
+    except Exception:
+        return False
+
+
+# ──────────────────────────────────────────────
+# 날짜 필터 — v2: 시작 년/월만 조작 (종료 + 시작 일은 UI 기본값 유지)
+# ──────────────────────────────────────────────
+async def _apply_date_filter(page: Page, date_from: str) -> None:
+    """
+    슬아 요구사항 (2026-04-18):
+      시작 년=2024, 시작 월=01만 드롭다운으로 설정.
+      시작 일 / 종료 년·월·일 = UI 기본값 유지.
+
+    date_from: "YYYY-MM-DD" (일자는 사용 안 함 — 년/월만 추출)
+    """
+    try:
+        y1, m1, _d1 = date_from.split("-")
+
+        # "직접입력" 라디오 선택 (이미 선택돼 있어도 멱등)
+        try:
+            direct_radio = page.locator(
+                'button.btn-selectbox:has-text("직접입력"), '
+                'input[type="radio"][value="직접입력"], '
+                'label:has-text("직접입력")'
+            ).first
+            if await direct_radio.count() > 0:
+                await direct_radio.click(timeout=2000)
+                await asyncio.sleep(0.15)
+        except Exception:
+            pass  # 기본값이 이미 직접입력일 수 있음
+
+        # 드롭다운 컴포넌트 등장 polling
+        # [최적화 v2.6] polling 간격 0.25 → 0.15, 최대 6s (감지 빈도↑ 체감 빨라짐)
+        ready = False
+        for _ in range(40):
+            try:
+                count = await page.evaluate(
+                    """() => ({
+                        y: document.querySelectorAll('button.btn-selectbox[data-id="year"]').length,
+                        m: document.querySelectorAll('button.btn-selectbox[data-id="month"]').length,
+                    })"""
+                )
+                if count["y"] >= 1 and count["m"] >= 1:
+                    ready = True
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(0.15)
+
+        if not ready:
+            print("[Ecount] ⚠️ 날짜 드롭다운 타임아웃")
+            return
+
+        async def _pick(data_id: str, target_text: str) -> bool:
+            btn = page.locator(f'button.btn-selectbox[data-id="{data_id}"]').nth(0)
+            current = (await btn.locator(".selectbox-label").inner_text()).strip()
+            if current == target_text:
+                return True
+            await btn.click()
+            # [최적화 v2.6] 팝업 오픈 대기 0.2 → 0.1
+            await asyncio.sleep(0.1)
+            res = await page.evaluate(
+                """([txt]) => {
+                    const popups = [...document.querySelectorAll(
+                        'ul.dropdown-menu.show.dropdown-menu-selectbox'
+                    )];
+                    const visible = popups.find(p => p.offsetParent !== null);
+                    if (!visible) return false;
+                    const a = [...visible.querySelectorAll('li > a')]
+                        .find(el => (el.innerText || '').trim() === txt);
+                    if (!a) return false;
+                    a.click();
+                    return true;
+                }""",
+                [target_text],
+            )
+            if not res:
+                await page.keyboard.press("Escape")
+                return False
+            # [최적화 v2.6] 선택 반영 대기 0.15 → 0.08
+            await asyncio.sleep(0.08)
+            return True
+
+        await _pick("year", y1)
+        await _pick("month", m1)
+        # [최적화 v2.6] 검색 직전 정착 0.2 → 0.1
+        await asyncio.sleep(0.1)
+
+        # 검색 실행
+        clicked = await page.evaluate(
+            """() => {
+                const cands = [...document.querySelectorAll(
+                    'button, a, div[role="button"], span[role="button"]'
+                )];
+                const btn = cands.find(b => {
+                    const t = (b.innerText || '').trim();
+                    return t === '검색(F8)' || t.startsWith('검색(F8)');
+                });
+                if (btn) { btn.click(); return '검색(F8)'; }
+                const byId = document.getElementById('header_search');
+                if (byId) { byId.click(); return 'header_search'; }
+                return null;
+            }"""
+        )
+        if not clicked:
+            await page.keyboard.press("F8")
+        print(f"[Ecount] 날짜 필터 적용: 시작 {y1}/{m1} (나머지 UI 기본값)")
+        # [최적화 v2.6] 검색 후 그리드 렌더 대기 2.0 → 1.0
+        # (엑셀 다운로드 단계에서 추가 대기가 있으므로 과하게 기다릴 필요 없음)
+        await asyncio.sleep(1.0)
+
+    except Exception as e:
+        print(f"[Ecount] 날짜 필터 실패: {e}")
+
+
+# ──────────────────────────────────────────────
+# 엑셀 다운로드 — v2 핵심
+# ──────────────────────────────────────────────
+EXCEL_BUTTON_SELECTORS = [
+    # 이카운트 실제 버튼 텍스트 (2026-04-18 확인)
+    'button:has-text("Excel(화면)")',
+    'button:has-text("Excel(전체)")',
+    'a:has-text("Excel(화면)")',
+    'a:has-text("Excel(전체)")',
+    # 일반 폴백
+    'button:has-text("엑셀")',
+    'a:has-text("엑셀")',
+    'button:has-text("Excel")',
+    '[title*="엑셀"]',
+    '[title*="Excel"]',
+    '[data-action="excel"]',
+    'img[src*="excel"]',
+]
+
+
+async def _expand_pagination_if_needed(page: Page, menu: EcountMenu) -> None:
+    """
+    구매현황 전용: 전체 데이터 로드를 위해 '천건이상조회' 등의 버튼 자동 클릭.
+
+    이카운트는 기본적으로 그리드에 페이지네이션 적용 (ex: 1,000건씩). 전체 조회가 필요하면
+    '천건이상조회' 버튼을 명시적으로 눌러야 함. 구매현황은 2024~현재 범위에서 수천~수만 행
+    나올 수 있어 이 버튼 클릭이 필수.
+
+    판매현황/재고수불부는 호출하지 않음 (기업별로 UI 다르고 데이터량도 상대적으로 적음).
+    실패해도 무해 — 기본 Excel(화면) 다운로드로 폴백.
+    """
+    if menu != EcountMenu.구매현황:
+        return
+
+    try:
+        res = await page.evaluate(
+            r"""() => {
+                // 공백 정규화 후 비교 (이카운트가 버튼 텍스트에 공백 섞는 경우 있음)
+                const norm = (s) => (s || '').replace(/\s+/g, '');
+                const keywords = [
+                    '천건이상조회', '1000건이상조회', '1,000건이상조회',
+                    '전체조회', '전체보기', 'Showall', 'Loadall',
+                ].map(norm);
+
+                const isVisible = (el) => {
+                    const s = getComputedStyle(el);
+                    return s.display !== 'none' && s.visibility !== 'hidden' &&
+                           el.offsetParent !== null;
+                };
+
+                const cands = [...document.querySelectorAll(
+                    'button, a, [role="button"], [onclick]'
+                )];
+                const hit = cands.find(el => {
+                    if (!isVisible(el)) return false;
+                    const t = norm(el.innerText || el.textContent || '');
+                    return keywords.some(k => t === k || t.startsWith(k));
+                });
+                if (hit) {
+                    hit.click();
+                    return { clicked: true, text: (hit.innerText || '').trim().slice(0, 40) };
+                }
+                return { clicked: false };
+            }"""
+        )
+        if res.get("clicked"):
+            print(f"[Ecount] 페이징 확장 버튼 클릭: '{res.get('text')}'")
+            # 전체 조회는 데이터량이 많아 로드 시간 필요
+            await asyncio.sleep(2.5)
+        # 버튼 없으면 조용히 패스 — 기본 Excel(화면)으로 진행
+    except Exception as e:
+        print(f"[Ecount] 페이징 확장 예외(무시): {e}")
+
+
+async def _download_excel(
+    page: Page,
+    company_code: str = "unknown",
+    menu_value: str = "unknown",
+) -> bytes | None:
+    """
+    검색 완료 후 엑셀 버튼 클릭 → xlsx 다운로드.
+    이카운트는 보통 하단 우측에 'Excel(화면)' 또는 'Excel(전체)' 버튼이 있음.
+
+    v2.7: 다운로드한 엑셀 원본을 scripts/storage/excel/ 에 보존.
+    v2.8: 그리드 렌더 + 버튼 가시성 polling (헤드리스 대응).
+    """
+    # v2.8: 검색 결과 그리드 렌더 완료 대기 (헤드리스 대응)
+    # 고정 sleep 대신 networkidle + 엑셀 버튼 가시성 polling — 빠르면 빠르게, 느려도 안전
+    try:
+        await page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
+
+    # 엑셀 버튼이 visible 해질 때까지 최대 15초 polling (0.3s 간격)
+    excel_ready = False
+    for attempt in range(50):
+        try:
+            has_btn = await page.evaluate(
+                r"""() => {
+                    const cands = [...document.querySelectorAll(
+                        'button, a, input[type="button"], [role="button"]'
+                    )];
+                    const visible = (el) => {
+                        const s = getComputedStyle(el);
+                        return s.display !== 'none' && s.visibility !== 'hidden' &&
+                               el.offsetParent !== null;
+                    };
+                    return cands.some(el => {
+                        if (!visible(el)) return false;
+                        const t = (el.innerText || el.value || '').trim();
+                        return t.includes('Excel') || t.includes('엑셀');
+                    });
+                }"""
+            )
+            if has_btn:
+                excel_ready = True
+                if attempt > 0:
+                    print(
+                        f"[Ecount] 엑셀 버튼 가시화 ({attempt * 0.3:.1f}s 대기)"
+                    )
+                break
+        except Exception:
+            pass
+        await asyncio.sleep(0.3)
+
+    if not excel_ready:
+        print("[Ecount] ⚠️ 엑셀 버튼 15초 대기 후에도 DOM 미발견 — 그래도 탐색 시도")
+
+    try:
+        async with page.expect_download(timeout=60_000) as dl_info:
+            clicked = False
+            for sel in EXCEL_BUTTON_SELECTORS:
+                try:
+                    loc = page.locator(sel).first
+                    if await loc.count() > 0 and await loc.is_visible():
+                        await loc.click(timeout=3000)
+                        clicked = True
+                        print(f"[Ecount] 엑셀 버튼 클릭: {sel}")
+                        break
+                except Exception:
+                    continue
+
+            if not clicked:
+                # JS 폴백 — innerText 기반 광범위 탐색
+                found = await page.evaluate(
+                    r"""() => {
+                        const cands = [...document.querySelectorAll(
+                            'button, a, input[type="button"], [role="button"]'
+                        )];
+                        const visible = (el) => {
+                            const s = getComputedStyle(el);
+                            return s.display !== 'none' && s.visibility !== 'hidden' &&
+                                   el.offsetParent !== null;
+                        };
+                        // 1순위: 'Excel(' 접두
+                        let hit = cands.find(el => {
+                            if (!visible(el)) return false;
+                            const t = (el.innerText || el.value || '').trim();
+                            return t.startsWith('Excel(') || t.startsWith('엑셀(');
+                        });
+                        if (hit) {
+                            hit.click();
+                            return { clicked: true, text: (hit.innerText || hit.value || '').trim() };
+                        }
+                        // 2순위: 'Excel' 또는 '엑셀' 포함
+                        hit = cands.find(el => {
+                            if (!visible(el)) return false;
+                            const t = (el.innerText || el.value || '').trim();
+                            return t.includes('Excel') || t.includes('엑셀');
+                        });
+                        if (hit) {
+                            hit.click();
+                            return { clicked: true, text: (hit.innerText || hit.value || '').trim() };
+                        }
+                        // 3순위: onclick 속성
+                        hit = cands.find(el => {
+                            if (!visible(el)) return false;
+                            const on = (el.getAttribute('onclick') || '').toLowerCase();
+                            return on.includes('excel') || on.includes('xlsx');
+                        });
+                        if (hit) {
+                            hit.click();
+                            return { clicked: true, text: 'onclick:excel' };
+                        }
+                        return { clicked: false };
+                    }"""
+                )
+                if found and found.get("clicked"):
+                    clicked = True
+                    print(f"[Ecount] 엑셀 버튼 클릭(JS): {found.get('text')}")
+
+            if not clicked:
+                print("[Ecount] ⚠️ 엑셀 버튼 탐색 실패 — 모든 전략 실패")
+                return None
+
+        download: Download = await dl_info.value
+        path = await download.path()
+        if not path:
+            return None
+        with open(path, "rb") as f:
+            data = f.read()
+        print(f"[Ecount] 엑셀 다운로드 완료: {len(data):,} bytes")
+
+        # v2.7: 엑셀 원본 보존 (디버그/감사용)
+        try:
+            save_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "storage", "excel"
+            )
+            os.makedirs(save_dir, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_path = os.path.join(
+                save_dir, f"{company_code}_{menu_value}_{ts}.xlsx"
+            )
+            with open(save_path, "wb") as f:
+                f.write(data)
+            print(f"[Ecount] 엑셀 원본 저장: {save_path}")
+        except Exception as e:
+            print(f"[Ecount] 엑셀 원본 저장 실패(무시): {e}")
+
+        return data
+
+    except Exception as e:
+        print(f"[Ecount] 엑셀 다운로드 실패: {e}")
+        return None
+
+
+# ──────────────────────────────────────────────
+# 메인 크롤링 (자식 프로세스 내) — raw bytes 반환
+# ──────────────────────────────────────────────
+async def _crawl_to_xlsx(
+    menu: str,
+    date_from: str,
+    date_to: str,
+    cookie_path: str,
+    credentials: dict,
+) -> bytes | None:
+    menu_enum = EcountMenu(menu)
+
+    async with async_playwright() as p:
+        print(f"\n[Ecount] '{menu_enum.value}' 시작 (from {date_from})")
+
+        context_kwargs: dict[str, Any] = {
+            "user_agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "locale": "ko-KR",
+            "timezone_id": "Asia/Seoul",
+            "accept_downloads": True,
+        }
+        if os.path.exists(cookie_path):
+            context_kwargs["storage_state"] = cookie_path
+            print(f"[Ecount] 쿠키 로드: {cookie_path}")
+
+        # ECOUNT_HEADFUL=1 이면 처음부터 헤드풀 (디버깅용)
+        headful_forced = os.getenv("ECOUNT_HEADFUL", "").strip() in ("1", "true", "True")
+        if headful_forced:
+            print("[Ecount] ECOUNT_HEADFUL=1 → 헤드풀 모드 강제")
+        browser = await p.chromium.launch(headless=not headful_forced)
+        context = await browser.new_context(**context_kwargs)
+        page = await context.new_page()
+
+        # 세션 유효성 체크 → 만료 시 headful 재로그인
+        if not await _check_session(page):
+            print("[Ecount] 세션 만료 → 재로그인")
+            await browser.close()
+            browser = await p.chromium.launch(headless=False)
+            context = await browser.new_context(
+                user_agent=context_kwargs["user_agent"],
+                locale="ko-KR",
+                timezone_id="Asia/Seoul",
+                accept_downloads=True,
+            )
+            page = await context.new_page()
+            if not await _login(page, credentials):
+                if sys.stdin.isatty():
+                    print("!" * 60)
+                    print("[Ecount] 수동 로그인 후 엔터")
+                    try:
+                        input(">>> ")
+                    except EOFError:
+                        await browser.close()
+                        raise RuntimeError("수동 입력 불가")
+                else:
+                    await browser.close()
+                    raise RuntimeError(
+                        f"자동 로그인 실패 — .env 확인: "
+                        f"{company_env_prefix(credentials['company_code'])}_*"
+                    )
+            os.makedirs(os.path.dirname(cookie_path), exist_ok=True)
+            await context.storage_state(path=cookie_path)
+
+        try:
+            nav = resolve_menu_navigation(menu_enum, credentials)
+            prg_id = nav["prg_id"]
+            if not prg_id:
+                raise ValueError(f"prg_id 미설정: {menu_enum.value}")
+
+            from urllib.parse import urlparse, parse_qs
+
+            # ───────────────────────────────────────────
+            # ERP 세션(ec_req_sid) 획득
+            # 로그인 직후 URL (/app.login/erp_login) 에는 ec_req_sid 가 없음.
+            # ERP 메인(/ec5/view/erp) 으로 한 번 진입해야 서버가 세션 붙여 리다이렉트.
+            # ───────────────────────────────────────────
+            def _extract_sid(u: str) -> str:
+                try:
+                    return parse_qs(urlparse(u).query).get("ec_req_sid", [""])[0]
+                except Exception:
+                    return ""
+
+            current_url = page.url
+            base_url = "/".join(current_url.split("/")[:3])  # https://loginXX.ecount.com
+            ec_req_sid = _extract_sid(current_url)
+
+            if not ec_req_sid:
+                erp_main = f"{base_url}/ec5/view/erp"
+                print(f"[Ecount] ec_req_sid 없음 → ERP 메인 경유: {erp_main}")
+                try:
+                    await page.goto(
+                        erp_main, wait_until="domcontentloaded", timeout=30000
+                    )
+                    # 자동 리다이렉트로 ec_req_sid 붙을 때까지 대기
+                    try:
+                        await page.wait_for_url(
+                            lambda u: "ec_req_sid=" in u and _extract_sid(u) != "",
+                            timeout=15000,
+                        )
+                    except Exception:
+                        pass  # 아래 재추출에서 확인
+                    ec_req_sid = _extract_sid(page.url)
+                    # URL이 리다이렉트 후 바뀌었을 수 있음 (예: logincc → loginab)
+                    base_url = "/".join(page.url.split("/")[:3])
+                except Exception as e:
+                    print(f"[Ecount] ERP 메인 진입 실패: {e}")
+
+            if not ec_req_sid:
+                # 디버그: 현재 페이지 스크린샷 저장 (원인 추적)
+                try:
+                    import time as _t
+
+                    dbg_dir = os.path.join(
+                        os.path.dirname(os.path.abspath(__file__)),
+                        "storage",
+                        "debug",
+                    )
+                    os.makedirs(dbg_dir, exist_ok=True)
+                    dbg_path = os.path.join(
+                        dbg_dir,
+                        f"ec_sid_fail_{credentials.get('company_code', 'unknown')}"
+                        f"_{int(_t.time())}.png",
+                    )
+                    await page.screenshot(path=dbg_path, full_page=True)
+                    print(f"[Ecount] 디버그 스크린샷: {dbg_path}")
+                except Exception:
+                    pass
+
+                raise RuntimeError(
+                    f"ec_req_sid 획득 실패 — 현재 URL: {page.url} | "
+                    "로그인은 성공했으나 ERP 세션 발급 단계 실패. "
+                    "이카운트 로그인 후 ERP 진입 플로우가 바뀌었을 가능성. "
+                    "storage/debug/ 디렉토리의 스크린샷 확인 또는 "
+                    "ECOUNT_HEADFUL=1 로 실행하여 화면 관찰 필요."
+                )
+            print(f"[Ecount] ec_req_sid 획득: {ec_req_sid[:24]}... (base={base_url})")
+
+            target_url = (
+                f"{base_url}/ec5/view/erp"
+                f"?w_flag=1&ec_req_sid={ec_req_sid}"
+                f"#menuType={nav['menu_type']}&menuSeq={nav['menu_seq']}"
+                f"&groupSeq={nav['group_seq']}&prgId={prg_id}&depth={nav['depth']}"
+            )
+            print(f"[Ecount] 이동: {target_url[:140]}...")
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+
+            # s_page iframe 실 컨텐츠 로드 대기
+            for attempt in range(40):
+                sp = page.frame(name="s_page")
+                if sp and sp.url and sp.url != "about:blank":
+                    try:
+                        has_content = await sp.evaluate(
+                            """() => document.querySelectorAll('select').length >= 3
+                                || (document.body?.innerText || '').includes('기준일자')"""
+                        )
+                        if has_content:
+                            print(f"[Ecount] s_page 로드 ({attempt * 0.25:.1f}s)")
+                            break
+                    except Exception:
+                        pass
+                await asyncio.sleep(0.25)
+
+            await asyncio.sleep(0.6)
+
+            # 날짜 필터 (시작 년/월만)
+            await _apply_date_filter(page, date_from)
+
+            # v2.6: 구매현황 한정 — 전체 결과 로드를 위한 페이징 확장
+            await _expand_pagination_if_needed(page, menu_enum)
+
+            # 엑셀 다운로드 (company/menu 전달 → 원본 파일 저장됨)
+            xlsx_bytes = await _download_excel(
+                page,
+                company_code=str(credentials.get("company_code") or "unknown"),
+                menu_value=menu_enum.value,
+            )
+            return xlsx_bytes
+
+        except Exception as e:
+            print(f"[Ecount] 크롤링 예외 ({menu_enum.value}): {e}")
+            return None
+        finally:
+            await browser.close()
+
+
+# ──────────────────────────────────────────────
+# 엑셀 bytes → 정규화 dict records
+# ──────────────────────────────────────────────
+def _normalize_xlsx(
+    xlsx_bytes: bytes,
+    company_code: str,
+    menu: EcountMenu,
+    allowed_erp_codes: set[str] | None,
+    date_from: str,
+    date_to: str,
+) -> list[dict]:
+    """
+    엑셀 raw bytes → Supabase 삽입용 dict 리스트.
+      1. pandas.read_excel (헤더 자동 감지)
+      2. 컬럼 rename (COLUMN_NORMALIZE)
+      3. 품목 필터 (item_erp_mapping 기준)
+      4. doc_date 파싱 + gl_pharm은 doc_no 분리
+      5. 숫자 컬럼 변환
+      6. 메타 컬럼 부착
+    """
+    if not xlsx_bytes:
+        return []
+
+    col_map = COLUMN_NORMALIZE.get(company_code, {}).get(menu.value)
+    if not col_map:
+        print(f"[Ecount] ⚠️ 정규화 맵 없음: {company_code}/{menu.value}")
+        return []
+
+    # v2.7: 헤더 공백 정규화 헬퍼 — "합 계" 와 "합계"를 같은 것으로 취급
+    def _norm_header(s: object) -> str:
+        return "".join(str(s).split())
+
+    # 헤더 자동 탐지: 이카운트 엑셀은 상단에 제목 행이 여러 개 붙을 수 있음.
+    # COLUMN_NORMALIZE 키 중 2개 이상이 매칭되는 행을 헤더로 사용.
+    raw = pd.read_excel(io.BytesIO(xlsx_bytes), header=None, engine="openpyxl")
+    header_keys_norm = {_norm_header(k) for k in col_map.keys()}
+    header_row_idx = None
+    for i in range(min(len(raw), 20)):
+        row_norm = {
+            _norm_header(v) for v in raw.iloc[i].tolist() if pd.notna(v)
+        }
+        hits = len(row_norm & header_keys_norm)
+        if hits >= 2:
+            header_row_idx = i
+            break
+
+    if header_row_idx is None:
+        print(
+            f"[Ecount] ⚠️ 헤더 탐지 실패 ({company_code}/{menu.value}) — "
+            f"상위 5행 샘플:"
+        )
+        for i in range(min(5, len(raw))):
+            print(f"  [{i}]", raw.iloc[i].tolist()[:8])
+        return []
+
+    df = pd.read_excel(
+        io.BytesIO(xlsx_bytes),
+        header=header_row_idx,
+        engine="openpyxl",
+    )
+    df.columns = [str(c).strip() for c in df.columns]
+
+    # v2.7: 공백 정규화 기반 rename — "합 계" 엑셀 헤더와 "합계" 맵 키 매칭
+    norm_to_actual = {_norm_header(c): c for c in df.columns}
+    available = {}  # 실제 df 컬럼명 → Supabase 컬럼
+    missing = []
+    for src_key, dst_col in col_map.items():
+        nkey = _norm_header(src_key)
+        if nkey in norm_to_actual:
+            available[norm_to_actual[nkey]] = dst_col
+        else:
+            missing.append(src_key)
+    if missing:
+        print(f"[Ecount] ℹ️ 미매칭 헤더 ({company_code}/{menu.value}): {missing}")
+    if not available:
+        print(f"[Ecount] ⚠️ 매칭된 컬럼 없음 ({company_code}/{menu.value})")
+        return []
+    df = df[list(available.keys())].rename(columns=available)
+
+    # v2.8.1: doc_date 처리 (C2-a: No. 없는 행 rsplit 오분리 방지, C2-b: mixed 파서 dayfirst 오인 방지)
+    # 실측 포맷 (샘플 검증):
+    #   지엘 구매:  "24/01/02-1"    (YY/MM/DD-NO., 공백 없음)
+    #   지엘 재고:  "24/01/02"      (YY/MM/DD, No. 없음)
+    #   지엘팜:    "2024-01-15-1"  (YYYY-MM-DD-NO.)
+    #   HNB:      "24/01/02"      (YY/MM/DD, No. 없음으로 추정)
+    if "doc_date" in df.columns:
+        s = df["doc_date"].astype(str).str.strip()
+
+        # [C2-a] 날짜부 + 선택적 No. 접미사 — 행 단위 추출이라 No. 없는 행에 잘못된 split 없음
+        extracted = s.str.extract(
+            r"^(?P<date>.+?)\s*(?:-\s*(?P<no>\d+))?\s*$"
+        )
+        if extracted["no"].notna().any():
+            df["doc_no"] = extracted["no"].where(extracted["no"].notna(), None)
+
+        # [C2-b] %y/%m/%d 우선(지엘/HNB), 실패 행만 %Y-%m-%d(지엘팜)
+        date_str = extracted["date"]
+        d1 = pd.to_datetime(date_str, errors="coerce", format="%y/%m/%d")
+        d2 = pd.to_datetime(date_str, errors="coerce", format="%Y-%m-%d")
+        df["doc_date"] = d1.fillna(d2)
+
+        nat_count = int(df["doc_date"].isna().sum())
+        if nat_count > 0:
+            skipped = date_str[df["doc_date"].isna()].unique()[:5]
+            print(
+                f"[Ecount] doc_date 파싱 실패 {nat_count}행 "
+                f"(소계/합계 추정). 샘플: {list(skipped)}"
+            )
+
+        df = df.dropna(subset=["doc_date"]).copy()
+        df["doc_date"] = df["doc_date"].dt.strftime("%Y-%m-%d")
+
+    # 숫자 변환 (쉼표 제거)
+    for col in NUMERIC_COLS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(
+                df[col].astype(str).str.replace(",", "").str.strip(),
+                errors="coerce",
+            )
+
+    # 품목 필터 (A안 — 클라이언트 사이드 필터링)
+    if allowed_erp_codes is not None and "erp_code" in df.columns:
+        before = len(df)
+        df["erp_code"] = df["erp_code"].astype(str).str.strip()
+        df = df[df["erp_code"].isin(allowed_erp_codes)]
+        print(
+            f"[Ecount] 품목 필터 ({company_code}/{menu.value}): "
+            f"{before} → {len(df)}행"
+        )
+
+    # 메타 + 타입 정리
+    df["company_code"] = company_code
+    df["date_from"] = date_from
+    df["date_to"] = date_to
+
+    # NaN → None (Supabase JSON 직렬화)
+    df = df.where(pd.notna(df), None)
+    records = df.to_dict(orient="records")
+    # numpy 타입 → 파이썬 네이티브
+    for rec in records:
+        for k, v in list(rec.items()):
+            if hasattr(v, "item"):
+                try:
+                    rec[k] = v.item()
+                except Exception:
+                    rec[k] = None
+
+    print(f"[Ecount] 정규화 완료 ({company_code}/{menu.value}): {len(records)}행")
+    return records
+
+
+# ──────────────────────────────────────────────
+# Supabase — item_erp_mapping 조회 + 기간 replace 저장
+# ──────────────────────────────────────────────
+def fetch_allowed_erp_codes(
+    supabase: Client, company_code: str
+) -> set[str]:
+    """item_erp_mapping 에서 해당 기업의 품목코드 전체 로드."""
+    try:
+        res = (
+            supabase.table("item_erp_mapping")
+            .select("erp_code")
+            .eq("erp_system", company_code)
+            .not_.is_("erp_code", "null")
+            .execute()
+        )
+        codes = {
+            str(r["erp_code"]).strip()
+            for r in (res.data or [])
+            if r.get("erp_code")
+        }
+        print(f"[Ecount] 허용 품목코드 ({company_code}): {len(codes)}개")
+        return codes
+    except Exception as e:
+        print(f"[Ecount] item_erp_mapping 조회 실패: {e}")
+        return set()
+
+
+def save_to_supabase_replace(
+    supabase: Client,
+    table_name: str,
+    records: list[dict],
+    company_code: str,
+    date_from: str,
+    date_to: str,
+) -> dict:
+    """기간 단위 replace: DELETE (company, 기간) → INSERT."""
+    if not records:
+        return {"inserted": 0, "deleted": 0, "error": None}
+
+    deleted = 0
+    try:
+        # 1. 기존 데이터 삭제 (해당 기업 + 해당 기간)
+        del_res = (
+            supabase.table(table_name)
+            .delete(count="exact")
+            .eq("company_code", company_code)
+            .gte("doc_date", date_from)
+            .lte("doc_date", date_to)
+            .execute()
+        )
+        deleted = getattr(del_res, "count", 0) or 0
+        print(f"[Supabase] {table_name} 기존 삭제: {deleted}행")
+    except Exception as e:
+        logger.error("supabase_delete_failed", table=table_name, error=str(e))
+        return {"inserted": 0, "deleted": 0, "error": f"delete: {e}"}
+
+    # 2. 배치 insert
+    BATCH = 500
+    total = 0
+    try:
+        for i in range(0, len(records), BATCH):
+            batch = records[i : i + BATCH]
+            supabase.table(table_name).insert(batch).execute()
+            total += len(batch)
+            print(f"[Supabase] {table_name}: {total}/{len(records)}")
+        return {"inserted": total, "deleted": deleted, "error": None}
+    except Exception as e:
+        logger.error("supabase_insert_failed", table=table_name, error=str(e))
+        return {"inserted": total, "deleted": deleted, "error": f"insert: {e}"}
+
+
+# ──────────────────────────────────────────────
+# 크롤러 클래스
+# ──────────────────────────────────────────────
+class EcountCrawler:
+    def __init__(self, company_code: str | EcountCompanyCode | None = None) -> None:
+        normalized = normalize_company_code(company_code)
+        if company_env_prefix(normalized) is None:
+            raise ValueError(
+                f"알 수 없는 기업 코드: {company_code!r} — "
+                f"{[co.value for co, _, _ in COMPANY_REGISTRY]} 중 하나"
+            )
+        bundle = credentials_bundle_for_company(normalized)
+        if bundle is None:
+            pref = company_env_prefix(normalized)
+            raise ValueError(
+                f"기업 '{normalized}' 자격증명 없음 — "
+                f"{pref}_COM_CODE / USER_ID / USER_PW"
+            )
+        self.company_code = normalized
+        self.credentials: dict[str, Any] = bundle
+        self.cookie_path = cookie_path_for_company(normalized)
+        self.supabase: Client | None = None
+        if SUPABASE_URL and SUPABASE_KEY:
+            self.supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+    async def crawl_and_save(
+        self,
+        menu: EcountMenu,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        save_to_db: bool = True,
+    ) -> dict:
+        import concurrent.futures
+
+        if not date_from:
+            date_from = "2024-01-01"
+        if not date_to:
+            date_to = datetime.now().strftime("%Y-%m-%d")
+
+        # 기업이 지원하지 않는 메뉴면 스킵
+        if menu not in COMPANY_MENUS.get(self.company_code, []):
+            return {
+                "menu": menu.value,
+                "company_code": self.company_code,
+                "rows": 0,
+                "inserted": 0,
+                "deleted": 0,
+                "error": f"{self.company_code} 는 {menu.value} 미지원",
+            }
+
+        print(f"\n{'=' * 50}")
+        print(
+            f"[EcountCrawler] {self.credentials['company_label']} "
+            f"({self.company_code}) | {menu.value} | {date_from} ~ {date_to}"
+        )
+        print(f"{'=' * 50}")
+
+        # 자식 프로세스로 크롤링 (raw xlsx bytes 반환)
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as ex:
+            xlsx_bytes = await loop.run_in_executor(
+                ex,
+                _run_in_new_process,
+                menu.value,
+                date_from,
+                date_to,
+                self.cookie_path,
+                self.credentials,
+            )
+
+        if not xlsx_bytes:
+            return {
+                "menu": menu.value,
+                "company_code": self.company_code,
+                "rows": 0,
+                "inserted": 0,
+                "deleted": 0,
+                "error": "엑셀 다운로드 실패",
+            }
+
+        # 메인 프로세스에서 파싱 + 필터 + DB 저장
+        allowed: set[str] | None = None
+        if self.supabase is not None:
+            allowed = fetch_allowed_erp_codes(self.supabase, self.company_code)
+
+        records = _normalize_xlsx(
+            xlsx_bytes,
+            self.company_code,
+            menu,
+            allowed if allowed else None,
+            date_from,
+            date_to,
+        )
+
+        result: dict = {
+            "menu": menu.value,
+            "company_code": self.company_code,
+            "rows": len(records),
+            "inserted": 0,
+            "deleted": 0,
+            "error": None,
+        }
+
+        if save_to_db and records:
+            if self.supabase is None:
+                result["error"] = "SUPABASE_URL/KEY 미설정"
+                return result
+            table = TABLE_MAP[menu]
+            save_res = save_to_supabase_replace(
+                self.supabase,
+                table,
+                records,
+                self.company_code,
+                date_from,
+                date_to,
+            )
+            result["inserted"] = save_res["inserted"]
+            result["deleted"] = save_res["deleted"]
+            result["error"] = save_res["error"]
+
+        return result
+
+
+# ──────────────────────────────────────────────
+# 전사 오케스트레이션 — 기업 병렬 + 기업 내 메뉴 순차
+# ──────────────────────────────────────────────
+async def crawl_all_companies(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    company_codes: list[str] | None = None,
+    save_to_db: bool = True,
+) -> list[dict]:
+    """
+    전사 크롤링. 기업 단위 병렬 (asyncio.gather) + 기업 내 메뉴 순차.
+    """
+    if not date_from:
+        date_from = "2024-01-01"
+    if not date_to:
+        date_to = datetime.now().strftime("%Y-%m-%d")
+
+    targets = company_codes or list_configured_company_codes()
+    if not targets:
+        print("[Ecount] 자격증명 있는 기업 없음")
+        return []
+
+    print(f"[Ecount] 기업 병렬 크롤링: {targets}")
+
+    async def _one_company(code: str) -> list[dict]:
+        try:
+            crawler = EcountCrawler(company_code=code)
+        except ValueError as e:
+            print(f"[Ecount] {code} 스킵: {e}")
+            return []
+
+        out: list[dict] = []
+        for menu in COMPANY_MENUS.get(code, []):
+            try:
+                r = await crawler.crawl_and_save(
+                    menu, date_from, date_to, save_to_db=save_to_db
+                )
+                out.append(r)
+            except Exception as e:
+                out.append(
+                    {
+                        "menu": menu.value,
+                        "company_code": code,
+                        "rows": 0,
+                        "inserted": 0,
+                        "deleted": 0,
+                        "error": str(e),
+                    }
+                )
+            # 메뉴 간 소폭 대기
+            await asyncio.sleep(random.uniform(0.8, 1.4))
+        return out
+
+    # 기업 병렬
+    batches = await asyncio.gather(
+        *[_one_company(c) for c in targets], return_exceptions=False
+    )
+    flat = [r for batch in batches for r in batch]
+    return flat
+
+
+# ──────────────────────────────────────────────
+# CLI
+#   python ecount_crawler.py                        # 전사 병렬
+#   python ecount_crawler.py --company gl           # 지엘만 전체 메뉴
+#   python ecount_crawler.py --company gl --menu purchase
+#   python ecount_crawler.py --no-db                # DB 저장 스킵 (테스트)
+# ──────────────────────────────────────────────
+if __name__ == "__main__":
+    import argparse
+
+    known_codes = [co.value for co, _, _ in COMPANY_REGISTRY]
+    parser = argparse.ArgumentParser(description="Ecount ERP Crawler (v2)")
+    parser.add_argument(
+        "--menu",
+        default="all",
+        choices=[m.value for m in EcountMenu] + ["all"],
+        help="크롤 대상 메뉴 (기본: all — 기업별 지원 메뉴 전체)",
+    )
+    parser.add_argument(
+        "--company",
+        default="all",
+        help=f"기업 코드 ({', '.join(known_codes)}) 또는 all",
+    )
+    parser.add_argument("--from", dest="date_from", default="2024-01-01")
+    parser.add_argument(
+        "--to", dest="date_to", default=datetime.now().strftime("%Y-%m-%d")
+    )
+    parser.add_argument("--no-db", action="store_true", help="DB 저장 스킵")
+    parser.add_argument("--debug", action="store_true")
+    args = parser.parse_args()
+
+    if args.debug:
+        os.environ["ECOUNT_DEBUG"] = "1"
+
+    async def _main() -> None:
+        if args.company.strip().lower() == "all":
+            targets = None
+        else:
+            targets = [normalize_company_code(args.company)]
+
+        if args.menu == "all":
+            results = await crawl_all_companies(
+                date_from=args.date_from,
+                date_to=args.date_to,
+                company_codes=targets,
+                save_to_db=not args.no_db,
+            )
+        else:
+            # 단일 메뉴 모드 — 대상 기업이 해당 메뉴 지원하는 경우만
+            menu_enum = EcountMenu(args.menu)
+            use_targets = targets or list_configured_company_codes()
+
+            async def _one(code: str) -> dict:
+                crawler = EcountCrawler(company_code=code)
+                return await crawler.crawl_and_save(
+                    menu_enum,
+                    args.date_from,
+                    args.date_to,
+                    save_to_db=not args.no_db,
+                )
+
+            results = await asyncio.gather(*[_one(c) for c in use_targets])
+
+        print(f"\n{'#' * 50}")
+        print("[Ecount] 전체 결과")
+        print(f"{'#' * 50}")
+        for r in results:
+            print(
+                f"  {r['company_code']:>10} | {r['menu']:>12} | "
+                f"rows={r['rows']:>5} | del={r.get('deleted', 0):>5} | "
+                f"ins={r['inserted']:>5} | err={r['error']}"
+            )
+
+    asyncio.run(_main())

@@ -31,6 +31,12 @@ PyYAML>=6.0
 # 날씨 API
 openmeteo-requests>=1.2
 
+# OpenAI (AI 인사이트 + TTS)
+openai>=2.0
+
+# Ecount 크롤러 (Railway 배포에서 subprocess 또는 import 구동)
+playwright>=1.40
+
 # ECMWF GRIB — 선택 설치, Windows는 eccodes 까다로울 수 있음
 # ecmwf-opendata>=0.3.0
 # ecmwf-api-client>=1.6.0

@@ -7,6 +7,7 @@ type OrderInsert = {
   tx_date: string;
   tx_type: string;
   erp_system: string;
+  source_table: string;
   erp_code: string;
   erp_tx_no: string;
   erp_tx_line_no: number;
@@ -69,6 +70,7 @@ export async function persistOrdersToSupabase(
         tx_date: row.date,
         tx_type: "purchase",
         erp_system: erpSystem,
+        source_table: "ecount_ledger",
         erp_code: itemCode,
         erp_tx_no: txNo,
         erp_tx_line_no: idx * 2 + 1,
@@ -83,6 +85,7 @@ export async function persistOrdersToSupabase(
         tx_date: row.date,
         tx_type: "sale",
         erp_system: erpSystem,
+        source_table: "ecount_ledger",
         erp_code: itemCode,
         erp_tx_no: txNo,
         erp_tx_line_no: idx * 2 + 2,

@@ -14,6 +14,7 @@ import {
   CloudSun,
   Ship,
   Truck,
+  Triangle,
   Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -39,6 +40,7 @@ const iconMap: Record<string, LucideIcon> = {
   CloudSun,
   Ship,
   Truck,
+  Triangle,
   Upload,
 };
 

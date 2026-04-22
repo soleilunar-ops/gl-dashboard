@@ -35,11 +35,14 @@ import { CoupangSkuAnalysisDialog } from "./CoupangSkuAnalysisDialog";
 type UploadJsonOk = {
   ok: true;
   upserted: number;
+  insertedRows: number;
+  skippedExistingDateRows: number;
   skuMasterTouched: number;
   inputRows: number;
   uniqueRows: number;
   skippedEmptySku: number;
   op_dates: string[];
+  skippedExistingDates: string[];
   parseWarnings: string[];
   fileName: string | null;
 };
@@ -124,7 +127,9 @@ export default function CoupangFcInventoryTab() {
         return;
       }
       setLastResult(json);
-      toast.success(`쿠팡 센터 재고 반영 완료 (${json.upserted}건 upsert)`);
+      toast.success(
+        `쿠팡 센터 재고 반영 완료 (신규 ${json.insertedRows}건, 중복 날짜 건너뜀 ${json.skippedExistingDateRows}건)`
+      );
       if (json.parseWarnings.length > 0) {
         toast.message("일부 행 경고", {
           description: json.parseWarnings.slice(0, 6).join("\n"),
@@ -182,8 +187,9 @@ export default function CoupangFcInventoryTab() {
       {lastResult ? (
         <p className="text-muted-foreground text-sm">
           마지막 업로드: {lastResult.fileName ?? "(이름 없음)"} · 입력 {lastResult.inputRows}행 ·
-          고유 키 {lastResult.uniqueRows}건 · SKU 마스터 {lastResult.skuMasterTouched}건 · 기준일{" "}
-          {lastResult.op_dates.join(", ")}
+          고유 키 {lastResult.uniqueRows}건 · 신규 저장 {lastResult.insertedRows}건 · 중복 날짜
+          건너뜀 {lastResult.skippedExistingDateRows}건 · SKU 마스터 {lastResult.skuMasterTouched}건
+          · 기준일 {lastResult.op_dates.join(", ")}
         </p>
       ) : null}
 
