@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
-export type ContractCompanyCode = "gl" | "gl_pharm" | "hnb";
+export type ContractCompanyCode = "gl" | "glpharm" | "hnb";
 
 export interface ContractItemOption {
   /** item_erp_mapping.id — 동일 품목·다른 매핑 행 구분 */

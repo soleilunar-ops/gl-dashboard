@@ -116,11 +116,6 @@ export const COMPANY_ERP_SOURCE_TABLES: Record<
     sales: "ecount_glpharm_sales_excel",
     production: null,
   },
-  gl_pharm: {
-    purchase: "ecount_glpharm_purchase_excel",
-    sales: "ecount_glpharm_sales_excel",
-    production: null,
-  },
   hnb: {
     purchase: "ecount_hnb_purchase_excel",
     sales: "ecount_hnb_sales_excel",

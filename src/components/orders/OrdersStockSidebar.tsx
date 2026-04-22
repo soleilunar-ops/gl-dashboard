@@ -237,9 +237,10 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
   const persistMfgYear = useCallback(
     (nextY: number) => {
       setMfgY(nextY);
-      if (orderRow?.order_id === null || orderRow?.order_id === undefined) return;
+      const orderId = orderRow?.order_id;
+      if (orderId === null || orderId === undefined) return;
       void (async () => {
-        const result = await postOverlay(orderRow.order_id, { mfgYear: nextY });
+        const result = await postOverlay(orderId, { mfgYear: nextY });
         if (result.ok) onOrderUpdated();
       })();
     },

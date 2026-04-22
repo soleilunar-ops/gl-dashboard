@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 
 export type ErpMenu = "purchase" | "sales" | "stock_ledger" | "production_outsource";
 
-export type CompanyCode = "gl" | "gl_pharm" | "hnb";
+export type CompanyCode = "gl" | "glpharm" | "hnb";
 
 const TABLE_BY_MENU: Record<ErpMenu, string> = {
   purchase: "ecount_purchase",
@@ -30,7 +30,7 @@ export type ErpRow = Record<string, unknown>;
 function mappingSystemsFromCompanyFilter(
   companyCode: CompanyCode | "all" | readonly CompanyCode[] | undefined
 ): CompanyCode[] {
-  if (companyCode === undefined || companyCode === "all") return ["gl", "gl_pharm", "hnb"];
+  if (companyCode === undefined || companyCode === "all") return ["gl", "glpharm", "hnb"];
   if (typeof companyCode === "string") return [companyCode];
   return [...companyCode];
 }

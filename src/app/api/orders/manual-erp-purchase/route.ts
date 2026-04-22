@@ -27,7 +27,7 @@ interface Body {
   memo?: string;
 }
 
-const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "gl_pharm", "hnb"];
+const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "glpharm", "hnb"];
 const VALID_CURRENCY = new Set(["CNY", "USD", "KRW"]);
 
 export async function POST(request: Request) {
@@ -128,6 +128,7 @@ export async function POST(request: Request) {
     item_id: body.itemId!,
     erp_system: body.companyCode,
     tx_type: "purchase",
+    source_table: "manual",
     erp_code: body.erpCode?.trim() ?? null,
     erp_tx_no: erpTxNo,
     erp_tx_line_no: 1,

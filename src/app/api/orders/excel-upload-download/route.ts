@@ -14,9 +14,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "인증이 필요합니다." }, { status: 401 });
   }
 
-  const logId = new URL(request.url).searchParams.get("logId");
-  if (!logId) {
-    return NextResponse.json({ error: "logId 필요" }, { status: 400 });
+  const logIdStr = new URL(request.url).searchParams.get("logId");
+  const logId = logIdStr ? Number(logIdStr) : null;
+  if (!logId || !Number.isFinite(logId)) {
+    return NextResponse.json({ error: "logId 필요 (숫자)" }, { status: 400 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
   const admin = createAdmin<Database>(supabaseUrl, serviceRoleKey);
 
   const { data: log, error: qErr } = await admin
-    .from("order_excel_upload_logs")
+    .from("excel_uploads")
     .select("storage_path, file_name, uploaded_by")
     .eq("id", logId)
     .maybeSingle();

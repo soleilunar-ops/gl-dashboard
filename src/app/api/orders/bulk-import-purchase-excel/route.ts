@@ -26,7 +26,7 @@ interface ImportRow {
   supplierName: string;
 }
 
-const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "gl_pharm", "hnb"];
+const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "glpharm", "hnb"];
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -57,7 +57,7 @@ function parseBody(raw: unknown): {
   const o = raw as Record<string, unknown>;
   if (!Array.isArray(o.rows)) return null;
   const companyCode: OrderCompanyCode | null =
-    o.companyCode === "gl" || o.companyCode === "gl_pharm" || o.companyCode === "hnb"
+    o.companyCode === "gl" || o.companyCode === "glpharm" || o.companyCode === "hnb"
       ? (o.companyCode as OrderCompanyCode)
       : null;
   const fileName = typeof o.fileName === "string" && o.fileName.trim() ? o.fileName.trim() : null;
@@ -264,6 +264,7 @@ export async function POST(request: Request) {
       item_id: itemId,
       erp_system: companyCode,
       tx_type: "purchase",
+      source_table: "excel_upload",
       erp_code: r.erpCode,
       erp_tx_no: r.erpRef,
       erp_tx_line_no: lineNo,
@@ -294,9 +295,9 @@ export async function POST(request: Request) {
 
   if (parsed.uploadLogId) {
     const { data: existingLog, error: logFetchErr } = await admin
-      .from("order_excel_upload_logs")
+      .from("excel_uploads")
       .select("id, uploaded_by, company_code")
-      .eq("id", parsed.uploadLogId)
+      .eq("id", Number(parsed.uploadLogId))
       .maybeSingle();
 
     if (logFetchErr || !existingLog) {
@@ -313,13 +314,13 @@ export async function POST(request: Request) {
     }
 
     const { error: updErr } = await admin
-      .from("order_excel_upload_logs")
+      .from("excel_uploads")
       .update({
-        total_input: normalized.length,
-        inserted_count: inserts.length,
-        skipped_count: skipped + unmappedCount,
+        total_rows: normalized.length,
+        inserted_rows: inserts.length,
+        skipped_rows: skipped + unmappedCount,
       })
-      .eq("id", parsed.uploadLogId);
+      .eq("id", Number(parsed.uploadLogId!));
 
     if (updErr) {
       return NextResponse.json({ error: `이력 갱신 실패: ${updErr.message}` }, { status: 500 });
@@ -357,12 +358,13 @@ export async function POST(request: Request) {
   }
 
   if (displayFileName) {
-    const { error: logErr } = await admin.from("order_excel_upload_logs").insert({
+    const { error: logErr } = await admin.from("excel_uploads").insert({
+      category: "order_purchase_excel",
       company_code: companyCode,
       file_name: displayFileName,
-      total_input: normalized.length,
-      inserted_count: inserts.length,
-      skipped_count: skipped + unmappedCount,
+      total_rows: normalized.length,
+      inserted_rows: inserts.length,
+      skipped_rows: skipped + unmappedCount,
       storage_path: storagePath,
       uploaded_by: user.id,
     });

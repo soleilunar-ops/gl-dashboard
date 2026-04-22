@@ -57,14 +57,14 @@ import type { Tables } from "@/lib/supabase/types";
 import type { PurchaseDashboardRow } from "./_hooks/buildContractRows";
 
 type UploadLog = Pick<
-  Tables<"order_excel_upload_logs">,
+  Tables<"excel_uploads">,
   | "id"
   | "company_code"
   | "file_name"
-  | "total_input"
-  | "inserted_count"
-  | "skipped_count"
-  | "created_at"
+  | "total_rows"
+  | "inserted_rows"
+  | "skipped_rows"
+  | "uploaded_at"
   | "storage_path"
 >;
 
@@ -329,19 +329,19 @@ export function OrdersExcelUploadDialog({
                       </TableCell>
 
                       <TableCell className="py-2 text-right text-xs tabular-nums">
-                        {h.total_input ?? "—"}
+                        {h.total_rows ?? "—"}
                       </TableCell>
 
                       <TableCell className="py-2 text-right text-xs tabular-nums">
-                        +{h.inserted_count ?? 0}
+                        +{h.inserted_rows ?? 0}
                       </TableCell>
 
                       <TableCell className="py-2 text-right text-xs tabular-nums">
-                        {h.skipped_count ?? 0}
+                        {h.skipped_rows ?? 0}
                       </TableCell>
 
                       <TableCell className="text-muted-foreground py-2 text-[11px] whitespace-nowrap">
-                        {new Date(h.created_at).toLocaleString("ko-KR")}
+                        {new Date(h.uploaded_at).toLocaleString("ko-KR")}
                       </TableCell>
                     </TableRow>
                   ))

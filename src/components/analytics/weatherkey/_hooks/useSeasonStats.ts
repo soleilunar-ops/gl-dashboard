@@ -123,6 +123,7 @@ export function useSeasonStats(season: string | null | undefined): HookResult<{
         avg_daily_units: Math.round(totalUnits / rows.length),
         peak_date: peakRow.date ?? null,
         peak_units: (peakRow.units_sold as number) ?? null,
+        peak_gmv: null,
         peak_tmin: (peakRow.temp_min as number) ?? null,
         r_linear: null,
         r_log: rLog != null ? Number(rLog.toFixed(3)) : null,

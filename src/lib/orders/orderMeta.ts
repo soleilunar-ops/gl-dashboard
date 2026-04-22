@@ -1,6 +1,6 @@
-// ERP 시스템 코드 표준화: glpharm 사용 (구형 gl_pharm 호환 유지)
-export type OrderCompanyCode = "gl" | "glpharm" | "gl_pharm" | "hnb";
-export type OrderCompanyCodeInput = OrderCompanyCode;
+// ERP 시스템 코드 표준화: glpharm (언더바 없음). gl_pharm은 레거시 입력으로만 허용.
+export type OrderCompanyCode = "gl" | "glpharm" | "hnb";
+export type OrderCompanyCodeInput = OrderCompanyCode | "gl_pharm";
 
 export type OrderSourceKind = "erp_api" | "excel_upload" | "dashboard_manual";
 

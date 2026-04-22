@@ -89,7 +89,7 @@ export default function ErpDataView() {
             <SelectContent>
               <SelectItem value="all">전체</SelectItem>
               <SelectItem value="gl">지엘</SelectItem>
-              <SelectItem value="gl_pharm">지엘팜</SelectItem>
+              <SelectItem value="glpharm">지엘팜</SelectItem>
               <SelectItem value="hnb">HNB</SelectItem>
             </SelectContent>
           </Select>

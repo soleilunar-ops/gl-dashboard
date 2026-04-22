@@ -9,7 +9,7 @@ import type { OrderCompanyCode } from "@/lib/orders/orderMeta";
 import type { Database } from "@/lib/supabase/types";
 
 function resolveCompanyCode(value: string | null): OrderCompanyCode | null {
-  if (value === "gl" || value === "gl_pharm" || value === "hnb") {
+  if (value === "gl" || value === "glpharm" || value === "hnb") {
     return value;
   }
   return null;
@@ -47,11 +47,12 @@ export async function GET(request: Request) {
   const admin = createAdmin<Database>(supabaseUrl, serviceRoleKey);
 
   let q = admin
-    .from("order_excel_upload_logs")
+    .from("excel_uploads")
     .select(
-      "id, company_code, file_name, total_input, inserted_count, skipped_count, created_at, storage_path, uploaded_by"
+      "id, company_code, file_name, total_rows, inserted_rows, skipped_rows, uploaded_at, storage_path, uploaded_by"
     )
-    .order("created_at", { ascending: false });
+    .eq("category", "order_purchase_excel")
+    .order("uploaded_at", { ascending: false });
 
   if (!scopeAll && companyCode) {
     q = q.eq("company_code", companyCode);

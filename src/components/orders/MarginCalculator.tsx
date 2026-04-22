@@ -504,7 +504,7 @@ export function MarginCalculator() {
                 <XAxis dataKey="ex" tickFormatter={(v) => String(v)} />
                 <YAxis tickFormatter={(v) => `${v}%`} />
                 <Tooltip
-                  formatter={(v: number) => [`${v.toFixed(1)}%`, "마진율"]}
+                  formatter={((v: number) => [`${v.toFixed(1)}%`, "마진율"]) as never}
                   labelFormatter={(l) => `환율 ${l}`}
                 />
                 <ReferenceLine y={2} stroke="#ef4444" strokeDasharray="4 4" label="2%" />
@@ -531,7 +531,7 @@ export function MarginCalculator() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" />
                 <YAxis type="category" dataKey="name" width={56} />
-                <Tooltip formatter={(v: number) => formatWon(v)} />
+                <Tooltip formatter={((v: number) => formatWon(v)) as never} />
                 <Bar dataKey="profit" fill="#22c55e" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>

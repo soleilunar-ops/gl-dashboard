@@ -16,9 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ORDER_COMPANIES, type OrderCompanyCode } from "@/lib/orders/orderMeta";
+import { ORDER_COMPANIES } from "@/lib/orders/orderMeta";
 import { cn } from "@/lib/utils";
-import { useContractFormOptions } from "./_hooks/useContractFormOptions";
+import { useContractFormOptions, type ContractCompanyCode } from "./_hooks/useContractFormOptions";
 
 type CurrencyCode = "CNY" | "USD" | "KRW";
 
@@ -47,9 +47,9 @@ function parsePositiveRate(raw: string): number | null {
 /** 수동 구매 계약 추가 — orders INSERT (승인대기) */
 export default function OrderContractAddForm({ onAdded }: Props) {
   const listId = useId();
-  const [localCompanyCode, setLocalCompanyCode] = useState<OrderCompanyCode>("gl");
+  const [localCompanyCode, setLocalCompanyCode] = useState<ContractCompanyCode>("gl");
   /** 대시보드 상단 기업 필터와 무관하게 폼 내 선택값만 사용 */
-  const effectiveCompanyCode: OrderCompanyCode = localCompanyCode;
+  const effectiveCompanyCode: ContractCompanyCode = localCompanyCode;
 
   const {
     items,
@@ -201,7 +201,7 @@ export default function OrderContractAddForm({ onAdded }: Props) {
           <Label className="text-xs">기업</Label>
           <Select
             value={localCompanyCode}
-            onValueChange={(v) => setLocalCompanyCode(v as OrderCompanyCode)}
+            onValueChange={(v) => setLocalCompanyCode(v as ContractCompanyCode)}
           >
             <SelectTrigger className="h-9 w-full">
               <SelectValue />

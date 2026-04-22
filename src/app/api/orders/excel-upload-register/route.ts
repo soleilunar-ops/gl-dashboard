@@ -7,7 +7,7 @@ import type { OrderCompanyCode } from "@/lib/orders/orderMeta";
 import type { Database } from "@/lib/supabase/types";
 import { ORDER_EXCEL_STORAGE_BUCKET } from "@/lib/orders/excelUploadStorage";
 
-const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "gl_pharm", "hnb"];
+const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "glpharm", "hnb"];
 
 /** Storage 객체 키용 파일명 정규화 — 변경 이유: bulk-import와 동일 규칙 유지 */
 function safeStorageSegment(name: string): string {
@@ -16,7 +16,7 @@ function safeStorageSegment(name: string): string {
 }
 
 function resolveCompany(value: unknown): OrderCompanyCode | null {
-  if (value === "gl" || value === "gl_pharm" || value === "hnb") return value;
+  if (value === "gl" || value === "glpharm" || value === "hnb") return value;
   return null;
 }
 
@@ -76,13 +76,14 @@ export async function POST(request: Request) {
   }
 
   const { data: inserted, error: logErr } = await admin
-    .from("order_excel_upload_logs")
+    .from("excel_uploads")
     .insert({
+      category: "order_purchase_excel",
       company_code: companyCode,
       file_name: displayFileName,
-      total_input: 0,
-      inserted_count: 0,
-      skipped_count: 0,
+      total_rows: 0,
+      inserted_rows: 0,
+      skipped_rows: 0,
       storage_path: path,
       uploaded_by: user.id,
     })
