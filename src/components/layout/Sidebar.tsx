@@ -15,6 +15,7 @@ import {
   Ship,
   Truck,
   Triangle,
+  Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { navigation, type NavItem } from "./navigation.config";
@@ -40,6 +41,7 @@ const iconMap: Record<string, LucideIcon> = {
   Ship,
   Truck,
   Triangle,
+  Upload,
 };
 
 export default function Sidebar() {
