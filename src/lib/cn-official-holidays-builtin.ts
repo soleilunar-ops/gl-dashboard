@@ -41,11 +41,17 @@ const CN_BUILTIN_2026: CnHolidayPeriod[] = [
   period("국경절", "2026-10-01", "2026-10-07", ["2026-09-20", "2026-10-10"]),
 ];
 
-/** 연도별 내장표(현재 2026만). 다른 연도는 수동으로만 표시 */
+/** 단일 연도 내장표(등록된 연도만, 없으면 빈 배열) */
+export function getBuiltinCnHolidayPeriodsForYear(year: number): CnHolidayPeriod[] {
+  if (year === 2026) return [...CN_BUILTIN_2026];
+  return [];
+}
+
+/** 연도 목록에 맞춰 내장표 합침(중복 연도는 한 번만) */
 export function getBuiltinCnHolidayPeriodsForYears(years: number[]): CnHolidayPeriod[] {
   const out: CnHolidayPeriod[] = [];
-  if (years.includes(2026)) {
-    out.push(...CN_BUILTIN_2026);
+  for (const y of new Set(years)) {
+    out.push(...getBuiltinCnHolidayPeriodsForYear(y));
   }
   return out;
 }

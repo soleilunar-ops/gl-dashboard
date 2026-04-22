@@ -1459,6 +1459,30 @@ export type Database = {
           },
         ]
       }
+      hotpack_day_analysis: {
+        Row: {
+          body: string
+          date: string
+          generated_at: string
+          model: string | null
+          season: string
+        }
+        Insert: {
+          body: string
+          date: string
+          generated_at?: string
+          model?: string | null
+          season: string
+        }
+        Update: {
+          body?: string
+          date?: string
+          generated_at?: string
+          model?: string | null
+          season?: string
+        }
+        Relationships: []
+      }
       hotpack_llm_reports: {
         Row: {
           body_md: string
@@ -2110,6 +2134,65 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "excel_uploads"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_documents: {
+        Row: {
+          content_type: string | null
+          created_at: string
+          file_name: string
+          id: string
+          order_id: number
+          storage_path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          content_type?: string | null
+          created_at?: string
+          file_name: string
+          id?: string
+          order_id: number
+          storage_path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          content_type?: string | null
+          created_at?: string
+          file_name?: string
+          id?: string
+          order_id?: number
+          storage_path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_documents_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_documents_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_orders_approved"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_documents_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_orders_dashboard"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_documents_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_orders_pending"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -3076,6 +3159,7 @@ export type Database = {
           first_sub_5: string | null
           first_sub_minus_5: string | null
           peak_date: string | null
+          peak_gmv: number | null
           peak_tmin: number | null
           peak_units: number | null
           r_linear: number | null
@@ -3666,6 +3750,7 @@ export type Database = {
           date: string | null
           diurnal_range: number | null
           is_big_tdiff: boolean | null
+          is_cold_and_big_diff: boolean | null
           is_cold_wave: boolean | null
           is_freeze: boolean | null
           is_rain_only: boolean | null

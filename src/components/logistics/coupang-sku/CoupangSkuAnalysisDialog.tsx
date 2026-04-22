@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { BookmarkPlus, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ export function CoupangSkuAnalysisDialog({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiText, setAiText] = useState<string | null>(null);
+  const [savingAnalysis, setSavingAnalysis] = useState(false);
   const prevChartLoadingRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -83,12 +84,20 @@ export function CoupangSkuAnalysisDialog({
         .eq("sku_id", row.sku_id)
         .maybeSingle();
 
-      const [{ data: invData, error: invErr }, glRes, skuRes] = await Promise.all([
+      // allSettled로 전환 — gl/sku 보조 쿼리 실패가 주 쿼리(inv)까지 중단시키지 않도록
+      const [invSettled, glSettled, skuSettled] = await Promise.allSettled([
         invQuery,
         glPromise,
         skuPromise,
       ]);
 
+      if (invSettled.status === "rejected") {
+        setLoadError(
+          invSettled.reason instanceof Error ? invSettled.reason.message : String(invSettled.reason)
+        );
+        return;
+      }
+      const { data: invData, error: invErr } = invSettled.value;
       if (invErr) {
         setLoadError(invErr.message);
         return;
@@ -104,17 +113,19 @@ export function CoupangSkuAnalysisDialog({
 
       setSeries(list);
 
-      if (glRes.error) {
-        setLoadError(glRes.error.message);
-        return;
-      }
-      if (glRes.data) {
-        setGlStock(glRes.data.current_stock ?? null);
-        setGlBaseCost(glRes.data.base_cost ?? null);
+      // gl 재고는 보조 정보 — 실패해도 모달은 열리고 시계열은 표시
+      if (glSettled.status === "fulfilled" && !glSettled.value.error && glSettled.value.data) {
+        setGlStock(glSettled.value.data.current_stock ?? null);
+        setGlBaseCost(glSettled.value.data.base_cost ?? null);
       }
 
-      if (!skuRes.error && skuRes.data?.barcode) {
-        setBarcode(skuRes.data.barcode);
+      // sku 바코드도 보조 정보 — 실패해도 무시
+      if (
+        skuSettled.status === "fulfilled" &&
+        !skuSettled.value.error &&
+        skuSettled.value.data?.barcode
+      ) {
+        setBarcode(skuSettled.value.data.barcode);
       }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "조회 실패");
@@ -139,6 +150,46 @@ export function CoupangSkuAnalysisDialog({
     row?.purchase_cost !== null && row?.purchase_cost !== undefined && row.purchase_cost > 0
       ? `${row.purchase_cost.toLocaleString("ko-KR")}원`
       : "—";
+
+  const handleSaveAnalysis = useCallback(async () => {
+    if (!row || !aiText?.trim()) {
+      toast.error("저장할 분석 내용이 없습니다. 먼저 재고 현황 분석을 생성하세요.");
+      return;
+    }
+    setSavingAnalysis(true);
+    try {
+      const periodStart = series.length > 0 ? series[0].op_date : null;
+      const periodEnd = series.length > 0 ? series[series.length - 1].op_date : null;
+      const displayName = row.sku_name?.trim() || row.item_name_raw?.trim() || `SKU ${row.sku_id}`;
+      const res = await fetch("/api/logistics/coupang-sku-analysis-save", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sku_id: row.sku_id,
+          center_label: row.center,
+          center_query: row.center_query,
+          sku_display_name: displayName,
+          gl_erp_code: row.gl_erp_code,
+          item_id: row.item_id,
+          base_op_date: row.op_date,
+          period_start: periodStart,
+          period_end: periodEnd,
+          title: "재고 현황 분석",
+          body_text: aiText,
+        }),
+      });
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok) {
+        toast.error(json.error ?? "저장에 실패했습니다.");
+        return;
+      }
+      toast.success("분석 내용을 저장했습니다. 리포트에서 조회·내보내기에 활용할 수 있습니다.");
+    } catch {
+      toast.error("네트워크 오류로 저장하지 못했습니다.");
+    } finally {
+      setSavingAnalysis(false);
+    }
+  }, [row, aiText, series]);
 
   const handleAi = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -225,21 +276,41 @@ export function CoupangSkuAnalysisDialog({
                 <div className="bg-muted/30 rounded-lg border p-4 sm:p-5">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <p className="text-base font-semibold">재고 현황 분석</p>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="gap-1"
-                      disabled={aiLoading}
-                      onClick={() => void handleAi({ silent: false })}
-                    >
-                      {aiLoading ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-3.5 w-3.5" />
-                      )}
-                      재고 현황 분석
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                        disabled={savingAnalysis || aiLoading || !aiText?.trim()}
+                        onClick={() => void handleSaveAnalysis()}
+                        title={
+                          !aiText?.trim() ? "먼저 분석을 생성한 뒤 저장할 수 있습니다." : undefined
+                        }
+                      >
+                        {savingAnalysis ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <BookmarkPlus className="h-3.5 w-3.5" />
+                        )}
+                        분석 저장
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="gap-1"
+                        disabled={aiLoading}
+                        onClick={() => void handleAi({ silent: false })}
+                      >
+                        {aiLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        재고 현황 분석
+                      </Button>
+                    </div>
                   </div>
                   {aiLoading ? (
                     <p className="text-muted-foreground flex items-center gap-2 text-sm">

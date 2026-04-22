@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { resolveErpCodeByItem, type ErpMappingRow } from "@/lib/logistics/resolveErpCode";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
@@ -257,7 +258,7 @@ export function useCoupangInventoryByCenter() {
       }
     }
 
-    const erpCodeByItem = new Map<number, string>();
+    const allErpMappings: ErpMappingRow[] = [];
     if (itemIds.length > 0) {
       for (const batch of chunk(itemIds, 150)) {
         const { data: erpMaps, error: erpErr } = await supabase
@@ -270,15 +271,10 @@ export function useCoupangInventoryByCenter() {
           setLoading(false);
           return;
         }
-        for (const m of erpMaps ?? []) {
-          if (!m.erp_code) continue;
-          const existing = erpCodeByItem.get(m.item_id);
-          if (!existing || m.erp_system === "gl") {
-            erpCodeByItem.set(m.item_id, m.erp_code);
-          }
-        }
+        if (erpMaps) allErpMappings.push(...erpMaps);
       }
     }
+    const erpCodeByItem = resolveErpCodeByItem(allErpMappings);
 
     const enriched: CoupangInventoryByCenterRow[] = invList.map((io) => {
       const map = mappingBySku.get(io.sku_id);

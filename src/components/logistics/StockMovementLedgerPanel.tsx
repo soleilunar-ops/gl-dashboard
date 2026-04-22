@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import ErpCrawlPanel from "./ErpCrawlPanel";
 import { useStockMovements, type StockMovementRow } from "./_hooks/useStockMovements";
 import type { InventoryItem } from "./_hooks/useInventory";
 
@@ -27,7 +25,6 @@ export function StockMovementLedgerPanel({
   /** 탭 등에서 '다른 품목 선택' 등으로 바꿀 때 사용 */
   closeButtonLabel?: string;
 }) {
-  const [refreshKey, setRefreshKey] = useState(0);
   const today = new Date().toISOString().slice(0, 10);
   const fixedDateFrom = "2026-04-09";
   const movement = useStockMovements(
@@ -42,11 +39,6 @@ export function StockMovementLedgerPanel({
   const movementLoading = movement.loading;
   const movementError = movement.error;
   const currentStock = summary.open_qty + summary.total_in - summary.total_out;
-
-  const handleRefetch = (): void => {
-    setRefreshKey((prev) => prev + 1);
-    void movement.refetch();
-  };
 
   const hasMissingTableError = movementError?.includes("Could not find the table");
 
@@ -63,13 +55,6 @@ export function StockMovementLedgerPanel({
           {closeButtonLabel}
         </Button>
       </div>
-
-      <ErpCrawlPanel
-        itemId={selectedItem.id}
-        itemName={selectedItem.item_name}
-        erpCode={selectedItem.erp_code ?? null}
-        onSuccess={handleRefetch}
-      />
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
         <Card>
@@ -120,7 +105,7 @@ export function StockMovementLedgerPanel({
         ) : movementError ? (
           <p className="text-destructive text-sm">{movementError}</p>
         ) : (
-          <div key={refreshKey} className="max-h-[420px] overflow-auto rounded-lg border">
+          <div className="max-h-[420px] overflow-auto rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow>
