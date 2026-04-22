@@ -129,10 +129,36 @@ def _extract_all_coefficients(weekly_real: pd.DataFrame) -> dict:
     ).sort_values("week_start")
     cat["month"] = cat["week_start"].dt.month
 
-    # ── [근거 D] 월별 계절 계수 (12월 = 1.0) ──
-    monthly_sales = cat.groupby("month")["total_sales"].sum()
-    dec_sales = monthly_sales.get(12, 1)
-    monthly_factors = (monthly_sales / dec_sales).to_dict()
+    # ── [근거 D] 월별 계절 계수 (12월 주평균 = 1.0) ──
+    # 주수가 다른 달(12월=5주, 1/2/10/11월=4주, 3월=6주) 혼입 방지를 위해
+    # 월별 SUM이 아닌 주평균 비율로 계산. 2026-04-20 수정:
+    # 기존 SUM 방식은 4주인 달을 약 20% 과소평가 → 10월 -42% 과소 원인.
+    monthly_mean_sales = cat.groupby("month")["total_sales"].mean()
+    dec_mean = monthly_mean_sales.get(12, 1)
+    monthly_factors = (monthly_mean_sales / dec_mean).to_dict()
+
+    # ── [근거 D] 시즌 종료 감쇠: 2·3월 주차별 계수 (2026-04-20 추가) ──
+    # 2월: W1 0.33 → W4 0.07 (4.4배 감쇠). 월평균 0.16 사용 시 W1 과소·W4 과대.
+    # 3월도 점진 감쇠 계속. 4월은 기존 월평균 유지 (거의 0).
+    # 표본: 2026년 1시즌(n=1) — 다음 시즌 검증 시 보강 필요.
+    cat_sorted = cat.sort_values("week_start").copy()
+    cat_sorted["year"] = cat_sorted["week_start"].dt.year
+    cat_sorted["week_in_month"] = (
+        cat_sorted.groupby(["year", "month"]).cumcount() + 1
+    )
+    week_in_month_factors = {}
+    for m in (2, 3):
+        for w in range(1, 6):
+            rows = cat_sorted[
+                (cat_sorted["month"] == m) & (cat_sorted["week_in_month"] == w)
+            ]
+            if len(rows) > 0:
+                # 2026년 시즌 종료 패턴만 사용 (2025-03은 전년 시즌 후 봄 비시즌)
+                rows_2026 = rows[rows["year"] == 2026]
+                sample = rows_2026 if len(rows_2026) > 0 else rows
+                week_in_month_factors[(m, w)] = float(
+                    sample["total_sales"].mean() / dec_mean
+                )
 
     # ── [근거 D] 12월 주 평균 ──
     dec_weeks = cat[cat["month"] == 12]
@@ -148,12 +174,45 @@ def _extract_all_coefficients(weekly_real: pd.DataFrame) -> dict:
     cat["wc_bin"] = pd.cut(cat["wind_chill"], bins=bins, labels=labels)
     windchill_bins = cat.groupby("wc_bin", observed=True)["total_sales"].mean().to_dict()
 
-    # ── [근거 D] 적설 효과 (겨울 내 비교로 계절 교란 제거) ──
-    winter = cat[cat["month"].isin([10, 11, 12, 1, 2])]
-    snow_yes_w = winter[winter["snow_cm"] > 0]["total_sales"].mean()
-    snow_no_w = winter[winter["snow_cm"] == 0]["total_sales"].mean()
-    snow_ratio = float(snow_yes_w / snow_no_w) if snow_no_w > 0 else 1.0
-    # 전체 비교(6.78배)는 계절 교란 포함. 겨울 내 비교만 순수 눈 효과.
+    # ── [근거 D] 적설 효과 (11~1월 한정, 첫눈 제외) ──
+    # 10~2월 전체 비교(2.02배)는 2월 시즌종료·10월 무설 혼입 → 11~1월로 제한
+    # 첫눈 주는 별도 first_snow_multiplier로 분리 (3.03배)
+    # 2026-04-20 재산출: n=7(눈O) vs n=5(눈X), 평균 103,437 vs 71,606 → 1.44배 (p=0.064)
+    peak_winter = cat[cat["month"].isin([11, 12, 1])].copy()
+    # 시즌 첫눈 주 식별 (season_year: 10월 이후는 당해, 이전은 전해 시즌)
+    peak_winter["season_year"] = peak_winter["week_start"].apply(
+        lambda d: d.year if d.month >= 10 else d.year - 1
+    )
+    season_all = cat.copy()
+    season_all["season_year"] = season_all["week_start"].apply(
+        lambda d: d.year if d.month >= 10 else d.year - 1
+    )
+    season_all["is_first_snow"] = 0
+    for sy, grp in season_all.groupby("season_year"):
+        snow_rows = grp[grp["snow_cm"] > 0].sort_values("week_start")
+        if not snow_rows.empty:
+            season_all.loc[snow_rows.index[0], "is_first_snow"] = 1
+    peak_no_first = season_all[
+        season_all["month"].isin([11, 12, 1]) & (season_all["is_first_snow"] == 0)
+    ]
+    snow_yes_pw = peak_no_first[peak_no_first["snow_cm"] > 0]["total_sales"].mean()
+    snow_no_pw = peak_no_first[peak_no_first["snow_cm"] == 0]["total_sales"].mean()
+    snow_ratio = float(snow_yes_pw / snow_no_pw) if snow_no_pw and snow_no_pw > 0 else 1.0
+
+    # ── [근거 D] 첫눈 효과 (2025-12-01 단일 관측, n=1) ──
+    # 직전주 대비 +202.8% → 3.03배. 다음 시즌 관측으로 검증 필요.
+    first_snow_rows = season_all[season_all["is_first_snow"] == 1].sort_values("week_start")
+    first_snow_multipliers = []
+    for _, fsr in first_snow_rows.iterrows():
+        prev = cat[cat["week_start"] < fsr["week_start"]].sort_values("week_start")
+        if len(prev) > 0:
+            prev_sales = prev.iloc[-1]["total_sales"]
+            if prev_sales > 0:
+                first_snow_multipliers.append(float(fsr["total_sales"]) / float(prev_sales))
+    first_snow_multiplier = (
+        float(np.mean(first_snow_multipliers)) if first_snow_multipliers else 1.0
+    )
+    first_snow_n = len(first_snow_multipliers)
 
     # ── [근거 B+D] 기온 급강하 효과 (-5℃ 기준 [근거 B: Lee&Zheng]) ──
     cat["temp_change"] = cat["temp_mean"].diff()
@@ -185,9 +244,12 @@ def _extract_all_coefficients(weekly_real: pd.DataFrame) -> dict:
 
     return {
         "monthly_factors": monthly_factors,
+        "week_in_month_factors": week_in_month_factors,
         "dec_peak_avg": dec_peak_avg,
         "windchill_bins": windchill_bins,
         "snow_ratio": snow_ratio,
+        "first_snow_multiplier": first_snow_multiplier,
+        "first_snow_n": first_snow_n,
         "cold_snap_effects": cold_snap_effects,
         "snap_multipliers": snap_multipliers,
         "monthly_cv": monthly_cv,
@@ -270,6 +332,11 @@ def generate_synthetic_sales(
 
     # 시즌 내 급강하 횟수 카운터
     snap_count = 0
+    # 시즌 내 첫눈 추적: 2024 시즌 = 2024-10 이후 첫 snow>0 주
+    first_snow_applied = False
+
+    # 2·3월 주차 카운터 (시즌 종료 감쇠용)
+    month_week_counter: dict[int, int] = {}
 
     rows = []
     for _, wrow in weather_2024.iterrows():
@@ -279,7 +346,17 @@ def generate_synthetic_sales(
 
         # ── [근거 D] 기본 판매 = 같은 달 실데이터 주 평균 ──
         # 이것이 기준. 체감온도/눈/급강하는 이 기준 대비 "편차 보정"만 적용.
-        season_factor = coefs["monthly_factors"].get(month, 0.001)
+        # 2·3월은 시즌 종료 감쇠 크므로 주차별 계수 우선 사용.
+        if month in (2, 3):
+            month_week_counter[month] = month_week_counter.get(month, 0) + 1
+            wim = month_week_counter[month]
+            wim_factor = coefs["week_in_month_factors"].get((month, wim))
+            season_factor = (
+                wim_factor if wim_factor is not None
+                else coefs["monthly_factors"].get(month, 0.001)
+            )
+        else:
+            season_factor = coefs["monthly_factors"].get(month, 0.001)
         base_sales = coefs["dec_peak_avg"] * season_factor
 
         # ── [근거 A+C+D] 체감온도 편차 보정 ──
@@ -308,30 +385,40 @@ def generate_synthetic_sales(
             temp_adjustment = max(-max_adj, min(max_adj, temp_adjustment))
             base_sales = max(0, base_sales + temp_adjustment)
 
-        # ── [근거 D] 적설 효과 ──
-        if wrow["snow_cm"] > 0:
-            # 실측 비율 적용 (점진적: 눈 양에 비례, 상한=실측 배수)
-            snow_boost = 1.0 + (coefs["snow_ratio"] - 1.0) * min(wrow["snow_cm"] / 10.0, 1.0)
-            # [근거 D] 실측: 눈 있으면 평균 6.78배. 10cm 기준 최대 도달.
-        else:
-            snow_boost = 1.0
+        # ── 이벤트 배수 (max 기반, 중첩 금지) ──
+        # 여러 이벤트 동시 발생 시 가장 큰 배수 하나만 적용.
+        # 실측 근거: 2025-12-01은 첫눈+급강하 동시 발생 → 실제 관측 배수(+203%)는
+        # 둘의 곱이 아닌 단일 효과. 곱셈은 이중 반영이 됨.
+        event_candidates = [1.0]
 
-        # ── [근거 B+D] 기온 급강하 효과 ──
-        cold_snap_boost = 1.0
+        # [B1] 첫눈 (시즌 내 첫 snow>0 주) — n=1 관측값
+        is_first_snow = False
+        if wrow["snow_cm"] > 0 and not first_snow_applied and month >= 10:
+            is_first_snow = True
+            first_snow_applied = True
+            event_candidates.append(coefs["first_snow_multiplier"])
+
+        # [B2] 기온 급강하 [근거 B: -5℃ 임계]
         temp_change = wrow.get("temp_change", 0)
-        if pd.notna(temp_change) and temp_change <= -5:  # [근거 B] -5℃ 임계값
+        if pd.notna(temp_change) and temp_change <= -5:
             snap_count += 1
-            # [근거 D] 실측 급강하 효과 (횟수별 감쇠 [근거 B: 적응 효과])
             snap_list = coefs["snap_multipliers"]
             if snap_count <= len(snap_list):
-                cold_snap_boost = snap_list[snap_count - 1]
-            else:
-                # [근거 B] 4주 후 정상화 → 마지막 실측값 유지
-                cold_snap_boost = snap_list[-1] if snap_list else 1.0
+                event_candidates.append(snap_list[snap_count - 1])
+            elif snap_list:
+                event_candidates.append(snap_list[-1])
 
-        # ── 종합 ──
-        total_sales = base_sales * snow_boost * cold_snap_boost
-        total_sales = max(0, total_sales)
+        # [B3] 겨울 일반 적설 (11~1월, 첫눈 아님) — 실측 1.44배 (p=0.064)
+        if (
+            month in (11, 12, 1)
+            and wrow["snow_cm"] > 0
+            and not is_first_snow
+        ):
+            event_candidates.append(coefs["snow_ratio"])
+        # 그 외 (10월/2~4월 적설, 무설): 배수 1.0 유지
+
+        event_boost = max(event_candidates)
+        total_sales = max(0, base_sales * event_boost)
 
         # ── [근거 D] 월별 랜덤 노이즈 (실측 CV) ──
         cv = coefs["monthly_cv"].get(month, 0.3)
@@ -360,6 +447,7 @@ def generate_synthetic_sales(
                 "wind_chill": wrow["wind_chill"],
                 "temp_range": wrow["temp_range"],
                 "cold_days_7d": 1 if wrow["temp_min"] <= -12 else 0,  # [근거 A]
+                "first_snow_flag": 1 if is_first_snow else 0,  # [근거 D: 신규]
                 "promotion_flag": 0,  # [hook] 프로모션 캘린더 연동 시 변경
                 "synthetic": True,
             })
@@ -426,8 +514,15 @@ def run_synthetic_generation(
     print("[1/4] 실데이터 계수 추출...")
     coefs = _extract_all_coefficients(weekly_real)
     print(f"  월별 계수: { {m: round(v,4) for m,v in sorted(coefs['monthly_factors'].items())} }")
-    print(f"  적설 배수: {coefs['snow_ratio']:.2f}배")
-    print(f"  급강하 실측: {len(coefs['cold_snap_effects'])}건")
+    wim = coefs.get("week_in_month_factors", {})
+    if wim:
+        print(f"  2·3월 주차별 감쇠 계수:")
+        for (m, w), v in sorted(wim.items()):
+            print(f"    {m}월 W{w}: {v:.4f}")
+    print(f"  일반 적설 배수 (11~1월, 첫눈 제외): {coefs['snow_ratio']:.2f}배")
+    print(f"  첫눈 배수: {coefs['first_snow_multiplier']:.2f}배 "
+          f"[주의: n={coefs['first_snow_n']} 단일 관측, 다음 시즌 검증 필요]")
+    print(f"  급강하 실측: {len(coefs['cold_snap_effects'])}건 (배수 {coefs['snap_multipliers']})")
     print(f"  12월 주 평균: {coefs['dec_peak_avg']:,.0f}")
 
     print("[2/4] 2024년 날씨 (체감온도 포함)...")
@@ -455,8 +550,11 @@ def run_synthetic_generation(
         "coefficients_source": {
             "monthly_factors": "[D] 실데이터 월별 판매/12월 비율",
             "windchill_bins": "[A+C+D] JAG/TI 체감온도 + 5℃ 업계 구간 + 실데이터 판매",
-            "snow_ratio": f"[D] 실측 {coefs['snow_ratio']:.2f}배",
+            "snow_ratio": f"[D] 11~1월 첫눈 제외 실측 {coefs['snow_ratio']:.2f}배 (p=0.064)",
+            "first_snow": f"[D] 실측 {coefs['first_snow_multiplier']:.2f}배 "
+                          f"(n={coefs['first_snow_n']} 단일 관측 — 검증 필요)",
             "cold_snap": f"[B+D] -5℃ 임계(논문) + 실측 {len(coefs['cold_snap_effects'])}건",
+            "event_stacking": "max 기반 (중첩 금지): 동시 발생 이벤트 중 가장 큰 배수만 적용",
             "noise_cv": "[D] 월별 실측 변동계수",
             "delivery_ratio": "[D] 납품률×일간성과 실측 비율",
             "region_weights": "[D] 지역별판매트렌드 실측 (수도권 61.5%)",

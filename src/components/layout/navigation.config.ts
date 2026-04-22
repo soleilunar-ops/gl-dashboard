@@ -2,6 +2,7 @@ import { navOrders } from "./nav-orders";
 import { navForecast } from "./nav-forecast";
 import { navPromotion } from "./nav-promotion";
 import { navLogistics } from "./nav-logistics";
+import { navWeatherkey } from "./nav-weatherkey";
 
 export interface NavItem {
   label: string;
@@ -16,6 +17,6 @@ export interface NavGroup {
 
 export const navigation: NavGroup[] = [
   { title: "주문", items: navOrders },
-  { title: "분석", items: [...navForecast, ...navPromotion] },
+  { title: "분석", items: [...navForecast, ...navPromotion, ...navWeatherkey] },
   { title: "물류", items: navLogistics },
 ];

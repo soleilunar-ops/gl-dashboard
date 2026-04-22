@@ -218,6 +218,29 @@ def _fetch_or_load_asos(
     return merged
 
 
+def _compute_climatology(daily: pd.DataFrame) -> pd.DataFrame:
+    """
+    ASOS 실측 전체 구간에서 ISO 주차별 평년값 계산.
+
+    용도:
+      - 16일 이후 예측 주차에 실 예보가 없을 때 평년값으로 fallback
+      - temp_anomaly(평년 대비 편차) 피처 생성
+    """
+    if daily.empty:
+        return pd.DataFrame()
+    d = daily.copy()
+    d["iso_week"] = d["date"].dt.isocalendar().week.astype(int)
+    clim = d.groupby("iso_week", as_index=False).agg(
+        clim_temp_mean=("temp_mean", "mean"),
+        clim_temp_min=("temp_min", "min"),
+        clim_temp_max=("temp_max", "max"),
+        clim_rain_mm=("rain_mm", "mean"),
+        clim_snow_cm=("snow_cm", "mean"),
+        clim_wind_mean=("wind_mean", "mean"),
+    )
+    return clim
+
+
 def _aggregate_weekly_weather(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
@@ -256,6 +279,27 @@ def _aggregate_weekly_weather(df: pd.DataFrame) -> pd.DataFrame:
             first_idx = snow_weeks.index[0]
             weekly.loc[first_idx, "first_snow_flag"] = 1
     weekly = weekly.drop(columns=["season_year"])
+
+    # 평년값(Climatology) 병합 — 16일+ 미래 주차에서 예보 NaN 대체 + anomaly 피처 생성
+    clim = _compute_climatology(daily)
+    if not clim.empty:
+        weekly["iso_week"] = weekly["week_start"].dt.isocalendar().week.astype(int)
+        weekly = weekly.merge(clim, on="iso_week", how="left")
+        # 실제 관측/예보 NaN인 경우 평년값으로 채움 (장기 예측 주차 대응)
+        for col, clim_col in [
+            ("temp_mean", "clim_temp_mean"),
+            ("temp_min", "clim_temp_min"),
+            ("temp_max", "clim_temp_max"),
+            ("rain_mm", "clim_rain_mm"),
+            ("snow_cm", "clim_snow_cm"),
+            ("wind_mean", "clim_wind_mean"),
+        ]:
+            if col in weekly.columns and clim_col in weekly.columns:
+                weekly[col] = weekly[col].fillna(weekly[clim_col])
+        # 평년 대비 기온 편차 (Model A 신규 피처)
+        weekly["temp_anomaly"] = weekly["temp_mean"] - weekly["clim_temp_mean"]
+        weekly = weekly.drop(columns=["iso_week"])
+
     return weekly
 
 

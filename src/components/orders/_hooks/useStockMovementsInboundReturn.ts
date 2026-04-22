@@ -13,7 +13,7 @@ type MovementRow = Pick<
  * 재고 입고·반품 집계 — 계약 이행 상태 패널용
  *
  * v6 2단 설계:
- * - 입고(inbound): movement_type='purchase' (매입 승인 시 트리거가 +quantity_delta 기록)
+ * - 입고(inbound): movement_type='purchase'·'production_in' (승인 시 트리거가 +quantity_delta 기록)
  * - 반품(return): movement_type='return_sale' (판매반품 승인 시 재고 복원)
  * - stock_movement 행은 orders.status='approved' 트리거로만 생성되므로 실제 집행된 수량만 반영됨
  */
@@ -29,7 +29,7 @@ export function useStockMovementsInboundReturn() {
       const { data, error: err } = await supabase
         .from("stock_movement")
         .select("item_id, movement_type, quantity_delta, movement_date")
-        .in("movement_type", ["purchase", "return_sale"])
+        .in("movement_type", ["purchase", "return_sale", "production_in"])
         .order("movement_date", { ascending: false })
         .limit(5000);
 
@@ -56,7 +56,7 @@ export function useStockMovementsInboundReturn() {
     for (const row of movements) {
       const iid = row.item_id;
       const q = Math.abs(row.quantity_delta ?? 0);
-      if (row.movement_type === "purchase") {
+      if (row.movement_type === "purchase" || row.movement_type === "production_in") {
         inbound[iid] = (inbound[iid] ?? 0) + q;
       } else if (row.movement_type === "return_sale") {
         ret[iid] = (ret[iid] ?? 0) + q;

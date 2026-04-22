@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   downloadPurchaseExcel,
   parsePurchaseExcelBuffer,
@@ -14,8 +14,6 @@ import {
   type OrderCompanyCode,
 } from "@/lib/orders/orderMeta";
 import type { PurchaseDashboardRow } from "./buildContractRows";
-
-const SAMPLE_URL = "/orders-sample/제출용-입출고자료.xlsx";
 
 function remarkFromSource(source: string | null): string {
   const parsed = parseOrderSource(source);
@@ -37,59 +35,35 @@ export function purchasesToExportRows(list: PurchaseDashboardRow[]): PurchaseRow
   }));
 }
 
-/** 제출용 구매현황 엑셀 — 미리보기 상태·가져오기·다운로드 (카드 내부 배치용) */
+/** 제출용 구매현황 엑셀 — 파싱·업로드·다운로드 */
 export function useOrderExcelWorkspace(
   purchases: PurchaseDashboardRow[],
   selectedCompanyCode: OrderCompanyCode | null,
-  onImported: () => void
+  onImported: () => void,
+  /** 변경 이유: 파일 선택 직후 서버 이력 반영 시 목록 새로고침 */
+  onUploadRegistered?: () => void
 ) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [previewRows, setPreviewRows] = useState<PurchaseExcelParsedRow[]>([]);
+  /** 사용자가 디스크에서 선택한 원본 파일 — 변경 이유: 서버 Storage 보관용 multipart 업로드 */
+  const pickedFileRef = useRef<File | null>(null);
+  /** DB 반영용 파싱 결과 */
+  const [parsedRows, setParsedRows] = useState<PurchaseExcelParsedRow[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
-  const [sampleLoading, setSampleLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  /** 변경 이유: excel-upload-register로 만든 행과 bulk-import 갱신을 연결 */
+  const [pendingUploadLogId, setPendingUploadLogId] = useState<string | null>(null);
 
   const applyBuffer = useCallback((buffer: ArrayBuffer) => {
     const { rows, errors } = parsePurchaseExcelBuffer(buffer);
-    setPreviewRows(rows);
+    setParsedRows(rows);
     setParseErrors(errors);
     setStatusMessage(
       errors.length > 0
-        ? `파싱 경고 ${errors.length}건(요약·빈 행 등). 데이터 ${rows.length}건 표시.`
+        ? `파싱 경고 ${errors.length}건(요약·빈 행 등). 데이터 ${rows.length}건 불러왔습니다.`
         : `데이터 ${rows.length}건을 불러왔습니다.`
     );
-  }, []);
-
-  const loadSample = useCallback(async () => {
-    setSampleLoading(true);
-    setStatusMessage(null);
-    try {
-      const res = await fetch(SAMPLE_URL);
-      if (!res.ok) {
-        setStatusMessage(`샘플 파일을 불러오지 못했습니다 (HTTP ${res.status}).`);
-        return;
-      }
-      const buf = await res.arrayBuffer();
-      applyBuffer(buf);
-      setSelectedFileName("제출용-입출고자료.xlsx");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "네트워크 오류";
-      setStatusMessage(`샘플 로드 실패: ${msg}`);
-    } finally {
-      setSampleLoading(false);
-    }
-  }, [applyBuffer]);
-
-  // 마운트 시 1회만 샘플 로드 (loadSample 재생성 시 재로드 방지)
-  // loadSample을 ref로 안정화해 deps에서 제외
-  const loadSampleRef = useRef(loadSample);
-  useEffect(() => {
-    loadSampleRef.current = loadSample;
-  }, [loadSample]);
-  useEffect(() => {
-    void loadSampleRef.current();
   }, []);
 
   const onPickFile = async (file: File | null) => {
@@ -97,9 +71,38 @@ export function useOrderExcelWorkspace(
       return;
     }
     setStatusMessage(null);
+    pickedFileRef.current = file;
     setSelectedFileName(file.name);
+    setPendingUploadLogId(null);
     const buf = await file.arrayBuffer();
     applyBuffer(buf);
+
+    if (selectedCompanyCode === null) {
+      return;
+    }
+
+    try {
+      const fd = new FormData();
+      fd.append("companyCode", selectedCompanyCode);
+      fd.append("file", file);
+      const res = await fetch("/api/orders/excel-upload-register", { method: "POST", body: fd });
+      const data = (await res.json()) as { logId?: string; error?: string };
+      if (res.ok && data.logId) {
+        setPendingUploadLogId(data.logId);
+        onUploadRegistered?.();
+      } else {
+        setStatusMessage(
+          (prev) =>
+            `${prev ?? ""}${prev ? " · " : ""}원본 서버 보관 실패(${data.error ?? String(res.status)}) — 「업로드」 시 파일을 함께 전송합니다.`
+        );
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "네트워크 오류";
+      setStatusMessage(
+        (prev) =>
+          `${prev ?? ""}${prev ? " · " : ""}원본 서버 보관 오류: ${msg} — 「업로드」 시 파일을 함께 전송합니다.`
+      );
+    }
   };
 
   const handleImport = async () => {
@@ -107,31 +110,57 @@ export function useOrderExcelWorkspace(
       setStatusMessage("먼저 기업을 선택하세요.");
       return;
     }
-    if (previewRows.length === 0) {
+    if (parsedRows.length === 0) {
       setStatusMessage("가져올 데이터가 없습니다.");
       return;
     }
     setImporting(true);
     setStatusMessage(null);
     try {
-      const response = await fetch("/api/orders/bulk-import-purchase-excel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyCode: selectedCompanyCode,
-          fileName: selectedFileName,
-          rows: previewRows.map((r) => ({
-            erpRef: r.erpRef,
-            purchaseDateIso: r.purchaseDateIso,
-            erpCode: r.erpCode,
-            productName: r.productName,
-            quantity: r.quantity,
-            unitPriceCny: r.unitPriceCny,
-            totalCny: r.totalCny,
-            supplierName: r.supplierName,
-          })),
-        }),
-      });
+      const basePayload = {
+        companyCode: selectedCompanyCode,
+        fileName: selectedFileName,
+        rows: parsedRows.map((r) => ({
+          erpRef: r.erpRef,
+          purchaseDateIso: r.purchaseDateIso,
+          erpCode: r.erpCode,
+          productName: r.productName,
+          quantity: r.quantity,
+          unitPriceCny: r.unitPriceCny,
+          totalCny: r.totalCny,
+          supplierName: r.supplierName,
+        })),
+      };
+
+      const useRegistered = pendingUploadLogId !== null;
+      const payloadObj =
+        useRegistered && pendingUploadLogId
+          ? { ...basePayload, uploadLogId: pendingUploadLogId }
+          : basePayload;
+
+      const picked = pickedFileRef.current;
+      const response =
+        useRegistered && pendingUploadLogId
+          ? await fetch("/api/orders/bulk-import-purchase-excel", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payloadObj),
+            })
+          : picked !== null
+            ? await fetch("/api/orders/bulk-import-purchase-excel", {
+                method: "POST",
+                body: (() => {
+                  const fd = new FormData();
+                  fd.append("payload", JSON.stringify(payloadObj));
+                  fd.append("file", picked);
+                  return fd;
+                })(),
+              })
+            : await fetch("/api/orders/bulk-import-purchase-excel", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payloadObj),
+              });
       const payload = (await response.json()) as {
         message?: string;
         error?: string;
@@ -150,6 +179,7 @@ export function useOrderExcelWorkspace(
       setStatusMessage(
         `${payload.message ?? "완료"} — 신규 ${payload.inserted ?? 0}건, 건너뜀(기존 전표) ${payload.skipped ?? 0}건${extra}`
       );
+      setPendingUploadLogId(null);
       onImported();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "네트워크 오류";
@@ -171,13 +201,10 @@ export function useOrderExcelWorkspace(
 
   return {
     fileRef,
-    previewRows,
     parseErrors,
-    sampleLoading,
     importing,
     statusMessage,
     selectedFileName,
-    loadSample,
     onPickFile,
     handleImport,
     handleDownloadAll,

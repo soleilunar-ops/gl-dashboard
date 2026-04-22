@@ -1,0 +1,146 @@
+{
+  "cookies": [
+    {
+      "name": "_gcl_au",
+      "value": "1.1.173165098.1776750381",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": 1784526380,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "EcNewDeviceKey",
+      "value": "1267%262026-04-21%2014-46-21%26128",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SVID",
+      "value": "nol4-Login-LAB01_7bb0e|aecPM",
+      "domain": "login.ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "IDE",
+      "value": "AHWqTUlDp-jDKzkaCS16Xz1EmqiwNOGcLWjHa645wNH6ELeZHKw1v_sTN0iANVZV",
+      "domain": ".doubleclick.net",
+      "path": "/",
+      "expires": 1811310381.599691,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ECOUNT_SessionId",
+      "value": "AB-ETOYWN1NaO9Z2=3635303431387c25656125623225386325656325386125613425656425386125623831",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "login_info_cookie",
+      "value": "%26check%3D",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "EcGoogleTagCountry",
+      "value": "Y",
+      "domain": "loginab.ecount.com",
+      "path": "/",
+      "expires": 1787118383,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "EcFacebookPixcelCountry",
+      "value": "Y",
+      "domain": "loginab.ecount.com",
+      "path": "/",
+      "expires": 1787118383,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_fbp",
+      "value": "fb.1.1776750383325.449243260438120412",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": 1784526383,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga",
+      "value": "GA1.1.964350565.1776750383",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": 1811310383.436997,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga_66P85C00D9",
+      "value": "GS2.1.s1776750383$o1$g0$t1776750383$j60$l0$h0",
+      "domain": ".ecount.com",
+      "path": "/",
+      "expires": 1811310383.451985,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SVID",
+      "value": "nol4-Login-LAB01_7bb0e|aecPM",
+      "domain": "loginab.ecount.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://loginab.ecount.com",
+      "localStorage": [
+        { "name": "lastExternalReferrerTime", "value": "1776750383314" },
+        { "name": "loglevel:ecount-global-logger", "value": "INFO" },
+        { "name": "ec_new_device_key", "value": "1267&2026-04-21 14-46-21&128" },
+        { "name": "lastExternalReferrer", "value": "other" }
+      ]
+    },
+    {
+      "origin": "https://login.ecount.com",
+      "localStorage": [
+        {
+          "name": "_gcl_ls",
+          "value": "{\"schema\":\"gcl\",\"version\":1,\"gcl_ctr\":{\"value\":{\"value\":1,\"timeouts\":0,\"errors\":0,\"eopCount\":0,\"creationTimeMs\":1776750381985},\"expires\":1784526381985}}"
+        },
+        { "name": "ec_new_device_key", "value": "1267&2026-04-21 14-46-21&128" },
+        { "name": "loglevel:ecount-global-logger", "value": "INFO" }
+      ]
+    }
+  ]
+}

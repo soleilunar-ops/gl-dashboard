@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -91,11 +92,39 @@ class DailySalesItem(BaseModel):
     gmv: float
 
 
+class OrderWeeklyItem(BaseModel):
+    """한 주차의 발주 권장 묶음 (카테고리 총량 + 근거 + SKU 분배)."""
+    week_start: str
+    label: str                       # "이번 주" / "다음 주" / "다다음 주"
+    category_total: int              # Model B 카테고리 총 권장 발주량
+    model_a_pred_total: int          # Model A 주간 판매 예측 총량 (카테고리 환산 기준)
+    ratio_applied: float             # model_b / model_a (= 납품/판매 비율)
+    reference_mae: dict              # 참고 Model A 판매 예측 MAE
+    notable_cases: list[str]         # 실측 극단 사례 (청중이 판단하도록 공개)
+    items: list[dict]                # [{sku, name, predicted_order_qty, sku_ratio}]
+
+
 class PackDistributionItem(BaseModel):
     category: str  # "붙이는 핫팩" | "손난로" | "일반 핫팩" | "찜질팩"
     pack_size: int  # 포장 단위 (개)
     units_sold: int  # 해당 포장 단위 총 판매량
     pct: float  # 카테고리 내 비중(%)
+
+
+class BriefingTextResponse(BaseModel):
+    text: str  # TTS 낭독용 텍스트 (오늘 날씨 + AI 인사이트)
+    date: str  # 기준 일자 (YYYY-MM-DD, KST)
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., max_length=3000, description="낭독할 텍스트 (최대 3000자)")
+    voice: str = Field(default="shimmer", description="alloy | ash | coral | echo | fable | nova | onyx | sage | shimmer")
+    model: str = Field(default="gpt-4o-mini-tts", description="gpt-4o-mini-tts (자연스러움, 스타일 지시 지원) | tts-1-hd | tts-1")
+    instructions: str | None = Field(
+        default=None,
+        description="gpt-4o-mini-tts 한정 스타일 지시문 (톤/속도/감정)",
+        max_length=500,
+    )
 
 
 # ────────────────────────────────────────────
@@ -283,6 +312,150 @@ def get_forecast_insight(
     )
 
 
+@router.get("/briefing-text", response_model=BriefingTextResponse)
+def get_briefing_text() -> BriefingTextResponse:
+    """
+    오늘 날씨 + AI 인사이트를 TTS 낭독용 텍스트로 조립.
+
+    - 날씨: v_weather_hybrid의 오늘(KST) 1행 (없으면 "오늘 날씨 정보 없음")
+    - 인사이트: /forecast/insight 와 동일 생성 로직
+    """
+    try:
+        from analytics.insight_generator import (
+            build_insight_context_from_local,
+            build_insight_context_from_supabase,
+            generate_forecast_insight,
+        )
+    except ImportError:
+        from services.api.analytics.insight_generator import (
+            build_insight_context_from_local,
+            build_insight_context_from_supabase,
+            generate_forecast_insight,
+        )
+
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).date()
+
+    # ── 오늘 날씨 ──
+    weather_line = "오늘 날씨 정보를 가져오지 못했습니다."
+    try:
+        sb = _get_supabase_client()
+        wres = (
+            sb.table("v_weather_hybrid")
+            .select("weather_date,temp_avg,temp_min,temp_max,rain")
+            .eq("weather_date", today.isoformat())
+            .limit(1).execute()
+        )
+        wrow = (wres.data or [None])[0]
+        if wrow:
+            t_avg = wrow.get("temp_avg")
+            t_min = wrow.get("temp_min")
+            t_max = wrow.get("temp_max")
+            rain = wrow.get("rain") or 0
+            parts = [f"오늘 {today.month}월 {today.day}일 날씨입니다."]
+            if t_avg is not None:
+                parts.append(f"평균 기온 섭씨 {float(t_avg):.1f}도,")
+            if t_min is not None and t_max is not None:
+                parts.append(f"최저 {float(t_min):.1f}도에서 최고 {float(t_max):.1f}도,")
+            if float(rain) > 0:
+                parts.append(f"예상 강수량 {float(rain):.0f}밀리미터입니다.")
+            else:
+                parts.append("강수 예보는 없습니다.")
+            weather_line = " ".join(parts)
+    except Exception:
+        pass
+
+    # ── 인사이트 ──
+    ctx = None
+    try:
+        sb2 = _get_supabase_client()
+        ctx = build_insight_context_from_supabase(sb2)
+    except Exception:
+        ctx = None
+    if ctx is None:
+        ctx = build_insight_context_from_local(
+            forecast_csv=str(PROCESSED_DIR / "forecast_round4.csv"),
+            model_b_csv=str(PROCESSED_DIR / "model_b_category_forecast.csv"),
+            weather_cache=str(PROCESSED_DIR / "asos_weather_cache.csv"),
+            bi_box_dir=str(PROJECT_ROOT / "data" / "raw" / "coupang" / "bi_box"),
+        )
+    insight = generate_forecast_insight(ctx)
+
+    # TTS 낭독용: 계산식 전체 대신 "권장:"으로 시작하는 결론 한 줄만 추출
+    summary = _extract_recommendation_line(insight)
+    text = f"{weather_line} {summary}" if summary else f"{weather_line} 오늘 발주 권장 데이터를 생성하지 못했습니다."
+    return BriefingTextResponse(text=text, date=today.isoformat())
+
+
+def _extract_recommendation_line(insight: str) -> str:
+    """
+    인사이트 본문에서 TTS 낭독용 결론 문장을 뽑는다.
+    우선순위: "권장:"으로 시작하는 줄 → 마지막 비어있지 않은 줄.
+    마크다운 기호(**, *, _, #)를 제거해 TTS가 "별표"로 읽지 않도록 한다.
+    """
+    import re
+
+    if not insight:
+        return ""
+    lines = [ln.strip() for ln in insight.splitlines() if ln.strip()]
+    target = ""
+    for ln in lines:
+        stripped = re.sub(r"[*_#`]+", "", ln).strip()
+        if stripped.startswith("권장") or "권장:" in stripped:
+            target = stripped
+            break
+    if not target and lines:
+        target = re.sub(r"[*_#`]+", "", lines[-1]).strip()
+    # "..." 같은 생략 기호를 음성용으로 순화
+    target = target.replace("...", " 등").replace("…", " 등")
+    return target
+
+
+@router.post("/tts")
+def synthesize_tts(req: TTSRequest):
+    """
+    OpenAI TTS 음성 합성. mp3 스트림 반환.
+
+    - model: tts-1-hd 기본 (고품질, 100만자당 $30)
+    - voice: nova 기본 (한국어 자연스러움)
+    - 입력 길이 제한: 3000자 (OpenAI 한도 4096, 안전마진)
+    """
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY 환경변수가 설정되지 않았습니다.")
+
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text 가 비어 있습니다.")
+
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"openai 패키지 미설치: {exc}") from exc
+
+    try:
+        client = OpenAI(api_key=api_key)
+        kwargs: dict[str, Any] = {
+            "model": req.model,
+            "voice": req.voice,
+            "input": text,
+            "response_format": "mp3",
+        }
+        # gpt-4o-mini-tts 만 instructions 지원
+        if req.instructions and req.model.startswith("gpt-4o"):
+            kwargs["instructions"] = req.instructions
+        response = client.audio.speech.create(**kwargs)
+        audio_bytes = response.content
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"OpenAI TTS 호출 실패: {exc}") from exc
+
+    return StreamingResponse(
+        iter([audio_bytes]),
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.get("/order-simulation", response_model=list[OrderSimulationItem])
 def get_order_simulation() -> list[OrderSimulationItem]:
     """
@@ -342,7 +515,8 @@ def get_order_simulation() -> list[OrderSimulationItem]:
                 df["sku_ratio"] = (df["distributed_qty"] / total_by_week).round(4)
                 for _, r in df.iterrows():
                     qty = int(round(r["distributed_qty"]))
-                    if qty <= 0:
+                    # 발주 대상 아님(월 수요 미미) 구간 필터: ≤50개 제외
+                    if qty <= 50:
                         continue
                     sku = int(r["sku_id"])
                     rows.append(OrderSimulationItem(
@@ -370,7 +544,8 @@ def get_order_simulation() -> list[OrderSimulationItem]:
     rows = []
     for _, r in df.sort_values(["week_start", "predicted_order_qty"], ascending=[True, False]).iterrows():
         sku = int(r["sku"])
-        if r["predicted_order_qty"] <= 0:
+        # 발주 대상 아님(월 수요 미미) 구간 필터: ≤50개 제외
+        if r["predicted_order_qty"] <= 50:
             continue
         rows.append(OrderSimulationItem(
             week_start=r["week_start"].strftime("%Y-%m-%d"),
@@ -381,6 +556,189 @@ def get_order_simulation() -> list[OrderSimulationItem]:
         ))
 
     return rows[:50]
+
+
+@router.get("/order-weekly", response_model=list[OrderWeeklyItem])
+def get_order_weekly(qty_threshold: int = Query(default=50, ge=0, le=10000)) -> list[OrderWeeklyItem]:
+    """
+    주차별 발주 권장 (이번 주 / 다음 주 / 다다음 주) + 계산 근거.
+
+    근거 체인:
+      Model A 예측(판매) × 비율(직전 4주 납품/판매) = 카테고리 총량(Model B)
+      카테고리 총량 × SKU 비중(직전 2주 점유율) = SKU별 권장 발주량
+      qty_threshold 이하 SKU 제외 (기본 50).
+    """
+    import pandas as pd
+    from datetime import date, timedelta
+
+    try:
+        from data_pipeline.bi_box_loader import build_sku_name_map
+        from data_pipeline.weekly_feature_builder import WARMER_SKUS
+    except ImportError:
+        from services.api.data_pipeline.bi_box_loader import build_sku_name_map
+        from services.api.data_pipeline.weekly_feature_builder import WARMER_SKUS
+
+    sb = _get_supabase_client()
+    bi_box_dir = PROJECT_ROOT / "data" / "raw" / "coupang" / "bi_box"
+    try:
+        name_map = build_sku_name_map(directory=bi_box_dir, skus=WARMER_SKUS, client=sb)
+    except Exception:
+        name_map = {}
+
+    # 대상 주차: 이번 주 / 다음 주 / 다다음 주 (월요일 기준)
+    today = date.today()
+    this_week = today - timedelta(days=today.weekday())
+    targets = [(this_week + timedelta(weeks=i)).isoformat() for i in range(3)]
+    labels = ["이번 주", "다음 주", "다다음 주"]
+
+    # Model B 최신 model_version
+    latest_b = (
+        sb.table("forecast_model_b").select("model_version,generated_at")
+        .order("generated_at", desc=True).limit(1).execute()
+    )
+    if not latest_b.data:
+        return []
+    mv_b = latest_b.data[0]["model_version"]
+
+    # 카테고리 총량 조회
+    cat_res = (
+        sb.table("forecast_model_b")
+        .select("week_start,pred_ratio")
+        .eq("model_version", mv_b)
+        .is_("sku_id", "null")
+        .in_("week_start", targets)
+        .execute()
+    )
+    cat_map: dict[str, float] = {
+        r["week_start"][:10]: float(r["pred_ratio"] or 0) for r in (cat_res.data or [])
+    }
+
+    # SKU별 분배 조회
+    sku_res = (
+        sb.table("forecast_model_b")
+        .select("week_start,sku_id,distributed_qty")
+        .eq("model_version", mv_b)
+        .not_.is_("sku_id", "null")
+        .in_("week_start", targets)
+        .order("week_start").order("distributed_qty", desc=True)
+        .execute()
+    )
+
+    # Model A 주간 예측 총량 (최신 model_version)
+    latest_a = (
+        sb.table("forecast_model_a").select("model_version,generated_at")
+        .order("generated_at", desc=True).limit(1).execute()
+    )
+    model_a_totals: dict[str, float] = {}
+    if latest_a.data:
+        mv_a = latest_a.data[0]["model_version"]
+        a_res = (
+            sb.table("forecast_model_a")
+            .select("week_start,weekly_sales_qty_forecast")
+            .eq("model_version", mv_a)
+            .in_("week_start", targets)
+            .execute()
+        )
+        for r in a_res.data or []:
+            w = r["week_start"][:10]
+            model_a_totals[w] = model_a_totals.get(w, 0) + float(r["weekly_sales_qty_forecast"] or 0)
+
+    # Model A 판매 예측 참고 MAE (발주 권장 신뢰구간이 아님)
+    reference_mae: dict = {
+        "overall_sku_week": None,          # SKU×주 단위 평균 MAE
+        "winter_sku_week": None,           # 겨울(11~1월) SKU×주 단위 MAE
+        "category_weekly_overall": None,   # 카테고리 합산 주간 MAE
+        "unit_note": "Model A 판매 예측 MAE이며 발주 권장 오차와 별개",
+    }
+    notable_cases: list[str] = []
+    try:
+        latest_run = (
+            sb.table("winter_validation").select("run_id,overall_mae,winter_mae")
+            .eq("grain", "summary").order("generated_at", desc=True).limit(1).execute()
+        )
+        if latest_run.data:
+            row = latest_run.data[0]
+            if row.get("overall_mae") is not None:
+                reference_mae["overall_sku_week"] = int(round(float(row["overall_mae"])))
+            if row.get("winter_mae") is not None:
+                reference_mae["winter_sku_week"] = int(round(float(row["winter_mae"])))
+
+            # weekly grain의 abs_error 평균 (카테고리 합산 주간 MAE)
+            wv_weekly = (
+                sb.table("winter_validation").select("week_start,actual,predicted,abs_error,error_pct")
+                .eq("grain", "weekly").eq("run_id", row["run_id"])
+                .execute()
+            )
+            ws = wv_weekly.data or []
+            if ws:
+                abs_errs = [float(r["abs_error"]) for r in ws if r.get("abs_error") is not None]
+                if abs_errs:
+                    reference_mae["category_weekly_overall"] = int(round(sum(abs_errs) / len(abs_errs)))
+
+                # 편차 큰 주차 상위 3개 (±)
+                top = sorted(
+                    [r for r in ws if r.get("error_pct") is not None],
+                    key=lambda r: abs(float(r["error_pct"])),
+                    reverse=True,
+                )[:3]
+                for r in top:
+                    actual = int(round(float(r["actual"] or 0)))
+                    predicted = int(round(float(r["predicted"] or 0)))
+                    pct = float(r["error_pct"])
+                    notable_cases.append(
+                        f"{r['week_start'][:10]}: 실측 {actual:,} vs 예측 {predicted:,} ({pct:+.0f}%)"
+                    )
+    except Exception:
+        pass
+
+    # 주차별 묶음 구성
+    items_by_week: dict[str, list[dict]] = {w: [] for w in targets}
+    qty_by_week: dict[str, list[float]] = {w: [] for w in targets}
+    for r in sku_res.data or []:
+        w = r["week_start"][:10]
+        if w not in items_by_week:
+            continue
+        qty_by_week[w].append(float(r["distributed_qty"] or 0))
+
+    # sku_ratio 재계산(주 내 합 대비)
+    result: list[OrderWeeklyItem] = []
+    for idx, w in enumerate(targets):
+        total_of_week = sum(qty_by_week[w]) or 1
+        rows = []
+        for r in sku_res.data or []:
+            if r["week_start"][:10] != w:
+                continue
+            qty = int(round(float(r["distributed_qty"] or 0)))
+            if qty <= qty_threshold:
+                continue
+            sku = int(r["sku_id"])
+            rows.append({
+                "sku": sku,
+                "name": name_map.get(sku, f"SKU {sku}"),
+                "predicted_order_qty": qty,
+                "sku_ratio": round(float(r["distributed_qty"]) / total_of_week, 4),
+            })
+        # 내림차순 정렬
+        rows.sort(key=lambda x: -x["predicted_order_qty"])
+
+        category_total = int(round(cat_map.get(w, 0)))
+        model_a_total = int(round(model_a_totals.get(w, 0)))
+        ratio_applied = (
+            round(category_total / model_a_total, 4) if model_a_total > 0 else 0.0
+        )
+
+        result.append(OrderWeeklyItem(
+            week_start=w,
+            label=labels[idx],
+            category_total=category_total,
+            model_a_pred_total=model_a_total,
+            ratio_applied=ratio_applied,
+            reference_mae=reference_mae,
+            notable_cases=notable_cases,
+            items=rows,
+        ))
+
+    return result
 
 
 @router.get("/weekly-prediction", response_model=list[WeeklyPredictionItem])
