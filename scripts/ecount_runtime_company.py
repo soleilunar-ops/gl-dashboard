@@ -217,14 +217,30 @@ def resolve_menu_navigation(menu_enum: EcountMenu, credentials: dict[str, object
 
 
 def cookie_path_for_company(company_code: str | EcountCompanyCode | None) -> str:
-    """기업별 세션 파일 - 계정이 다르므로 쿠키를 분리 저장."""
+    """기업별 세션 파일 - 계정이 다르므로 쿠키를 분리 저장.
+
+    배포 환경(Railway 등)에서는 ECOUNT_COOKIE_{CODE}_JSON 환경변수에 세션 JSON이
+    있으면 컨테이너 파일시스템에 덤프한 뒤 기존 파일 기반 로직을 그대로 재사용.
+    로컬 개발 환경에서는 파일이 이미 있으면 env 무시 → 수동 로그인한 쿠키 유지.
+    """
     normalized = normalize_company_code(company_code)
     cookie_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "storage",
         "cookies",
     )
-    return os.path.join(cookie_dir, f"ecount_session_{normalized}.json")
+    cookie_path = os.path.join(cookie_dir, f"ecount_session_{normalized}.json")
+
+    # Env fallback (배포 환경 전용) — 파일이 없을 때만 env에서 생성
+    if not os.path.exists(cookie_path):
+        env_key = f"ECOUNT_COOKIE_{normalized.upper()}_JSON"
+        env_json = os.environ.get(env_key)
+        if env_json:
+            os.makedirs(cookie_dir, exist_ok=True)
+            with open(cookie_path, "w", encoding="utf-8") as f:
+                f.write(env_json)
+
+    return cookie_path
 
 
 def remove_cookie_file(cookie_path: str) -> None:

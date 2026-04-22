@@ -121,7 +121,8 @@ export function useStockMovements(
         .lte("movement_date", to)
         .order("movement_date", { ascending: true })
         .order("id", { ascending: true });
-      movementRows = movementFallbackQuery.data;
+      movementRows =
+        movementFallbackQuery.data?.map((r) => ({ ...r, real_quantity: null })) ?? null;
       movementError = movementFallbackQuery.error;
     }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { resolveErpCodeByItem } from "@/lib/logistics/resolveErpCode";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -63,20 +64,13 @@ export function useInventory() {
 
     const itemIds = stocks.map((r) => r.item_id).filter((id): id is number => id !== null);
 
-    // 2. ERP 매핑 (gl 우선, 없으면 gl_pharm/hnb)
+    // 2. ERP 매핑 (gl 우선, 없으면 glpharm/hnb)
     const { data: erpMappings } = await supabase
       .from("item_erp_mapping")
       .select("item_id, erp_system, erp_code")
       .in("item_id", itemIds);
 
-    const erpCodeByItem = new Map<number, string>();
-    for (const m of erpMappings ?? []) {
-      if (!m.erp_code) continue;
-      const existing = erpCodeByItem.get(m.item_id);
-      if (!existing || m.erp_system === "gl") {
-        erpCodeByItem.set(m.item_id, m.erp_code);
-      }
-    }
+    const erpCodeByItem = resolveErpCodeByItem(erpMappings ?? []);
 
     // 3. 쿠팡 매핑 (첫 번째 SKU만, 다중 매핑은 _data가 처리)
     const { data: coupangMappings } = await supabase

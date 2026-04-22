@@ -84,12 +84,20 @@ export function CoupangSkuAnalysisDialog({
         .eq("sku_id", row.sku_id)
         .maybeSingle();
 
-      const [{ data: invData, error: invErr }, glRes, skuRes] = await Promise.all([
+      // allSettled로 전환 — gl/sku 보조 쿼리 실패가 주 쿼리(inv)까지 중단시키지 않도록
+      const [invSettled, glSettled, skuSettled] = await Promise.allSettled([
         invQuery,
         glPromise,
         skuPromise,
       ]);
 
+      if (invSettled.status === "rejected") {
+        setLoadError(
+          invSettled.reason instanceof Error ? invSettled.reason.message : String(invSettled.reason)
+        );
+        return;
+      }
+      const { data: invData, error: invErr } = invSettled.value;
       if (invErr) {
         setLoadError(invErr.message);
         return;
@@ -105,17 +113,19 @@ export function CoupangSkuAnalysisDialog({
 
       setSeries(list);
 
-      if (glRes.error) {
-        setLoadError(glRes.error.message);
-        return;
-      }
-      if (glRes.data) {
-        setGlStock(glRes.data.current_stock ?? null);
-        setGlBaseCost(glRes.data.base_cost ?? null);
+      // gl 재고는 보조 정보 — 실패해도 모달은 열리고 시계열은 표시
+      if (glSettled.status === "fulfilled" && !glSettled.value.error && glSettled.value.data) {
+        setGlStock(glSettled.value.data.current_stock ?? null);
+        setGlBaseCost(glSettled.value.data.base_cost ?? null);
       }
 
-      if (!skuRes.error && skuRes.data?.barcode) {
-        setBarcode(skuRes.data.barcode);
+      // sku 바코드도 보조 정보 — 실패해도 무시
+      if (
+        skuSettled.status === "fulfilled" &&
+        !skuSettled.value.error &&
+        skuSettled.value.data?.barcode
+      ) {
+        setBarcode(skuSettled.value.data.barcode);
       }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "조회 실패");
