@@ -1,6 +1,7 @@
 "use client";
 
 import { HaruruCharacter } from "./HaruruCharacter";
+import { TimeGreeting } from "./TimeGreeting";
 import { ThermometerSearchBar } from "./ThermometerSearchBar";
 import { FavoriteShortcuts } from "./FavoriteShortcuts";
 
@@ -11,11 +12,12 @@ export function HomeHero() {
       {/* 살짝 깔리는 배경 글로우 */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-1/4 mx-auto h-72 w-[42rem] max-w-full rounded-full bg-gradient-to-b from-orange-100/60 via-orange-50/40 to-transparent blur-3xl"
+        className="pointer-events-none absolute inset-x-0 top-1/4 mx-auto h-72 w-[42rem] max-w-full rounded-full bg-gradient-to-b from-[#FAE8B8]/50 via-[#FDF3D0]/40 to-transparent blur-3xl"
       />
 
       <div className="relative flex w-full max-w-2xl flex-col items-center gap-7">
         <HaruruCharacter />
+        <TimeGreeting />
         <ThermometerSearchBar />
         <div className="mt-6">
           <FavoriteShortcuts />

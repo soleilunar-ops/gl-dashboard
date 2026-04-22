@@ -64,18 +64,18 @@ export function FavoriteShortcuts() {
 
   return (
     <>
-      <div className="flex items-start justify-center gap-8">
+      <div className="flex items-start justify-center gap-14 sm:gap-16">
         {slots.map((nav, idx) =>
           nav ? (
             <div key={nav.path} className="group/fav relative flex flex-col items-center">
               <Link
                 href={nav.path}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-50 text-orange-500 ring-1 ring-orange-100/80 transition-all hover:-translate-y-0.5 hover:bg-orange-100 hover:shadow-md"
+                className="flex h-20 w-20 items-center justify-center rounded-full bg-[#FDF3D0] text-[#C78D26] ring-1 ring-[#F9DB94]/60 transition-all hover:-translate-y-0.5 hover:bg-[#FAE8B8] hover:shadow-md"
                 aria-label={`${nav.label}로 이동`}
               >
-                <NavIcon name={nav.icon} className="h-6 w-6" />
+                <NavIcon name={nav.icon} className="h-9 w-9" />
               </Link>
-              <span className="mt-2 max-w-[90px] truncate text-center text-xs text-gray-600">
+              <span className="mt-3 max-w-[120px] truncate text-center text-sm font-medium text-gray-600">
                 {nav.label}
               </span>
               <button
@@ -85,9 +85,9 @@ export function FavoriteShortcuts() {
                   removeFavorite(nav.path);
                 }}
                 aria-label="즐겨찾기 제거"
-                className="absolute -top-1 -right-1 hidden h-5 w-5 items-center justify-center rounded-full bg-white text-gray-400 shadow-sm ring-1 ring-gray-200 transition-colors group-hover/fav:flex hover:text-red-500"
+                className="absolute -top-1 -right-1 hidden h-6 w-6 items-center justify-center rounded-full bg-white text-gray-400 shadow-sm ring-1 ring-gray-200 transition-colors group-hover/fav:flex hover:text-red-500"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ) : (
@@ -98,10 +98,10 @@ export function FavoriteShortcuts() {
               className="group/add flex flex-col items-center"
               aria-label="즐겨찾기 추가"
             >
-              <span className="flex h-14 w-14 items-center justify-center rounded-full border border-dashed border-orange-200 bg-white text-orange-300 transition-colors group-hover/add:border-orange-400 group-hover/add:text-orange-500">
-                <Plus className="h-5 w-5" />
+              <span className="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-[#F9DB94] bg-white text-[#F2BE5C] transition-colors group-hover/add:border-[#E3A83E] group-hover/add:text-[#C78D26]">
+                <Plus className="h-7 w-7" />
               </span>
-              <span className="mt-2 text-xs text-gray-400 group-hover/add:text-orange-500">
+              <span className="mt-3 text-sm font-medium text-gray-400 group-hover/add:text-[#C78D26]">
                 바로가기 추가
               </span>
             </button>
@@ -131,8 +131,8 @@ export function FavoriteShortcuts() {
                   className={cn(
                     "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors",
                     active
-                      ? "border-orange-300 bg-orange-50 text-orange-700"
-                      : "border-transparent hover:border-orange-200 hover:bg-orange-50/70",
+                      ? "border-[#F2BE5C] bg-[#FDF3D0] text-[#8A6A1F]"
+                      : "border-transparent hover:border-[#F9DB94] hover:bg-[#FDF3D0]/70",
                     disabled &&
                       "cursor-not-allowed opacity-50 hover:border-transparent hover:bg-transparent"
                   )}
@@ -140,7 +140,7 @@ export function FavoriteShortcuts() {
                   <NavIcon name={item.icon} className="h-4 w-4 shrink-0" />
                   <span className="flex-1">{item.label}</span>
                   <span className="text-muted-foreground truncate text-xs">{item.path}</span>
-                  {active && <Check className="h-4 w-4 shrink-0 text-orange-500" />}
+                  {active && <Check className="h-4 w-4 shrink-0 text-[#C78D26]" />}
                 </button>
               );
             })}
