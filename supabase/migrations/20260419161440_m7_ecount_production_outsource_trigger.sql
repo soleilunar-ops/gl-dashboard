@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419161440)
--- Original migration name: m7_ecount_production_outsource_trigger
-
 
 CREATE OR REPLACE FUNCTION public.trg_ecount_production_outsource_to_orders()
 RETURNS TRIGGER
@@ -74,3 +71,4 @@ CREATE TRIGGER trg_ecount_production_outsource_ai
 AFTER INSERT OR UPDATE ON public.ecount_production_outsource
 FOR EACH ROW
 EXECUTE FUNCTION public.trg_ecount_production_outsource_to_orders();
+;

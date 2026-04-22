@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419160244)
--- Original migration name: m2_add_source_columns_to_orders
-
 
 -- 1. source_table, source_id 컬럼 추가
 ALTER TABLE public.orders 
@@ -38,3 +35,4 @@ ALTER TABLE public.orders
 -- 6. 조회 인덱스
 CREATE INDEX IF NOT EXISTS idx_orders_source 
   ON public.orders(source_table, source_id);
+;

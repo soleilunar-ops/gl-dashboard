@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260418075446)
--- Original migration name: create_forecast_model_a
-
 CREATE TABLE forecast_model_a (
   sku_id text NOT NULL,
   week_start date NOT NULL,
@@ -27,4 +24,4 @@ COMMENT ON COLUMN forecast_model_a.features_used IS '사용된 피처 리스트 
 ALTER TABLE forecast_model_a ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "authenticated_all_forecast_model_a" ON forecast_model_a
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);;

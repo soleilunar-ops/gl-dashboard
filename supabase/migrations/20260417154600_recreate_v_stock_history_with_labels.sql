@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417154600)
--- Original migration name: recreate_v_stock_history_with_labels
-
 DROP VIEW IF EXISTS v_stock_history;
 
 CREATE VIEW v_stock_history AS
@@ -40,4 +37,4 @@ JOIN item_master im ON sm.item_id = im.item_id
 ORDER BY sm.item_id, sm.movement_date, sm.id;
 
 COMMENT ON VIEW v_stock_history IS 
-  '재고흐름표. movement_type(영문 원본) + movement_type_label(한국어 상세) + stock_direction(입고/출고) 제공.';
+  '재고흐름표. movement_type(영문 원본) + movement_type_label(한국어 상세) + stock_direction(입고/출고) 제공.';;

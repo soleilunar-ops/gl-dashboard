@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260418075529)
--- Original migration name: create_v_weather_hybrid
-
 CREATE OR REPLACE VIEW v_weather_hybrid AS
 SELECT 
   a.weather_date,
@@ -26,4 +23,4 @@ JOIN weather_unified e
 WHERE a.source = 'asos' 
   AND e.source = 'era5';
 
-COMMENT ON VIEW v_weather_hybrid IS 'ASOS(temp, wind) + ERA5(rain, snowfall, precipitation) 하이브리드 뷰. Model A/B 학습 입력용. 5개 관측소 × 2021-04 ~ 2026-04 커버.';
+COMMENT ON VIEW v_weather_hybrid IS 'ASOS(temp, wind) + ERA5(rain, snowfall, precipitation) 하이브리드 뷰. Model A/B 학습 입력용. 5개 관측소 × 2021-04 ~ 2026-04 커버.';;

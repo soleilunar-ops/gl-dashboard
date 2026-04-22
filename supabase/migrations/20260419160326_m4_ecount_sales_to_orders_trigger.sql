@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419160326)
--- Original migration name: m4_ecount_sales_to_orders_trigger
-
 
 CREATE OR REPLACE FUNCTION public.trg_ecount_sales_to_orders()
 RETURNS TRIGGER
@@ -98,3 +95,4 @@ CREATE TRIGGER trg_ecount_sales_ai
 AFTER INSERT OR UPDATE ON public.ecount_sales
 FOR EACH ROW
 EXECUTE FUNCTION public.trg_ecount_sales_to_orders();
+;

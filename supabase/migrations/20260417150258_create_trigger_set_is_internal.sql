@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417150258)
--- Original migration name: create_trigger_set_is_internal
-
 
 -- counterparty를 internal_entities와 대조해서 is_internal 자동 세팅하는 함수
 CREATE OR REPLACE FUNCTION trg_orders_set_is_internal()
@@ -68,3 +65,4 @@ CREATE TRIGGER before_orders_insert_set_is_internal
 
 COMMENT ON FUNCTION trg_orders_set_is_internal() IS 
   'orders INSERT 시 counterparty를 internal_entities와 대조해 is_internal 자동 세팅. exact → contains → regex 순서로 매칭';
+;

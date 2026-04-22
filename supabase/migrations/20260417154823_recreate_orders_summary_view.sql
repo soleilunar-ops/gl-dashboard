@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417154823)
--- Original migration name: recreate_orders_summary_view
-
 DROP VIEW IF EXISTS v_orders_summary;
 
 CREATE VIEW v_orders_summary AS
@@ -36,4 +33,4 @@ SELECT
   
 FROM orders;
 
-COMMENT ON VIEW v_orders_summary IS '대시보드 상단 KPI 카드용 요약 통계. 단일 행 반환.';
+COMMENT ON VIEW v_orders_summary IS '대시보드 상단 KPI 카드용 요약 통계. 단일 행 반환.';;

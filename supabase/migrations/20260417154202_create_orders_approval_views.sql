@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417154202)
--- Original migration name: create_orders_approval_views
-
 -- 승인 대기 목록
 CREATE OR REPLACE VIEW v_orders_pending AS
 SELECT
@@ -71,4 +68,4 @@ LEFT JOIN stock_movement sm ON sm.source_table = 'orders' AND sm.source_id = o.i
 WHERE o.status = 'approved'
 ORDER BY o.approved_at DESC;
 
-COMMENT ON VIEW v_orders_approved IS '승인 완료 orders 목록 (stock_movement 연결 정보 포함).';
+COMMENT ON VIEW v_orders_approved IS '승인 완료 orders 목록 (stock_movement 연결 정보 포함).';;

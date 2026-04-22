@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419160225)
--- Original migration name: m1_drop_confidence_columns_and_rebuild_view
-
 
 -- 1. v_item_full 뷰 삭제 (confidence 참조 중)
 DROP VIEW IF EXISTS public.v_item_full;
@@ -50,3 +47,4 @@ FROM item_master im
     LIMIT 1
   ) sm ON true
 ORDER BY im.seq_no;
+;

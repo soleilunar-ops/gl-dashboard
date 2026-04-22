@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419054229)
--- Original migration name: gl_warehouse_daily_series_rpc
-
 
 CREATE OR REPLACE FUNCTION public.gl_warehouse_daily_series(p_from date, p_to date)
 RETURNS TABLE (
@@ -28,3 +25,4 @@ COMMENT ON FUNCTION public.gl_warehouse_daily_series(date, date) IS
 
 GRANT EXECUTE ON FUNCTION public.gl_warehouse_daily_series(date, date) TO service_role;
 GRANT EXECUTE ON FUNCTION public.gl_warehouse_daily_series(date, date) TO authenticated;
+;

@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419175925)
--- Original migration name: m12_add_upload_id_to_data_tables
-
 
 -- 이카운트 5개 테이블
 ALTER TABLE public.ecount_sales 
@@ -46,3 +43,4 @@ CREATE INDEX IF NOT EXISTS idx_ecount_production_outsource_upload_id ON public.e
 CREATE INDEX IF NOT EXISTS idx_ecount_stock_ledger_upload_id ON public.ecount_stock_ledger(upload_id) WHERE upload_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_daily_performance_upload_id ON public.daily_performance(upload_id) WHERE upload_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_inventory_operation_upload_id ON public.inventory_operation(upload_id) WHERE upload_id IS NOT NULL;
+;

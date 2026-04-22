@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417154101)
--- Original migration name: replace_stock_movement_trigger_with_approval_based
-
 -- 1) 기존 AFTER INSERT 트리거 제거 (자동 stock_movement 생성 중단)
 DROP TRIGGER IF EXISTS after_orders_insert ON orders;
 
@@ -108,4 +105,4 @@ CREATE TRIGGER after_orders_status_change
   EXECUTE FUNCTION trg_orders_approval_to_stock_movement();
 
 COMMENT ON FUNCTION trg_orders_approval_to_stock_movement() IS
-  '실무자가 orders.status를 변경할 때 stock_movement를 자동 생성/삭제. approved→pending/rejected 시 삭제, pending/rejected→approved 시 생성.';
+  '실무자가 orders.status를 변경할 때 stock_movement를 자동 생성/삭제. approved→pending/rejected 시 삭제, pending/rejected→approved 시 생성.';;

@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260418075516)
--- Original migration name: create_winter_validation
-
 CREATE TABLE winter_validation (
   id bigserial PRIMARY KEY,
   run_id text NOT NULL,
@@ -34,4 +31,4 @@ COMMENT ON COLUMN winter_validation.val_mae_no_synthetic IS 'Summary grain에서
 ALTER TABLE winter_validation ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "authenticated_all_winter_validation" ON winter_validation
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);;

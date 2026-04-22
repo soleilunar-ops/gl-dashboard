@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419175858)
--- Original migration name: m10_create_excel_uploads_table
-
 
 CREATE TABLE public.excel_uploads (
   id BIGSERIAL PRIMARY KEY,
@@ -65,3 +62,4 @@ CREATE INDEX idx_excel_uploads_company
 -- 코멘트
 COMMENT ON TABLE excel_uploads IS 
   '대시보드/크롤러에서 업로드된 엑셀 파일의 메타 이력. 원본은 Storage(excel-uploads 버킷)에 보관.';
+;

@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260418082131)
--- Original migration name: create_bi_box_daily_v2
-
 CREATE TABLE bi_box_daily (
   date date NOT NULL,
   sku_id text NOT NULL,
@@ -35,4 +32,4 @@ COMMENT ON COLUMN bi_box_daily.attribute_error IS '원본 "상품속성 오류" 
 ALTER TABLE bi_box_daily ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "authenticated_all_bi_box_daily" ON bi_box_daily
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);;

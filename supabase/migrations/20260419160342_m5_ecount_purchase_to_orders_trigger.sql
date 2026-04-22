@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419160342)
--- Original migration name: m5_ecount_purchase_to_orders_trigger
-
 
 CREATE OR REPLACE FUNCTION public.trg_ecount_purchase_to_orders()
 RETURNS TRIGGER
@@ -93,3 +90,4 @@ CREATE TRIGGER trg_ecount_purchase_ai
 AFTER INSERT OR UPDATE ON public.ecount_purchase
 FOR EACH ROW
 EXECUTE FUNCTION public.trg_ecount_purchase_to_orders();
+;

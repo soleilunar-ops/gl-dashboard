@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417151433)
--- Original migration name: update_orders_unique_add_tx_type
-
 
 -- UNIQUE 제약을 (erp_system, tx_type, erp_tx_no, erp_tx_line_no)로 확장
 -- 이유: ERP에서 판매/구매가 같은 전표번호를 공유하는 구조 (예: '2024/03/13 -1'이 
@@ -22,3 +19,4 @@ CREATE UNIQUE INDEX orders_erp_tx_nolineno_v2_idx
 
 COMMENT ON INDEX orders_erp_tx_unique_v2_idx IS 
   'tx_type 추가: 판매/구매가 같은 erp_tx_no를 공유할 수 있어서 구분 필요';
+;

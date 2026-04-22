@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417154230)
--- Original migration name: fix_stock_movement_type_to_korean
-
 -- 기존 영문 CHECK 제약 제거
 ALTER TABLE stock_movement 
   DROP CONSTRAINT IF EXISTS stock_movement_movement_type_check;
@@ -19,4 +16,4 @@ UPDATE stock_movement SET movement_type = '출고'     WHERE movement_type = 're
 UPDATE stock_movement SET movement_type = '기준조정' WHERE movement_type = 'base_set';
 UPDATE stock_movement SET movement_type = '수동조정' WHERE movement_type = 'manual_adjust';
 
-COMMENT ON COLUMN stock_movement.movement_type IS '재고 이동 유형(한국어): 입고/출고/기준조정/수동조정';
+COMMENT ON COLUMN stock_movement.movement_type IS '재고 이동 유형(한국어): 입고/출고/기준조정/수동조정';;

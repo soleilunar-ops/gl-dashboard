@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419161420)
--- Original migration name: m6_add_production_in_tx_type
-
 
 -- 1. orders.tx_type CHECK 제약 재생성 (production_in 추가)
 ALTER TABLE public.orders 
@@ -130,3 +127,4 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+;

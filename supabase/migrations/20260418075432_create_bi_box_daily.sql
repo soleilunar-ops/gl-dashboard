@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260418075432)
--- Original migration name: create_bi_box_daily
-
 CREATE TABLE bi_box_daily (
   date date NOT NULL,
   sku_id text NOT NULL,
@@ -24,4 +21,4 @@ COMMENT ON COLUMN bi_box_daily.bi_box_share IS '바이박스(아이템위너) �
 ALTER TABLE bi_box_daily ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "authenticated_all_bi_box_daily" ON bi_box_daily
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);;

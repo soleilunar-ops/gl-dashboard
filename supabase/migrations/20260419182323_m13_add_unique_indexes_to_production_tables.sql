@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419182323)
--- Original migration name: m13_add_unique_indexes_to_production_tables
-
 
 -- ecount_production_outsource UNIQUE 인덱스
 -- (sales/purchase와 동일한 키 구조)
@@ -21,3 +18,4 @@ USING btree (
   COALESCE(work_order, ''),
   date_from
 );
+;

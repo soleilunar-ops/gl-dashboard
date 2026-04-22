@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417154715)
--- Original migration name: create_unified_orders_dashboard_view
-
 -- 구매/판매현황 대시보드용 통합 뷰
 -- 프론트엔드에서 필터/토글로 전환해서 사용
 CREATE OR REPLACE VIEW v_orders_dashboard AS
@@ -89,4 +86,4 @@ LEFT JOIN stock_movement sm
   ON sm.source_table = 'orders' AND sm.source_id = o.id;
 
 COMMENT ON VIEW v_orders_dashboard IS 
-  '구매/판매현황 대시보드 통합 뷰. 프론트엔드에서 tx_category(구매/판매), status(대기/완료), is_return(반품) 등으로 필터링.';
+  '구매/판매현황 대시보드 통합 뷰. 프론트엔드에서 tx_category(구매/판매), status(대기/완료), is_return(반품) 등으로 필터링.';;

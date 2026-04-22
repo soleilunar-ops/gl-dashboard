@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417150232)
--- Original migration name: create_internal_entities_table
-
 
 -- 자사 법인 alias 마스터 테이블
 -- orders INSERT 시 counterparty를 이 테이블과 대조해서 is_internal 자동 세팅
@@ -26,3 +23,4 @@ COMMENT ON COLUMN internal_entities.match_type IS
   'exact(정확일치) / contains(부분일치) / regex(정규식)';
 COMMENT ON COLUMN internal_entities.pattern IS 
   '매칭할 문자열 패턴. match_type에 따라 해석 방식 다름';
+;

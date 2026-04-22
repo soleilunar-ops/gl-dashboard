@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419161509)
--- Original migration name: m8_ecount_production_receipt_trigger
-
 
 CREATE OR REPLACE FUNCTION public.trg_ecount_production_receipt_to_orders()
 RETURNS TRIGGER
@@ -97,3 +94,4 @@ CREATE TRIGGER trg_ecount_production_receipt_ai
 AFTER INSERT OR UPDATE ON public.ecount_production_receipt
 FOR EACH ROW
 EXECUTE FUNCTION public.trg_ecount_production_receipt_to_orders();
+;

@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260418075501)
--- Original migration name: create_forecast_model_b
-
 CREATE TABLE forecast_model_b (
   id bigserial PRIMARY KEY,
   week_start date NOT NULL,
@@ -32,4 +29,4 @@ COMMENT ON COLUMN forecast_model_b.distribute_weeks IS 'SKU 분배 기준 주 �
 ALTER TABLE forecast_model_b ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "authenticated_all_forecast_model_b" ON forecast_model_b
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);;

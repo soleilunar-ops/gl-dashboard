@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417155525)
--- Original migration name: enable_rls_with_authenticated_policy_all_tables
-
 -- ========================================
 -- 1단계: RLS 비활성화된 7개 테이블에 RLS 활성화
 -- ========================================
@@ -62,4 +59,4 @@ CREATE POLICY "Allow all for authenticated users" ON sku_master
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow all for authenticated users" ON weather_unified
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);;

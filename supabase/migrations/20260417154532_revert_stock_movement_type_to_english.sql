@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260417154532)
--- Original migration name: revert_stock_movement_type_to_english
-
 -- 1) 기존 한국어 CHECK 제약 제거
 ALTER TABLE stock_movement 
   DROP CONSTRAINT IF EXISTS stock_movement_movement_type_check;
@@ -115,4 +112,4 @@ BEGIN
   -- 기타 전이 (재고 변동 없음)
   RETURN NEW;
 END;
-$$;
+$$;;

@@ -1,6 +1,3 @@
--- Restored from Supabase schema_migrations (version 20260419175841)
--- Original migration name: m9_create_excel_storage_bucket
-
 
 -- 1. excel-uploads 버킷 생성 (비공개, 50MB 제한, 엑셀/CSV만 허용)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -36,4 +33,5 @@ CREATE POLICY "excel_uploads_authenticated_delete"
 ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'excel-uploads');
 
--- 5. service_role은 자동으로 RLS 우회 (서버사이드 크롤러/스크립트용);
+-- 5. service_role은 자동으로 RLS 우회 (서버사이드 크롤러/스크립트용)
+;
