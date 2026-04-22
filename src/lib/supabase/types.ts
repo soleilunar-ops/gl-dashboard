@@ -8,6 +8,128 @@ export type Database = {
   };
   public: {
     Tables: {
+      agent_config: {
+        Row: {
+          description: string | null;
+          key: string;
+          updated_at: string;
+          updated_by: string | null;
+          value: string;
+        };
+        Insert: {
+          description?: string | null;
+          key: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          value: string;
+        };
+        Update: {
+          description?: string | null;
+          key?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          value?: string;
+        };
+        Relationships: [];
+      };
+      agent_sessions: {
+        Row: {
+          created_at: string;
+          last_active_at: string;
+          session_id: string;
+          title: string | null;
+          turn_count: number;
+          user_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          last_active_at?: string;
+          session_id?: string;
+          title?: string | null;
+          turn_count?: number;
+          user_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          last_active_at?: string;
+          session_id?: string;
+          title?: string | null;
+          turn_count?: number;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
+      agent_turns: {
+        Row: {
+          answer_type: string | null;
+          axis: string | null;
+          content: string | null;
+          created_at: string;
+          error: string | null;
+          feedback: string | null;
+          feedback_comment: string | null;
+          id: number;
+          intent: string | null;
+          latency_ms: number | null;
+          model: string | null;
+          rag_chunks: Json | null;
+          role: string;
+          session_id: string | null;
+          sql_result_rows: number | null;
+          sql_used: string | null;
+          tool_calls: Json | null;
+          turn_index: number;
+        };
+        Insert: {
+          answer_type?: string | null;
+          axis?: string | null;
+          content?: string | null;
+          created_at?: string;
+          error?: string | null;
+          feedback?: string | null;
+          feedback_comment?: string | null;
+          id?: number;
+          intent?: string | null;
+          latency_ms?: number | null;
+          model?: string | null;
+          rag_chunks?: Json | null;
+          role: string;
+          session_id?: string | null;
+          sql_result_rows?: number | null;
+          sql_used?: string | null;
+          tool_calls?: Json | null;
+          turn_index: number;
+        };
+        Update: {
+          answer_type?: string | null;
+          axis?: string | null;
+          content?: string | null;
+          created_at?: string;
+          error?: string | null;
+          feedback?: string | null;
+          feedback_comment?: string | null;
+          id?: number;
+          intent?: string | null;
+          latency_ms?: number | null;
+          model?: string | null;
+          rag_chunks?: Json | null;
+          role?: string;
+          session_id?: string | null;
+          sql_result_rows?: number | null;
+          sql_used?: string | null;
+          tool_calls?: Json | null;
+          turn_index?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "agent_turns_session_id_fkey";
+            columns: ["session_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_sessions";
+            referencedColumns: ["session_id"];
+          },
+        ];
+      };
       allocation_items: {
         Row: {
           allocation_id: number;
@@ -1270,6 +1392,162 @@ export type Database = {
           },
         ];
       };
+      eval_golden: {
+        Row: {
+          answer_type: string;
+          axis: string | null;
+          category: string;
+          created_at: string;
+          expected_answer: string | null;
+          expected_sql: string | null;
+          id: number;
+          notes: string | null;
+          question: string;
+          required_tables: string[] | null;
+        };
+        Insert: {
+          answer_type: string;
+          axis?: string | null;
+          category: string;
+          created_at?: string;
+          expected_answer?: string | null;
+          expected_sql?: string | null;
+          id?: number;
+          notes?: string | null;
+          question: string;
+          required_tables?: string[] | null;
+        };
+        Update: {
+          answer_type?: string;
+          axis?: string | null;
+          category?: string;
+          created_at?: string;
+          expected_answer?: string | null;
+          expected_sql?: string | null;
+          id?: number;
+          notes?: string | null;
+          question?: string;
+          required_tables?: string[] | null;
+        };
+        Relationships: [];
+      };
+      eval_run_details: {
+        Row: {
+          axis_ok: boolean | null;
+          axis_predicted: string | null;
+          draft_answer: string | null;
+          e2e_judge_score: number | null;
+          expected_answer: string | null;
+          golden_id: number | null;
+          id: number;
+          intent_ok: boolean | null;
+          intent_predicted: string | null;
+          notes: string | null;
+          rag_chunks_retrieved: number | null;
+          rag_hit_at_3: boolean | null;
+          run_id: number | null;
+          sql_error: string | null;
+          sql_executed: boolean | null;
+          verifier_passed: boolean | null;
+        };
+        Insert: {
+          axis_ok?: boolean | null;
+          axis_predicted?: string | null;
+          draft_answer?: string | null;
+          e2e_judge_score?: number | null;
+          expected_answer?: string | null;
+          golden_id?: number | null;
+          id?: number;
+          intent_ok?: boolean | null;
+          intent_predicted?: string | null;
+          notes?: string | null;
+          rag_chunks_retrieved?: number | null;
+          rag_hit_at_3?: boolean | null;
+          run_id?: number | null;
+          sql_error?: string | null;
+          sql_executed?: boolean | null;
+          verifier_passed?: boolean | null;
+        };
+        Update: {
+          axis_ok?: boolean | null;
+          axis_predicted?: string | null;
+          draft_answer?: string | null;
+          e2e_judge_score?: number | null;
+          expected_answer?: string | null;
+          golden_id?: number | null;
+          id?: number;
+          intent_ok?: boolean | null;
+          intent_predicted?: string | null;
+          notes?: string | null;
+          rag_chunks_retrieved?: number | null;
+          rag_hit_at_3?: boolean | null;
+          run_id?: number | null;
+          sql_error?: string | null;
+          sql_executed?: boolean | null;
+          verifier_passed?: boolean | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "eval_run_details_golden_id_fkey";
+            columns: ["golden_id"];
+            isOneToOne: false;
+            referencedRelation: "eval_golden";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "eval_run_details_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: false;
+            referencedRelation: "eval_runs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      eval_runs: {
+        Row: {
+          axis_acc: number | null;
+          config: Json | null;
+          e2e_correctness: number | null;
+          id: number;
+          intent_acc: number | null;
+          notes: string | null;
+          rag_hit_at_3: number | null;
+          ran_at: string;
+          refuse_precision: number | null;
+          run_name: string | null;
+          sql_exec_success: number | null;
+          verifier_pass: number | null;
+        };
+        Insert: {
+          axis_acc?: number | null;
+          config?: Json | null;
+          e2e_correctness?: number | null;
+          id?: number;
+          intent_acc?: number | null;
+          notes?: string | null;
+          rag_hit_at_3?: number | null;
+          ran_at?: string;
+          refuse_precision?: number | null;
+          run_name?: string | null;
+          sql_exec_success?: number | null;
+          verifier_pass?: number | null;
+        };
+        Update: {
+          axis_acc?: number | null;
+          config?: Json | null;
+          e2e_correctness?: number | null;
+          id?: number;
+          intent_acc?: number | null;
+          notes?: string | null;
+          rag_hit_at_3?: number | null;
+          ran_at?: string;
+          refuse_precision?: number | null;
+          run_name?: string | null;
+          sql_exec_success?: number | null;
+          verifier_pass?: number | null;
+        };
+        Relationships: [];
+      };
       excel_uploads: {
         Row: {
           category: string;
@@ -2502,6 +2780,144 @@ export type Database = {
           },
         ];
       };
+      rag_analysis: {
+        Row: {
+          chunk_index: number;
+          chunk_total: number;
+          content: string;
+          created_at: string;
+          embed_model: string | null;
+          embedding: string | null;
+          id: number;
+          scope: Json;
+          source_pk: Json;
+          source_table: string;
+          title: string | null;
+          token_count: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          chunk_index?: number;
+          chunk_total?: number;
+          content: string;
+          created_at?: string;
+          embed_model?: string | null;
+          embedding?: string | null;
+          id?: number;
+          scope?: Json;
+          source_pk: Json;
+          source_table: string;
+          title?: string | null;
+          token_count?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          chunk_index?: number;
+          chunk_total?: number;
+          content?: string;
+          created_at?: string;
+          embed_model?: string | null;
+          embedding?: string | null;
+          id?: number;
+          scope?: Json;
+          source_pk?: Json;
+          source_table?: string;
+          title?: string | null;
+          token_count?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      rag_events: {
+        Row: {
+          content: string;
+          embed_model: string | null;
+          embedding: string | null;
+          event_date: string;
+          event_type: string;
+          generated_at: string;
+          generated_by: string | null;
+          id: number;
+          item_id: number | null;
+          metrics: Json | null;
+          scope: Json;
+          sku_id: string | null;
+          token_count: number | null;
+        };
+        Insert: {
+          content: string;
+          embed_model?: string | null;
+          embedding?: string | null;
+          event_date: string;
+          event_type: string;
+          generated_at?: string;
+          generated_by?: string | null;
+          id?: number;
+          item_id?: number | null;
+          metrics?: Json | null;
+          scope?: Json;
+          sku_id?: string | null;
+          token_count?: number | null;
+        };
+        Update: {
+          content?: string;
+          embed_model?: string | null;
+          embedding?: string | null;
+          event_date?: string;
+          event_type?: string;
+          generated_at?: string;
+          generated_by?: string | null;
+          id?: number;
+          item_id?: number | null;
+          metrics?: Json | null;
+          scope?: Json;
+          sku_id?: string | null;
+          token_count?: number | null;
+        };
+        Relationships: [];
+      };
+      rag_glossary: {
+        Row: {
+          content: string;
+          embed_model: string | null;
+          embedding: string | null;
+          id: number;
+          key: string;
+          kind: string;
+          scope: Json;
+          source_pk: Json;
+          source_table: string;
+          token_count: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          content: string;
+          embed_model?: string | null;
+          embedding?: string | null;
+          id?: number;
+          key: string;
+          kind: string;
+          scope?: Json;
+          source_pk: Json;
+          source_table: string;
+          token_count?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          content?: string;
+          embed_model?: string | null;
+          embedding?: string | null;
+          id?: number;
+          key?: string;
+          kind?: string;
+          scope?: Json;
+          source_pk?: Json;
+          source_table?: string;
+          token_count?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       regional_sales: {
         Row: {
           brand: string | null;
@@ -3115,6 +3531,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      v_haruru_axis_distribution: {
+        Row: {
+          axis: string | null;
+          cnt: number | null;
+          intent: string | null;
+          week: string | null;
+        };
+        Relationships: [];
+      };
+      v_haruru_daily_usage: {
+        Row: {
+          active_users: number | null;
+          avg_latency_ms: number | null;
+          day: string | null;
+          error_count: number | null;
+          questions: number | null;
+          sessions: number | null;
+          thumbs_down: number | null;
+          thumbs_up: number | null;
+        };
+        Relationships: [];
+      };
+      v_haruru_recent_down_feedback: {
+        Row: {
+          answer: string | null;
+          axis: string | null;
+          created_at: string | null;
+          feedback_comment: string | null;
+          id: number | null;
+          question: string | null;
+          sql_used: string | null;
+        };
+        Relationships: [];
+      };
       v_hotpack_data_freshness: {
         Row: {
           days_behind: number | null;
@@ -3589,6 +4039,17 @@ export type Database = {
           },
         ];
       };
+      v_rag_health: {
+        Row: {
+          coverage_pct: number | null;
+          embedded: number | null;
+          last_updated: string | null;
+          missing: number | null;
+          target_table: string | null;
+          total: number | null;
+        };
+        Relationships: [];
+      };
       v_sales_weather: {
         Row: {
           brand: string | null;
@@ -3896,6 +4357,31 @@ export type Database = {
       };
     };
     Functions: {
+      backfill_rag_analysis_all: {
+        Args: never;
+        Returns: {
+          r_inserted: number;
+          r_source_table: string;
+        }[];
+      };
+      backfill_rag_glossary_all: {
+        Args: never;
+        Returns: {
+          r_inserted: number;
+          r_kind: string;
+        }[];
+      };
+      build_weekly_rag_events: {
+        Args: { p_week_start: string };
+        Returns: number;
+      };
+      count_missing_embeddings: {
+        Args: never;
+        Returns: {
+          missing: number;
+          target_table: string;
+        }[];
+      };
       fn_current_season: {
         Args: never;
         Returns: {
@@ -3911,6 +4397,24 @@ export type Database = {
           d: string;
           inbound_qty: number;
           outbound_qty: number;
+        }[];
+      };
+      safe_run_sql: { Args: { p_query: string }; Returns: Json[] };
+      search_rag: {
+        Args: {
+          p_min_sim?: number;
+          p_query_embedding: string;
+          p_scope_filter?: Json;
+          p_tables: string[];
+          p_top_k?: number;
+        };
+        Returns: {
+          content: string;
+          id: number;
+          metrics: Json;
+          scope: Json;
+          similarity: number;
+          source_table: string;
         }[];
       };
       trigger_sync_keyword_trends: {
