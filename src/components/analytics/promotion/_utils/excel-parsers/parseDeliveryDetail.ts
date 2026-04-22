@@ -2,10 +2,10 @@
  * 납품 실적 Coupang_Stocked_Data_List*.xlsx → coupang_delivery_detail Insert 형태
  */
 import * as XLSX from "xlsx";
-import type { InsertTables } from "@/lib/supabase/types";
+import type { TablesInsert } from "@/lib/supabase/types";
 import { normalizeDateCell, parseNumberKo } from "@/lib/excel-parsers/parsingUtils";
 
-export type ParsedDeliveryRow = Omit<InsertTables<"coupang_delivery_detail">, "id"> & {
+export type ParsedDeliveryRow = Omit<TablesInsert<"coupang_delivery_detail">, "id"> & {
   is_baseline: false;
 };
 

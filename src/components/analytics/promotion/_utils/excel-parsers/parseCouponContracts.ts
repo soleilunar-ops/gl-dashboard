@@ -2,10 +2,10 @@
  * 쿠폰 계약 coupon_*.xls (HTML 테이블 위장) 또는 진짜 xlsx → promotion_coupon_contracts (계약 단위 집계)
  */
 import * as XLSX from "xlsx";
-import type { InsertTables } from "@/lib/supabase/types";
+import type { TablesInsert } from "@/lib/supabase/types";
 import { parseNumberKo } from "@/lib/excel-parsers/parsingUtils";
 
-export type ParsedCouponContractRow = InsertTables<"promotion_coupon_contracts"> & {
+export type ParsedCouponContractRow = TablesInsert<"promotion_coupon_contracts"> & {
   is_baseline: false;
 };
 

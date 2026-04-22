@@ -102,7 +102,7 @@ type CouponRow = Pick<
   | "season"
   | "is_baseline"
 >;
-type WeatherRow = Pick<Tables<"weather_daily">, "date" | "avg_temp" | "temp_anomaly">;
+type WeatherRow = Pick<Tables<"weather_daily_legacy">, "date" | "avg_temp" | "temp_anomaly">;
 type BaselineKpiRow = Tables<"baseline_kpi_snapshot">;
 type SeasonCfgRow = Pick<
   Tables<"season_config">,
@@ -179,13 +179,13 @@ async function fetchWeatherDailyInRange(
   for (;;) {
     const to = from + WEATHER_FETCH_PAGE - 1;
     const { data, error } = await supabase
-      .from("weather_daily")
+      .from("weather_daily_legacy")
       .select("date, avg_temp, temp_anomaly")
       .gte("date", WEATHER_RANGE_START)
       .lte("date", WEATHER_RANGE_END)
       .order("date", { ascending: true })
       .range(from, to);
-    if (error) throw new Error(`weather_daily: ${error.message}`);
+    if (error) throw new Error(`weather_daily_legacy: ${error.message}`);
     const chunk = data ?? [];
     acc.push(...chunk);
     if (chunk.length < WEATHER_FETCH_PAGE) break;

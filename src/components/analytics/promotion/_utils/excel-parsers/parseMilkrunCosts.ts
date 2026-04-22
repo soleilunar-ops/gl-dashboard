@@ -2,14 +2,14 @@
  * 밀크런 비용 milkrun_sales_*.xls — 내부 HTML, `<table>` 여러 개, 각 테이블에서 첫 `<tr>`=요약 무시·둘째 `<tr>`=헤더
  */
 import * as XLSX from "xlsx";
-import type { InsertTables } from "@/lib/supabase/types";
+import type { TablesInsert } from "@/lib/supabase/types";
 import {
   normalizeDateCell,
   parseNumberKo,
   yearMonthFromIsoDate,
 } from "@/lib/excel-parsers/parsingUtils";
 
-export type ParsedMilkrunRow = InsertTables<"promotion_milkrun_costs"> & { is_baseline: false };
+export type ParsedMilkrunRow = TablesInsert<"promotion_milkrun_costs"> & { is_baseline: false };
 
 /** 파일명 milkrun_sales_YYYY-MM → 픽업일이 없을 때만 보조 year_month */
 export function yearMonthFromMilkrunFileName(name: string): string | null {

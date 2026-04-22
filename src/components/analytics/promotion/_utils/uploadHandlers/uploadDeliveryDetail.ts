@@ -18,7 +18,7 @@ function periodBounds(rows: ParsedDeliveryRow[]): { min: string; max: string } {
   return { min: dates[0]!, max: dates[dates.length - 1]! };
 }
 
-function rowKey(r: ParsedDeliveryRow): string {
+function rowKey(r: Pick<ParsedDeliveryRow, "delivery_date" | "invoice_no" | "sku_id">): string {
   return `${r.delivery_date}|${r.invoice_no ?? ""}|${r.sku_id ?? ""}`;
 }
 
@@ -60,7 +60,7 @@ export async function uploadDeliveryDetail(
       });
       return { inserted: 0, updated: 0, errors, periodStart, periodEnd };
     }
-    const keys = new Set((existing ?? []).map((e) => rowKey(e as ParsedDeliveryRow)));
+    const keys = new Set((existing ?? []).map((e) => rowKey(e)));
     toWrite = toWrite.filter((r) => !keys.has(rowKey(r)));
   } else {
     const { error: delErr } = await supabase

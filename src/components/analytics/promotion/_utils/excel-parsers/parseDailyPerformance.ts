@@ -2,10 +2,10 @@
  * 쿠팡 일별 판매 실적 CSV (daily_performance_*.csv) → coupang_daily_performance Insert 형태
  */
 import Papa from "papaparse";
-import type { InsertTables } from "@/lib/supabase/types";
+import type { TablesInsert } from "@/lib/supabase/types";
 import { isSummaryRowLabel, parseNumberKo, yyyymmddToIso } from "@/lib/excel-parsers/parsingUtils";
 
-export type ParsedDailyPerformanceRow = InsertTables<"coupang_daily_performance"> & {
+export type ParsedDailyPerformanceRow = TablesInsert<"coupang_daily_performance"> & {
   is_baseline: false;
 };
 

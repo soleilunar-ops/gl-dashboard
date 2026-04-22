@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
-import type { InsertTables } from "@/lib/supabase/types";
+import type { TablesInsert } from "@/lib/supabase/types";
 import {
   fetchSeasonConfig,
   inferSeasonForIsoDate,
@@ -65,7 +65,7 @@ export default function AdCostForm({ onSaved }: { onSaved?: () => void }) {
     setSaving(true);
     try {
       const supabase = createClient();
-      const payload: InsertTables<"promotion_ad_costs">[] = [];
+      const payload: TablesInsert<"promotion_ad_costs">[] = [];
       for (const r of rows) {
         const cn = Number(String(r.contract_no).replace(/\D/g, ""));
         if (!Number.isFinite(cn) || cn <= 0) continue;
