@@ -8,8 +8,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdmin } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { composeOrderSource, type OrderCompanyCode } from "@/lib/orders/orderMeta";
 import type { Database, Tables, TablesInsert } from "@/lib/supabase/types";
+import { ORDER_EXCEL_STORAGE_BUCKET } from "@/lib/orders/excelUploadStorage";
 
 type OrderInsert = TablesInsert<"orders">;
 
@@ -24,7 +26,7 @@ interface ImportRow {
   supplierName: string;
 }
 
-const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "gl_pharm", "hnb"];
+const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "glpharm", "hnb"];
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -36,23 +38,39 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+/** Storage 객체 키용 파일명 정규화 — 변경 이유: 경로 주입 방지 */
+function safeStorageSegment(name: string): string {
+  const t = name.trim() || "upload.xlsx";
+  return t.replace(/[^\w.\s\-가-힣()]/g, "_").slice(0, 140);
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function parseBody(raw: unknown): {
   rows: Array<Record<string, unknown>>;
   companyCode: OrderCompanyCode | null;
   fileName: string | null;
+  /** 변경 이유: 파일 선택 시 미리 등록된 이력 행만 갱신(원본 중복 업로드 방지) */
+  uploadLogId: string | null;
 } | null {
   if (raw === null || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   if (!Array.isArray(o.rows)) return null;
   const companyCode: OrderCompanyCode | null =
-    o.companyCode === "gl" || o.companyCode === "gl_pharm" || o.companyCode === "hnb"
+    o.companyCode === "gl" || o.companyCode === "glpharm" || o.companyCode === "hnb"
       ? (o.companyCode as OrderCompanyCode)
       : null;
   const fileName = typeof o.fileName === "string" && o.fileName.trim() ? o.fileName.trim() : null;
+  const uploadLogIdRaw = o.uploadLogId;
+  const uploadLogId =
+    typeof uploadLogIdRaw === "string" && UUID_RE.test(uploadLogIdRaw.trim())
+      ? uploadLogIdRaw.trim().toLowerCase()
+      : null;
   return {
     rows: o.rows as Array<Record<string, unknown>>,
     companyCode,
     fileName,
+    uploadLogId,
   };
 }
 
@@ -126,13 +144,45 @@ export async function POST(request: Request) {
     );
   }
 
-  // 3. body 파싱
+  // 3. body 파싱 — JSON 또는 multipart(file + payload)
   let raw: unknown;
-  try {
-    raw = await request.json();
-  } catch {
-    return NextResponse.json({ error: "JSON 파싱 실패" }, { status: 400 });
+  let fileBytes: Uint8Array | null = null;
+  let multipartOriginalName: string | null = null;
+  const ct = request.headers.get("content-type") ?? "";
+
+  if (ct.includes("multipart/form-data")) {
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return NextResponse.json({ error: "multipart 파싱 실패" }, { status: 400 });
+    }
+    const payloadField = form.get("payload");
+    const fileField = form.get("file");
+    if (typeof payloadField !== "string") {
+      return NextResponse.json(
+        { error: "payload 필드(JSON 문자열)가 필요합니다." },
+        { status: 400 }
+      );
+    }
+    try {
+      raw = JSON.parse(payloadField) as unknown;
+    } catch {
+      return NextResponse.json({ error: "payload JSON 오류" }, { status: 400 });
+    }
+    if (fileField instanceof File && fileField.size > 0) {
+      multipartOriginalName = fileField.name || null;
+      const ab = await fileField.arrayBuffer();
+      fileBytes = new Uint8Array(ab);
+    }
+  } else {
+    try {
+      raw = await request.json();
+    } catch {
+      return NextResponse.json({ error: "JSON 파싱 실패" }, { status: 400 });
+    }
   }
+
   const parsed = parseBody(raw);
   if (!parsed || parsed.rows.length === 0) {
     return NextResponse.json({ error: "rows 배열이 비어 있습니다." }, { status: 400 });
@@ -214,6 +264,7 @@ export async function POST(request: Request) {
       item_id: itemId,
       erp_system: companyCode,
       tx_type: "purchase",
+      source_table: "excel_upload",
       erp_code: r.erpCode,
       erp_tx_no: r.erpRef,
       erp_tx_line_no: lineNo,
@@ -238,14 +289,84 @@ export async function POST(request: Request) {
     }
   }
 
-  // 8. 업로드 이력 기록
-  if (parsed.fileName) {
-    const { error: logErr } = await admin.from("order_excel_upload_logs").insert({
+  // 8. 업로드 이력 — 미등록 행 INSERT 또는 excel-upload-register로 만든 행 UPDATE
+  const displayFileName =
+    parsed.fileName ?? multipartOriginalName ?? (fileBytes ? "upload.xlsx" : null);
+
+  if (parsed.uploadLogId) {
+    const { data: existingLog, error: logFetchErr } = await admin
+      .from("excel_uploads")
+      .select("id, uploaded_by, company_code")
+      .eq("id", Number(parsed.uploadLogId))
+      .maybeSingle();
+
+    if (logFetchErr || !existingLog) {
+      return NextResponse.json({ error: "업로드 이력을 찾을 수 없습니다." }, { status: 404 });
+    }
+    if (existingLog.company_code !== companyCode) {
+      return NextResponse.json(
+        { error: "이력의 기업과 요청 기업이 일치하지 않습니다." },
+        { status: 400 }
+      );
+    }
+    if (existingLog.uploaded_by !== user.id) {
+      return NextResponse.json({ error: "이력 수정 권한이 없습니다." }, { status: 403 });
+    }
+
+    const { error: updErr } = await admin
+      .from("excel_uploads")
+      .update({
+        total_rows: normalized.length,
+        inserted_rows: inserts.length,
+        skipped_rows: skipped + unmappedCount,
+      })
+      .eq("id", Number(parsed.uploadLogId!));
+
+    if (updErr) {
+      return NextResponse.json({ error: `이력 갱신 실패: ${updErr.message}` }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      message: "가져오기 완료",
+      totalInput: normalized.length,
+      inserted: inserts.length,
+      skipped,
+      unmapped: unmappedCount,
+      unmappedRefs: unmapped,
+    });
+  }
+
+  let storagePath: string | null = null;
+  if (fileBytes && fileBytes.length > 0 && displayFileName) {
+    const segment = safeStorageSegment(displayFileName);
+    const path = `${user.id}/${randomUUID()}_${segment}`;
+    const lower = segment.toLowerCase();
+    const mime =
+      lower.endsWith(".xls") && !lower.endsWith(".xlsx")
+        ? "application/vnd.ms-excel"
+        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    const { error: upErr } = await admin.storage
+      .from(ORDER_EXCEL_STORAGE_BUCKET)
+      .upload(path, fileBytes, {
+        contentType: mime,
+        upsert: false,
+      });
+    if (!upErr) {
+      storagePath = path;
+    }
+  }
+
+  if (displayFileName) {
+    const { error: logErr } = await admin.from("excel_uploads").insert({
+      category: "order_purchase_excel",
       company_code: companyCode,
-      file_name: parsed.fileName,
-      total_input: normalized.length,
-      inserted_count: inserts.length,
-      skipped_count: skipped + unmappedCount,
+      file_name: displayFileName,
+      total_rows: normalized.length,
+      inserted_rows: inserts.length,
+      skipped_rows: skipped + unmappedCount,
+      storage_path: storagePath,
+      uploaded_by: user.id,
     });
     if (logErr) {
       return NextResponse.json({ error: `이력 저장 실패: ${logErr.message}` }, { status: 500 });

@@ -171,7 +171,7 @@ export function contractRowFromExcelPreview(row: PurchaseExcelParsedRow): Contra
     approximate: false,
     itemId: null,
     supplierName: row.supplierName ? row.supplierName : null,
-    companyCode: "gl_pharm",
+    companyCode: "glpharm",
     sourceKind: "excel_upload",
     supplyAmountCny: supplyAmount,
     vatAmountCny: vatAmount,

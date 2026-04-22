@@ -2131,6 +2131,65 @@ export type Database = {
           },
         ];
       };
+      order_documents: {
+        Row: {
+          content_type: string | null;
+          created_at: string;
+          file_name: string;
+          id: string;
+          order_id: number;
+          storage_path: string;
+          uploaded_by: string | null;
+        };
+        Insert: {
+          content_type?: string | null;
+          created_at?: string;
+          file_name: string;
+          id?: string;
+          order_id: number;
+          storage_path: string;
+          uploaded_by?: string | null;
+        };
+        Update: {
+          content_type?: string | null;
+          created_at?: string;
+          file_name?: string;
+          id?: string;
+          order_id?: number;
+          storage_path?: string;
+          uploaded_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_documents_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_documents_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "v_orders_approved";
+            referencedColumns: ["order_id"];
+          },
+          {
+            foreignKeyName: "order_documents_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "v_orders_dashboard";
+            referencedColumns: ["order_id"];
+          },
+          {
+            foreignKeyName: "order_documents_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "v_orders_pending";
+            referencedColumns: ["order_id"];
+          },
+        ];
+      };
       orders: {
         Row: {
           approved_at: string | null;
@@ -3094,6 +3153,7 @@ export type Database = {
           first_sub_5: string | null;
           first_sub_minus_5: string | null;
           peak_date: string | null;
+          peak_gmv: number | null;
           peak_tmin: number | null;
           peak_units: number | null;
           r_linear: number | null;

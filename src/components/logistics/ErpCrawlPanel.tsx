@@ -43,7 +43,7 @@ export default function ErpCrawlPanel({
   onSuccess,
 }: ErpCrawlPanelProps) {
   const [dateFrom] = useState<string>(FIXED_DATE_FROM);
-  const [dateTo, setDateTo] = useState<string>(getTodayDate);
+  const [dateTo] = useState<string>(getTodayDate);
   const [loading, setLoading] = useState<boolean>(false);
   const [status, setStatus] = useState<CrawlStatus>("idle");
   const [message, setMessage] = useState<string>("");
@@ -161,8 +161,9 @@ export default function ErpCrawlPanel({
           <Input
             type="date"
             value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-            className="w-[160px]"
+            disabled
+            className="w-[160px] opacity-60"
+            readOnly
             aria-label="조회 종료일"
           />
           <Button onClick={handleCrawl} disabled={loading}>

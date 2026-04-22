@@ -73,7 +73,11 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
     let incoming = 0;
     let outgoing = 0;
     for (const row of data ?? []) {
-      if (row.tx_type === "purchase" || row.tx_type === "return_sale") {
+      if (
+        row.tx_type === "purchase" ||
+        row.tx_type === "return_sale" ||
+        row.tx_type === "production_in"
+      ) {
         incoming += row.quantity;
       } else if (row.tx_type === "sale" || row.tx_type === "return_purchase") {
         outgoing += row.quantity;
