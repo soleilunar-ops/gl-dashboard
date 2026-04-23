@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
- HEAD
-import { LogOut, Menu } from "lucide-react";
 import {
   ShoppingCart,
   TrendingUp,
@@ -21,7 +19,6 @@ import {
   Menu,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
- 1e56ed8 ([나경] UI 거의 완성)
 import { navigation, type NavItem } from "./navigation.config";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { cn } from "@/lib/utils";
@@ -33,8 +30,6 @@ function resolveActivePathInGroup(items: NavItem[], pathname: string): string | 
   return matches.reduce((a, b) => (b.path.length > a.path.length ? b : a)).path;
 }
 
- HEAD
-=======
 // 아이콘 이름 → 컴포넌트 매핑
 const iconMap: Record<string, LucideIcon> = {
   ShoppingCart,
@@ -43,6 +38,7 @@ const iconMap: Record<string, LucideIcon> = {
   Calculator,
   Package,
   Megaphone,
+  LayoutDashboard,
   CloudSun,
   Ship,
   Truck,
@@ -50,7 +46,6 @@ const iconMap: Record<string, LucideIcon> = {
   Upload,
 };
 
- 1e56ed8 ([나경] UI 거의 완성)
 interface SidebarProps {
   open?: boolean;
   onToggle?: () => void;
@@ -90,22 +85,15 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
 
         {/* 네비게이션 */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
- HEAD
           {navigation.map((group, gi) => (
             <div key={group.title || `group-${gi}`} className="mb-4">
               {group.title && (
                 <p className="text-muted-foreground mb-1 px-2 text-sm font-medium">{group.title}</p>
               )}
-
-          {navigation.map((group) => (
-            <div key={group.title} className="mb-4">
-              <p className="text-foreground mb-1 px-2 text-[15px] font-bold tracking-tight">
-                {group.title}
-              </p>
- 1e56ed8 ([나경] UI 거의 완성)
               {group.items.map((item) => {
                 const activePath = resolveActivePathInGroup(group.items, pathname);
                 const isActive = activePath !== null && item.path === activePath;
+                const Icon = iconMap[item.icon];
 
                 return (
                   <Link
@@ -119,6 +107,7 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
                     )}
                     aria-current={isActive ? "page" : undefined}
                   >
+                    {Icon ? <Icon className="mr-2 h-4 w-4 shrink-0" /> : null}
                     {item.label}
                   </Link>
                 );
