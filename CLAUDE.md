@@ -2,7 +2,7 @@
 
 ## 기술 스택
 
-Next.js 15 + Tailwind v4 + shadcn/ui + Supabase + FastAPI(AI전용)
+Next.js 15 + Tailwind v4 + shadcn/ui + Supabase (Edge Functions + Deno)
 절대 금지: Prisma, Drizzle, TypeORM, MUI, Ant Design, Chakra, Mantine, Redux, axios
 PM 승인 필요: react-query, SWR, Zustand, Jotai (사용 전 PM에게 확인)
 
@@ -54,7 +54,6 @@ export default function OrdersPage() {
 ## 팀원 영역
 
 - 슬아: components/orders/, components/analytics/cost/
-- 정민: components/analytics/forecast/, services/api/(routers/forecast.py, models/)
 - 나경: components/analytics/reviews/, components/analytics/promotion/
 - 진희: components/logistics/
 

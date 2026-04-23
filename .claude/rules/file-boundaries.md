@@ -12,7 +12,6 @@
 - src/app/layout.tsx, src/app/page.tsx, src/app/globals.css
 - src/app/auth/ (login, callback)
 - src/app/api/
-- services/api/ (main.py, rag/, triggers.py, keywords.py, utils/)
 - .claude/, .cursor/, .github/, .husky/, scripts/, docs/
 
 ## 팀원 전용 — 해당 팀원만 수정
@@ -24,19 +23,6 @@
 - src/app/(dashboard)/orders/ (page.tsx — 컴포넌트 import해서 배치만)
 - src/app/(dashboard)/analytics/cost/ (page.tsx — 배치만)
 - src/components/layout/nav-orders.ts (네비게이션 메뉴)
-
-### 정민
-
-- src/components/analytics/forecast/ (컴포넌트 추가/수정)
-- src/app/(dashboard)/analytics/forecast/ (page.tsx — 배치만)
-- src/components/layout/nav-forecast.ts (네비게이션 메뉴)
-- services/api/routers/forecast.py (FastAPI 라우터)
-- services/api/analytics/ (수요 예측 모델/인사이트 — Model A LightGBM, Model B 발주반응, OpenAI 인사이트)
-- services/api/data_pipeline/ (데이터 수집/피처 빌드)
-- services/api/data_sources/ (외부 API 연동 — ASOS, ECMWF)
-- services/api/schemas/ (Pydantic 응답 스키마)
-- services/api/run_pipeline.py (CLI 통합 진입점)
-- services/api/requirements.txt (Python 의존성, 추가만 가능 — 삭제는 PM 승인)
 
 ### 나경
 
@@ -61,7 +47,6 @@
 
 - 각 팀원은 자기 로그 파일만 수정 가능
 - docs/logs/슬아.md → 슬아만
-- docs/logs/정민.md → 정민만
 - docs/logs/나경.md → 나경만
 - docs/logs/진희.md → 진희만
 - docs/logs/pm/ → PM만
