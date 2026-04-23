@@ -7,7 +7,7 @@ import { ThermometerSearchBar } from "./ThermometerSearchBar";
 import { FavoriteShortcuts } from "./FavoriteShortcuts";
 import { HaruruConversation } from "@/components/haruru/HaruruConversation";
 import { useHaruruAgent } from "@/components/haruru/useHaruruAgent";
-import { ModelPicker, useModelPicker } from "@/components/haruru/ModelPicker";
+import { useModelPicker } from "@/components/haruru/ModelPicker";
 import { RecentSessions } from "@/components/haruru/RecentSessions";
 
 /**
@@ -44,8 +44,12 @@ export function HomeHero() {
         <div className="relative flex w-full max-w-2xl flex-col items-center gap-7">
           <HaruruCharacter />
           <TimeGreeting />
-          <ThermometerSearchBar onSearch={handleSearch} />
-          <ModelPicker value={model} onChange={setModel} disabled={streaming} />
+          <ThermometerSearchBar
+            onSearch={handleSearch}
+            model={model}
+            onModelChange={setModel}
+            modelDisabled={streaming}
+          />
           <RecentSessions
             currentTurnsCount={turns.length}
             onLoad={loadSession}
@@ -64,37 +68,30 @@ export function HomeHero() {
   }
 
   return (
-    <div className="relative flex h-[calc(100vh-3.5rem)] w-full flex-col">
-      {/* 상단 헤더 — 새 대화 버튼 */}
-      <div className="flex w-full items-center justify-between border-b border-gray-100 bg-white/80 px-6 py-3 backdrop-blur">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-          <span className="text-base">🧡</span>
-          <span>하루루 대화</span>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            reset();
-            setRefreshKey((k) => k + 1);
-          }}
-          className="rounded border border-orange-200 bg-white px-3 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50"
-        >
-          + 새 대화
-        </button>
-      </div>
-
+    <div className="relative mt-14 flex h-[calc(100vh-3.5rem)] w-full flex-col">
       {/* 대화 스크롤 영역 */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="mx-auto flex w-full max-w-2xl flex-col">
-          <HaruruConversation turns={turns} onFeedback={sendFeedback} />
+          <HaruruConversation
+            turns={turns}
+            onFeedback={sendFeedback}
+            onReset={() => {
+              reset();
+              setRefreshKey((k) => k + 1);
+            }}
+          />
         </div>
       </div>
 
       {/* 하단 고정 입력창 */}
       <div className="border-t border-gray-100 bg-white/95 px-6 py-4 backdrop-blur">
         <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-3">
-          <ThermometerSearchBar onSearch={handleSearch} />
-          <ModelPicker value={model} onChange={setModel} disabled={streaming} />
+          <ThermometerSearchBar
+            onSearch={handleSearch}
+            model={model}
+            onModelChange={setModel}
+            modelDisabled={streaming}
+          />
         </div>
       </div>
     </div>

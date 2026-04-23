@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ThumbsUp, ThumbsDown, Loader2 } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   encodeRefPlaceholders,
@@ -16,6 +16,8 @@ import { AxisChip } from "./AxisChip";
 interface HaruruMessageProps {
   turn: HaruruTurn;
   onFeedback?: (turn: HaruruTurn, value: "up" | "down", comment?: string) => void;
+  /** "대화 끝내기" 버튼 클릭 시 호출 — 현재 대화 턴 전체 초기화 */
+  onReset?: () => void;
 }
 
 // 본문에는 근거 태그를 표시하지 않음 (사용자 가독성). 근거는 하단 "근거 보기" 패널에서만.
@@ -129,7 +131,7 @@ const mdComponents = {
   hr: () => <hr className="my-3 border-gray-200" />,
 };
 
-export function HaruruMessage({ turn, onFeedback }: HaruruMessageProps) {
+export function HaruruMessage({ turn, onFeedback, onReset }: HaruruMessageProps) {
   const [showCitations, setShowCitations] = useState(false);
   const [downComment, setDownComment] = useState("");
   const [downOpen, setDownOpen] = useState(false);
@@ -262,6 +264,17 @@ export function HaruruMessage({ turn, onFeedback }: HaruruMessageProps) {
                 >
                   <ThumbsDown className="h-3.5 w-3.5" />
                 </button>
+                {onReset && (
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    className="ml-2 flex cursor-pointer items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] font-medium text-gray-500 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
+                    aria-label="대화 끝내기"
+                  >
+                    <X className="h-3 w-3" />
+                    대화 끝내기
+                  </button>
+                )}
               </div>
             )}
 

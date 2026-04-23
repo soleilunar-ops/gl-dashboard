@@ -18,7 +18,7 @@ import { OrdersActionPanel } from "./OrdersActionPanel";
 import { OrdersStockSidebar } from "./OrdersStockSidebar";
 import { OrdersExcelUploadDialog } from "./OrdersExcelUploadDialog";
 import OrderContractAddForm from "./OrderContractAddForm";
-import type { OrderErpDealKind } from "./OrderErpSyncPanel";
+import type { OrderErpDealKind } from "./types";
 import {
   useOrders,
   type OrderDashboardRow,

@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cpu } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const HARURU_MODELS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", hint: "빠름·저렴" },
@@ -41,32 +46,30 @@ interface ModelPickerProps {
   disabled?: boolean;
 }
 
+/**
+ * 답변 모델 선택 드롭다운.
+ * 크림 배경 + 테마 컬러 — 네이티브 select의 OS 기본 UI를 피하기 위해 shadcn Select 사용.
+ */
 export function ModelPicker({ value, onChange, disabled }: ModelPickerProps) {
-  const current = HARURU_MODELS.find((m) => m.id === value) ?? HARURU_MODELS[1];
   return (
-    <div className="flex items-center gap-2 text-xs text-gray-500">
-      <Cpu className="h-3.5 w-3.5" />
-      <label className="flex items-center gap-1.5">
-        <span>모델</span>
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          className={cn(
-            "rounded border border-orange-200 bg-white px-2 py-0.5 text-xs",
-            "focus:border-orange-400 focus:outline-none",
-            disabled && "opacity-50"
-          )}
-          aria-label="답변 모델 선택"
-        >
-          {HARURU_MODELS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label} ({m.hint})
-            </option>
-          ))}
-        </select>
-      </label>
-      <span className="text-gray-400">{current.hint}</span>
-    </div>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger
+        aria-label="답변 모델 선택"
+        className="h-8 gap-1.5 border-[#F9DB94] bg-[#FDF3D0] px-3 text-xs font-medium text-[#8A6A1F] shadow-none hover:bg-[#FAE8B8] focus:ring-[#E3A83E] focus-visible:ring-[#E3A83E]/50 data-[placeholder]:text-[#8A6A1F]"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="border-[#F9DB94] bg-[#FDF3D0] ring-[#F9DB94]/40">
+        {HARURU_MODELS.map((m) => (
+          <SelectItem
+            key={m.id}
+            value={m.id}
+            className="text-xs text-[#8A6A1F] focus:bg-[#FAE8B8] focus:text-[#8A6A1F] data-[state=checked]:bg-[#FAE8B8]"
+          >
+            {m.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

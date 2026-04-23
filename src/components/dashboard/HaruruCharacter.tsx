@@ -1,68 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
-import { useHaruruWeather, type HaruruState } from "./_hooks/useHaruruWeather";
+import { useState } from "react";
+import PngSequencePlayer from "@/components/shared/PngSequencePlayer";
+import { useHaruruWeather } from "./_hooks/useHaruruWeather";
+import { MASCOT_FRAMES, MASCOT_DURATION, isSequenceState } from "./mascotFrames";
 
-// Lottie는 브라우저 전용 — SSR 제외
-const Lottie = dynamic(() => import("lottie-react").then((m) => m.default), {
-  ssr: false,
-});
-
-// 날씨 상태별 Lottie 파일 경로 (public/ 기준)
-// 참고: "구름 많음"은 Lottie 없이 PNG만 사용하므로 여기서 제외
-const LOTTIE_PATH: Partial<Record<HaruruState, string>> = {
-  해: "/lottie/해.json",
-  흐림: "/lottie/흐림.json",
-  비: "/lottie/비.json",
-  눈: "/lottie/눈.json",
-  바람: "/lottie/바람.json",
-  더움: "/lottie/더움.json",
-  추움: "/lottie/추움.json",
-};
-
-// 구름 많음 전용 PNG (구름 한 조각 위에서 둥둥 떠있는 컷)
-const CLOUDY_PNG = "/구름 많음.png";
-// 로딩/실패/default 폴백 PNG
-const DEFAULT_PNG = "/하루루 기본.png";
+// 단일 이미지 경로 (시퀀스 아닌 두 상태용)
+const CLOUDY_PNG = "/mascot/구름많음.png";
+const DEFAULT_PNG = "/mascot/기본.png";
 
 interface HaruruCharacterProps {
   size?: number;
 }
 
-/** 사용자 위치 날씨에 따라 하루루 모습을 표시 (해/구름 많음/흐림/비/눈/바람/더움/추움/default) */
-export function HaruruCharacter({ size = 180 }: HaruruCharacterProps) {
+/**
+ * 사용자 위치 날씨에 따라 하루루 모습을 표시.
+ *  - 해/흐림/비/눈/바람/더움/추움 → PNG 시퀀스 재생 (mascotFrames.ts 참조)
+ *  - 구름 많음 / default(로딩·실패) → 단일 PNG + animate-bounce
+ */
+export function HaruruCharacter({ size = 220 }: HaruruCharacterProps) {
   const { state, loaded } = useHaruruWeather();
-  const [animationData, setAnimationData] = useState<unknown | null>(null);
-  const [lottieFailed, setLottieFailed] = useState(false);
   const [pngFailed, setPngFailed] = useState(false);
 
-  useEffect(() => {
-    setAnimationData(null);
-    setLottieFailed(false);
-    if (!loaded) return;
-
-    const path = LOTTIE_PATH[state];
-    if (!path) return; // default / 구름 많음 은 Lottie 로드 안 함
-
-    let cancelled = false;
-    fetch(path)
-      .then((res) => {
-        if (!res.ok) throw new Error(`lottie ${res.status}`);
-        return res.json();
-      })
-      .then((json) => {
-        if (!cancelled) setAnimationData(json);
-      })
-      .catch(() => {
-        if (!cancelled) setLottieFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loaded, state]);
-
-  // 구름 많음: Lottie 없이 PNG 한 장을 animate-bounce 로 렌더 (실패 시 기본 PNG 폴백)
+  // 구름 많음: 단일 PNG bounce
   if (loaded && state === "구름 많음" && !pngFailed) {
     return (
       <div
@@ -82,10 +42,8 @@ export function HaruruCharacter({ size = 180 }: HaruruCharacterProps) {
     );
   }
 
-  // 로딩 중 / default / Lottie 로드 실패 → 하루루 기본.png (둥둥)
-  const showDefaultPng = !loaded || state === "default" || lottieFailed || !animationData;
-
-  if (showDefaultPng) {
+  // 로딩 전 / default / PNG 로드 실패 → 기본 PNG bounce (따뜻한 글로우 배경)
+  if (!loaded || state === "default" || pngFailed || !isSequenceState(state)) {
     return (
       <div
         className="relative flex items-center justify-center"
@@ -94,7 +52,6 @@ export function HaruruCharacter({ size = 180 }: HaruruCharacterProps) {
       >
         <div className="absolute inset-2 rounded-full bg-gradient-to-b from-[#FAE8B8] via-[#FDF3D0] to-transparent blur-xl" />
         {pngFailed ? (
-          // PNG마저 없으면 이모지 폴백
           <span
             className="relative animate-bounce select-none"
             style={{ fontSize: size * 0.55, lineHeight: 1 }}
@@ -115,9 +72,20 @@ export function HaruruCharacter({ size = 180 }: HaruruCharacterProps) {
     );
   }
 
+  // 시퀀스 재생 대상 날씨 상태 (7종)
   return (
-    <div style={{ width: size, height: size }} aria-label="하루루 캐릭터">
-      <Lottie animationData={animationData} loop autoplay />
+    <div
+      className="relative flex items-center justify-center"
+      style={{ width: size, height: size }}
+      aria-label={`하루루 캐릭터 (${state})`}
+    >
+      <div className="absolute inset-2 rounded-full bg-gradient-to-b from-[#FAE8B8] via-[#FDF3D0] to-transparent blur-xl" />
+      <PngSequencePlayer
+        frames={MASCOT_FRAMES[state]}
+        size={Math.floor(size * 0.9)}
+        duration={MASCOT_DURATION[state]}
+        className="relative"
+      />
     </div>
   );
 }

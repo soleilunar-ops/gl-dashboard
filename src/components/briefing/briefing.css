@@ -7,7 +7,7 @@
    ========================================================= */
 
 .hb-root {
-  --hb-bg: #f7f5f0;
+  --hb-bg: transparent;
   --hb-card: #ffffff;
   --hb-ink: #0f172a;
   --hb-ink-muted: #64748b;
@@ -415,16 +415,16 @@
   border-radius: 9999px;
 }
 .hb-pill.hb-green {
-  color: var(--hb-green-700);
-  background: var(--hb-green-50);
+  color: #ffffff;
+  background: #bbbf4e;
 }
 .hb-pill.hb-amber {
-  color: var(--hb-amber-700);
-  background: var(--hb-amber-50);
+  color: #5c3f00;
+  background: #f2be5c;
 }
 .hb-pill.hb-red {
-  color: var(--hb-red-700);
-  background: var(--hb-red-50);
+  color: #ffffff;
+  background: #a90000;
 }
 
 .hb-gauge-line {
@@ -699,24 +699,24 @@
 }
 
 .hb-tag {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 3px 10px;
+  border-radius: 9999px;
   margin-top: 2px;
   flex-shrink: 0;
 }
 .hb-tag.hb-red {
-  color: var(--hb-red-600);
-  background: var(--hb-red-50);
+  color: #ffffff;
+  background: #a90000;
 }
 .hb-tag.hb-amber {
-  color: var(--hb-amber-700);
-  background: var(--hb-amber-50);
+  color: #5c3f00;
+  background: #f2be5c;
 }
 .hb-tag.hb-slate {
-  color: var(--hb-slate-600);
-  background: var(--hb-slate-100);
+  color: #5c3f00;
+  background: #f2be5c;
 }
 
 .hb-search-big {
@@ -989,10 +989,11 @@
    v0.5 typography override — 가독성 향상 (사이즈 상향 + 볼드)
    ═══════════════════════════════════════════════════════════ */
 .hb-col-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--hb-slate-700, #334155);
-  letter-spacing: 0.04em;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--hb-slate-900);
+  letter-spacing: -0.01em;
+  text-transform: none;
 }
 .hb-col-meta {
   font-size: 13px;

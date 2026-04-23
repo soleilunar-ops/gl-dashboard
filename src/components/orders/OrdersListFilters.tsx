@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ORDER_COMPANIES, type OrderCompanyCode } from "@/lib/orders/orderMeta";
 import type { OrderErpSystem, OrderStatus } from "./_hooks/useOrders";
-import type { OrderErpDealKind } from "./OrderErpSyncPanel";
+import type { OrderErpDealKind } from "./types";
 
 /** 거래유형 버튼 고정 순서 — 변경 이유: 생산입고 필터 버튼 제거(후속 Supabase 테이블 매핑 시 정리) */
 const ALL_DEAL_KINDS: OrderErpDealKind[] = ["purchase", "sales", "returns"];

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "parse:milkrun-centers": "npx tsx scripts/parse-milkrun-centers.ts",
+    "crawl:ecount": "npx tsx scripts/crawl-ecount-daily.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -22,7 +23,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
-    "lottie-react": "^2.4.1",
     "lucide-react": "^1.8.0",
     "next": "16.2.3",
     "next-themes": "^0.4.6",
@@ -60,6 +60,7 @@
     "secretlint": "^11.6.0",
     "supabase": "^2.89.1",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   },
   "lint-staged": {
