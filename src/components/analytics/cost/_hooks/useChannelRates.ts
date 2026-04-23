@@ -1,9 +1,33 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+// 채널별 수수료 훅 — Supabase `channel_rates` 테이블 기반으로 전환.
+// localStorage 에서 이관 (모든 사용자·기기에서 공유되도록).
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+import { createClient } from "@/lib/supabase/client";
 
-/** 업로드된 채널별 정산 비율 — 변경 이유: 마진 산출 채널 선택 연동 */
+// channel_rates 테이블은 types.ts 재생성 전이라 캐스트로 우회.
+type UntypedDb = {
+  from: (table: string) => {
+    select: (cols: string) => {
+      order: (
+        c: string,
+        o?: { ascending?: boolean }
+      ) => {
+        order: (
+          c: string,
+          o?: { ascending?: boolean }
+        ) => Promise<{ data: unknown; error: { message: string } | null }>;
+      };
+    };
+    delete: () => {
+      gt: (c: string, v: number) => Promise<{ error: { message: string } | null }>;
+    };
+    insert: (rows: unknown[]) => Promise<{ error: { message: string } | null }>;
+  };
+};
+
+/** UI용 채널 수수료 */
 export type ChannelRate = {
   channelName: string;
   payoutRate: number;
@@ -11,7 +35,7 @@ export type ChannelRate = {
   note?: string;
 };
 
-/** 기본 채널 수수료 — 변경 이유: 엑셀 없이도 즉시 사용 */
+/** 기본 시드 — 테이블이 비어 있을 때 fallback */
 export const DEFAULT_CHANNEL_RATES: ChannelRate[] = [
   { channelName: "쿠팡 로켓배송", payoutRate: 0.56, feeText: "44%", note: "매출 최우선" },
   { channelName: "쿠팡 판매자로켓", payoutRate: 0.85, feeText: "15%" },
@@ -21,7 +45,15 @@ export const DEFAULT_CHANNEL_RATES: ChannelRate[] = [
   { channelName: "카카오선물하기", payoutRate: 0.93, feeText: "7%" },
 ];
 
-/** 단일 숫자 토큰 → 0~1 비율 — 변경 이유: % 표기·소수 혼용, >1이면 /100 */
+/** channel_rates 행 타입 (Supabase 스키마 그대로) */
+type DbRow = {
+  channel_name: string;
+  payout_rate: number;
+  fee_text: string | null;
+  note: string | null;
+  sort_order: number;
+};
+
 function parseSingleNumber(raw: string): number | null {
   const n = Number(raw);
   if (!Number.isFinite(n)) return null;
@@ -30,10 +62,6 @@ function parseSingleNumber(raw: string): number | null {
   return v;
 }
 
-/**
- * 셀 값 → 0~1 비율
- * 변경 이유: "45%-50%" 같은 범위 값은 평균, "(VAT 별도)" 등 괄호 텍스트는 제거
- */
 function normalizeRateCell(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   if (typeof v === "number" && Number.isFinite(v)) {
@@ -41,14 +69,12 @@ function normalizeRateCell(v: unknown): number | null {
   }
   let s = String(v).trim();
   if (s === "") return null;
-  // 괄호·주석 제거 후 %·콤마 정리
   s = s
     .replace(/\([^)]*\)/g, "")
     .replace(/%/g, "")
     .replace(/,/g, "")
     .trim();
   if (s === "") return null;
-  // 범위(-, ~, 물결 등)는 평균으로 대체
   const rangeMatch = s
     .split(/[-~–—]/)
     .map((p) => p.trim())
@@ -63,12 +89,10 @@ function normalizeRateCell(v: unknown): number | null {
   return parseSingleNumber(s);
 }
 
-/** 정산비율 셀 — 위와 동일 */
 function normalizePayoutCell(v: unknown): number | null {
   return normalizeRateCell(v);
 }
 
-/** 수수료율 셀 → 정산비율 (1 - 수수료) — 변경 이유: 업로드 컬럼명 변형 대응 */
 function normalizeFeeToPayout(v: unknown): number | null {
   const raw = normalizeRateCell(v);
   if (raw === null) return null;
@@ -79,7 +103,6 @@ function normalizeFeeToPayout(v: unknown): number | null {
 
 type HeaderKind = "channel" | "payout" | "fee" | "note";
 
-/** 헤더 셀 → 의미 매핑 — 변경 이유: 업로드 엑셀의 '사이트' 컬럼도 채널로 인식 */
 function matchHeaderCell(h: string): HeaderKind | null {
   const t = h.trim();
   if (/채널|사이트|channel|site/i.test(t)) return "channel";
@@ -89,10 +112,6 @@ function matchHeaderCell(h: string): HeaderKind | null {
   return null;
 }
 
-/**
- * 헤더 행 자동 탐색 — 변경 이유: 제목/빈 행이 위에 있는 엑셀 대응
- * 최대 12행까지 스캔하여 channel + (payout|fee) 모두 찾으면 그 행을 헤더로 채택.
- */
 function findHeaderRow(matrix: unknown[][]): {
   headerIdx: number;
   colMap: Partial<Record<HeaderKind, number>>;
@@ -115,21 +134,12 @@ function findHeaderRow(matrix: unknown[][]): {
   return null;
 }
 
-/** 첫 시트 파싱 — 변경 이유: 요구 스키마 + 헤더 자동 탐색 */
 function parseFirstSheet(workbook: XLSX.WorkBook): { rows: ChannelRate[]; error: string | null } {
   const sheetName = workbook.SheetNames[0];
-  if (!sheetName) {
-    return { rows: [], error: "시트가 비어 있습니다." };
-  }
+  if (!sheetName) return { rows: [], error: "시트가 비어 있습니다." };
   const sheet = workbook.Sheets[sheetName];
-  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    defval: "",
-  });
-
-  if (!matrix.length) {
-    return { rows: [], error: "데이터 행이 없습니다." };
-  }
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
+  if (!matrix.length) return { rows: [], error: "데이터 행이 없습니다." };
 
   const found = findHeaderRow(matrix);
   if (!found) {
@@ -159,10 +169,7 @@ function parseFirstSheet(workbook: XLSX.WorkBook): { rows: ChannelRate[]; error:
     if (payout === null && colMap.fee !== undefined) {
       payout = normalizeFeeToPayout(line[colMap.fee]);
     }
-    if (payout === null) {
-      console.warn(`[useChannelRates] 채널 "${channelName}" 행의 비율을 건너뜁니다.`);
-      continue;
-    }
+    if (payout === null) continue;
 
     let note: string | undefined;
     if (colMap.note !== undefined) {
@@ -179,53 +186,127 @@ function parseFirstSheet(workbook: XLSX.WorkBook): { rows: ChannelRate[]; error:
     rows.push({ channelName, payoutRate: payout, feeText, note });
   }
 
-  if (rows.length === 0) {
-    return { rows: [], error: "유효한 채널 행이 없습니다." };
-  }
-
+  if (rows.length === 0) return { rows: [], error: "유효한 채널 행이 없습니다." };
   return { rows, error: null };
 }
 
-/** 채널 수수료 엑셀 훅 — 변경 이유: SheetJS 업로드·템플릿·기본값 복원 + 파일명 보관 */
+function rowToDb(r: ChannelRate, index: number): DbRow {
+  return {
+    channel_name: r.channelName,
+    payout_rate: r.payoutRate,
+    fee_text: r.feeText ?? null,
+    note: r.note ?? null,
+    sort_order: index + 1,
+  };
+}
+
+function dbToRow(d: DbRow): ChannelRate {
+  return {
+    channelName: d.channel_name,
+    payoutRate: Number(d.payout_rate),
+    feeText: d.fee_text ?? undefined,
+    note: d.note ?? undefined,
+  };
+}
+
 export function useChannelRates() {
   const [rates, setRates] = useState<ChannelRate[]>(DEFAULT_CHANNEL_RATES);
   const [error, setError] = useState<string | null>(null);
   const [isCustom, setIsCustom] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
-  const reset = useCallback(() => {
-    setRates(DEFAULT_CHANNEL_RATES);
+  // 마운트 시 Supabase에서 채널 목록 로드
+  const fetchRates = useCallback(async () => {
+    const supabase = createClient() as unknown as UntypedDb;
+    const { data, error: fetchErr } = await supabase
+      .from("channel_rates")
+      .select("channel_name,payout_rate,fee_text,note,sort_order")
+      .order("sort_order", { ascending: true })
+      .order("channel_name", { ascending: true });
+    if (fetchErr) {
+      setError(`채널 목록 조회 실패: ${fetchErr.message}`);
+      setLoaded(true);
+      return;
+    }
+    const rows = (Array.isArray(data) ? data : []) as DbRow[];
+    if (rows.length === 0) {
+      setRates(DEFAULT_CHANNEL_RATES);
+      setIsCustom(false);
+    } else {
+      setRates(rows.map(dbToRow));
+      // 기본 6개와 동일하지 않으면 custom
+      const nameSet = new Set(rows.map((r) => r.channel_name));
+      const baseSet = new Set(DEFAULT_CHANNEL_RATES.map((r) => r.channelName));
+      const isSame = nameSet.size === baseSet.size && [...nameSet].every((n) => baseSet.has(n));
+      setIsCustom(!isSame);
+    }
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    void fetchRates();
+  }, [fetchRates]);
+
+  const reset = useCallback(async () => {
     setError(null);
-    setIsCustom(false);
+    const supabase = createClient() as unknown as UntypedDb;
+    const { error: delErr } = await supabase.from("channel_rates").delete().gt("id", 0);
+    if (delErr) {
+      setError(`초기화 실패: ${delErr.message}`);
+      return;
+    }
+    const payload = DEFAULT_CHANNEL_RATES.map((r, i) => rowToDb(r, i));
+    const { error: insErr } = await supabase.from("channel_rates").insert(payload);
+    if (insErr) {
+      setError(`기본값 삽입 실패: ${insErr.message}`);
+      return;
+    }
     setFileName(null);
-  }, []);
+    await fetchRates();
+  }, [fetchRates]);
 
-  const upload = useCallback((file: File) => {
-    setError(null);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        if (!data) {
-          setError("파일을 읽지 못했습니다.");
-          return;
+  const upload = useCallback(
+    (file: File) => {
+      setError(null);
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = e.target?.result;
+          if (!data) {
+            setError("파일을 읽지 못했습니다.");
+            return;
+          }
+          const workbook = XLSX.read(data, { type: "array" });
+          const { rows, error: parseErr } = parseFirstSheet(workbook);
+          if (parseErr) {
+            setError(parseErr);
+            return;
+          }
+          const supabase = createClient() as unknown as UntypedDb;
+          // 기존 전체 삭제 후 업로드된 목록 일괄 INSERT (엑셀에 없는 채널은 제거됨)
+          const { error: delErr } = await supabase.from("channel_rates").delete().gt("id", 0);
+          if (delErr) {
+            setError(`기존 목록 제거 실패: ${delErr.message}`);
+            return;
+          }
+          const payload = rows.map((r, i) => rowToDb(r, i));
+          const { error: insErr } = await supabase.from("channel_rates").insert(payload);
+          if (insErr) {
+            setError(`업로드 실패: ${insErr.message}`);
+            return;
+          }
+          setFileName(file.name);
+          await fetchRates();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "엑셀 파싱 중 오류가 발생했습니다.");
         }
-        const workbook = XLSX.read(data, { type: "array" });
-        const { rows, error: parseErr } = parseFirstSheet(workbook);
-        if (parseErr) {
-          setError(parseErr);
-          return;
-        }
-        setRates(rows);
-        setIsCustom(true);
-        setFileName(file.name);
-      } catch {
-        setError("엑셀 파싱 중 오류가 발생했습니다.");
-      }
-    };
-    reader.onerror = () => setError("파일 읽기에 실패했습니다.");
-    reader.readAsArrayBuffer(file);
-  }, []);
+      };
+      reader.onerror = () => setError("파일 읽기에 실패했습니다.");
+      reader.readAsArrayBuffer(file);
+    },
+    [fetchRates]
+  );
 
   const downloadTemplate = useCallback(() => {
     const templateRows = [
@@ -245,10 +326,11 @@ export function useChannelRates() {
       error,
       isCustom,
       fileName,
+      loaded,
       upload,
       reset,
       downloadTemplate,
     }),
-    [rates, error, isCustom, fileName, upload, reset, downloadTemplate]
+    [rates, error, isCustom, fileName, loaded, upload, reset, downloadTemplate]
   );
 }

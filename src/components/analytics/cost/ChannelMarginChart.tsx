@@ -20,7 +20,6 @@ import type { ChannelRate } from "./_hooks/useChannelRates";
 
 type Props = {
   rates: ChannelRate[];
-  /** channelPayoutRate는 각 채널 값으로 덮어쓰므로 MarginInput 그대로 수용 */
   baseInput: MarginInput;
 };
 
@@ -33,19 +32,25 @@ type ChartRow = {
   alert: boolean;
 };
 
-/** 차트 색상 — #A90000 수수료(진한 레드), #BBBF4E 마진(올리브), #CBD5E1 기타(그레이) */
 const COLOR_FEE = "#A90000";
 const COLOR_MARGIN = "#BBBF4E";
 const COLOR_MARGIN_ALERT = "#EF4444";
 const COLOR_REST = "#CBD5E1";
 
-/** 채널별 100% 누적 막대 차트 — 변경 이유: 수수료율/마진율을 업로드 데이터 기준으로 함께 비교 */
+/** X축용 짧은 라벨 — 괄호(플랫폼·부연) 제거하고 공백 단축. 툴팁에는 원본 그대로 유지. */
+function shortLabel(name: string): string {
+  const stripped = name.replace(/\s*\([^)]*\)\s*/g, "").trim();
+  const base = stripped || name;
+  return base.length > 10 ? base.slice(0, 9) + "…" : base;
+}
+
+/** 채널별 100% 누적 막대 차트 — 권장가 기준 마진율(목표 마진율)·수수료율·기타 비중 분해 */
 export default function ChannelMarginChart({ rates, baseInput }: Props) {
   const data: ChartRow[] = useMemo(() => {
     return rates
       .map((ch) => {
         const r = calcMargin({ ...baseInput, channelPayoutRate: ch.payoutRate });
-        const rawMarginPct = r.isInfeasible ? 0 : Number((r.actualMargin * 100).toFixed(1));
+        const rawMarginPct = r.isMarginAlert ? 0 : Number((r.recommendedMargin * 100).toFixed(1));
         const feePct = Number(((1 - ch.payoutRate) * 100).toFixed(1));
         const safeFeePct = Math.max(0, Math.min(100, feePct));
         const safeMarginPct = Math.max(0, Math.min(100 - safeFeePct, rawMarginPct));
@@ -55,7 +60,7 @@ export default function ChannelMarginChart({ rates, baseInput }: Props) {
           marginPct: safeMarginPct,
           restPct: Number((100 - safeFeePct - safeMarginPct).toFixed(1)),
           rawMarginPct,
-          alert: r.isMarginAlert || r.isInfeasible,
+          alert: r.isMarginAlert,
         };
       })
       .sort((a, b) => b.rawMarginPct - a.rawMarginPct);
@@ -63,11 +68,11 @@ export default function ChannelMarginChart({ rates, baseInput }: Props) {
 
   return (
     <ChartContainer title="채널별 마진율">
-      <ResponsiveContainer width="100%" height={280}>
+      <ResponsiveContainer width="100%" height={340}>
         <BarChart
           data={data}
-          margin={{ top: 12, right: 28, left: 12, bottom: 8 }}
-          barCategoryGap="35%"
+          margin={{ top: 12, right: 28, left: 12, bottom: 40 }}
+          barCategoryGap="20%"
         >
           <defs>
             <linearGradient id="grad-fee" x1="0" y1="0" x2="0" y2="1">
@@ -90,9 +95,11 @@ export default function ChannelMarginChart({ rates, baseInput }: Props) {
           <CartesianGrid strokeDasharray="2 4" stroke="#E5E7EB" vertical={false} />
           <XAxis
             dataKey="channel"
-            tick={{ fontSize: 12, fill: "#475569" }}
+            tick={{ fontSize: 11, fill: "#475569" }}
             interval={0}
-            height={36}
+            height={44}
+            tickMargin={8}
+            tickFormatter={shortLabel}
             tickLine={false}
             axisLine={{ stroke: "#E5E7EB" }}
           />
@@ -114,12 +121,9 @@ export default function ChannelMarginChart({ rates, baseInput }: Props) {
             }}
             labelStyle={{ fontWeight: 700, color: "#111827", marginBottom: 4 }}
             formatter={(value, name, payload) => {
-              if (name === "수수료율") {
-                return [`${Number(value).toFixed(1)}%`, "수수료율"];
-              }
-              if (name === "마진율") {
+              if (name === "수수료율") return [`${Number(value).toFixed(1)}%`, "수수료율"];
+              if (name === "마진율")
                 return [`${Number(payload?.payload?.rawMarginPct ?? value).toFixed(1)}%`, "마진율"];
-              }
               return [`${Number(value).toFixed(1)}%`, "기타 비중"];
             }}
           />

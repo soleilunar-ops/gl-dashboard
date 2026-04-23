@@ -125,6 +125,86 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: upErr.message }, { status: 500 });
   }
 
+  // --- 제조년도 변경 시 item_id 자동 재매핑 ---
+  // 같은 SKU 그룹(item_name_norm + category + unit_count + unit_label)에서
+  // 새 mfy 에 해당하는 manufacture_year의 item을 찾아 order.item_id 교체.
+  // 승인 상태면 stock_movement.item_id도 이동 + 양쪽 item running_stock 재계산.
+  let rematched: { from: number; to: number; year: string } | null = null;
+  let rematchWarning: string | null = null;
+  if (mfy !== undefined && prev.mfy !== next.mfy) {
+    try {
+      const { data: currentOrder } = await admin
+        .from("orders")
+        .select("id, item_id, status")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (currentOrder?.item_id) {
+        const { data: currentItem } = await admin
+          .from("item_master")
+          .select("item_id, item_name_norm, category, unit_count, unit_label, manufacture_year")
+          .eq("item_id", currentOrder.item_id)
+          .maybeSingle();
+        if (currentItem && currentItem.item_name_norm && currentItem.category) {
+          const targetYear = `${String(next.mfy).slice(-2)}년`;
+          if (currentItem.manufacture_year !== targetYear) {
+            let q = admin
+              .from("item_master")
+              .select("item_id")
+              .eq("item_name_norm", currentItem.item_name_norm)
+              .eq("category", currentItem.category)
+              .eq("manufacture_year", targetYear)
+              .eq("is_active", true);
+            if (currentItem.unit_count !== null) q = q.eq("unit_count", currentItem.unit_count);
+            if (currentItem.unit_label !== null) q = q.eq("unit_label", currentItem.unit_label);
+            const { data: candidates } = await q;
+            if (!candidates || candidates.length === 0) {
+              rematchWarning = `${targetYear} 제조연도의 동일 SKU가 없어 item 매칭을 유지합니다.`;
+            } else if (candidates.length > 1) {
+              rematchWarning = `${targetYear} 제조연도에 동일 SKU가 여러 개 있어 수동 확인이 필요합니다.`;
+            } else {
+              const newItemId = candidates[0].item_id;
+              // order.item_id 업데이트
+              const { error: itemUpErr } = await admin
+                .from("orders")
+                .update({ item_id: newItemId })
+                .eq("id", orderId);
+              if (itemUpErr) {
+                rematchWarning = `item 교체 실패: ${itemUpErr.message}`;
+              } else {
+                rematched = {
+                  from: currentOrder.item_id,
+                  to: newItemId,
+                  year: targetYear,
+                };
+                // 승인 상태면 stock_movement.item_id 이동 + 양쪽 running_stock 재계산
+                if (currentOrder.status === "approved") {
+                  await admin
+                    .from("stock_movement")
+                    .update({ item_id: newItemId })
+                    .eq("source_table", "orders")
+                    .eq("source_id", orderId);
+                  // rpc 이름이 생성된 types.ts에 아직 없어 unknown 경유 캐스트
+                  await (
+                    admin as unknown as {
+                      rpc: (
+                        name: string,
+                        args: Record<string, unknown>
+                      ) => Promise<{ error: { message: string } | null }>;
+                    }
+                  ).rpc("recalc_running_stock_for_items", {
+                    p_item_ids: [currentOrder.item_id, newItemId],
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      rematchWarning = e instanceof Error ? e.message : "item 재매핑 처리 중 오류";
+    }
+  }
+
   let autoApproved = false;
   if (row.status === "pending" && isFulfillmentComplete(cq, ca, rqVal, rmVal)) {
     const approvePayload: TablesUpdate<"orders"> = {
@@ -155,5 +235,12 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, orderId, overlay: next, autoApproved });
+  return NextResponse.json({
+    ok: true,
+    orderId,
+    overlay: next,
+    autoApproved,
+    rematched,
+    rematchWarning,
+  });
 }

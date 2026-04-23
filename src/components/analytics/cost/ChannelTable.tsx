@@ -61,13 +61,13 @@ export default function ChannelTable({
           channel: ch.channelName,
           feeText: ch.feeText ?? `${((1 - ch.payoutRate) * 100).toFixed(1)}%`,
           recommendedPriceVAT: r.recommendedPriceVAT,
-          unitProfit: r.unitProfit,
-          actualMargin: r.actualMargin,
+          unitProfit: r.recommendedUnitProfit,
+          actualMargin: r.recommendedMargin,
           isMarginAlert: r.isMarginAlert,
-          isInfeasible: r.isInfeasible,
+          isInfeasible: r.isMarginAlert,
         };
       })
-      .sort((a, b) => b.actualMargin - a.actualMargin);
+      .sort((a, b) => b.recommendedPriceVAT - a.recommendedPriceVAT);
   }, [rates, baseInput]);
 
   const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,8 +127,10 @@ export default function ChannelTable({
               <TableHead className="text-foreground text-left font-semibold">
                 권장가 (VAT 포함)
               </TableHead>
-              <TableHead className="text-foreground text-left font-semibold">개당 순익</TableHead>
-              <TableHead className="text-foreground text-left font-semibold">마진율</TableHead>
+              <TableHead className="text-foreground text-left font-semibold">목표 마진율</TableHead>
+              <TableHead className="text-foreground bg-[#F2BE5C]/25 text-left font-bold">
+                개당 순익
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -142,12 +144,12 @@ export default function ChannelTable({
                     : `${Math.round(row.recommendedPriceVAT).toLocaleString("ko-KR")}원`}
                 </TableCell>
                 <TableCell className="text-left">
+                  {row.isInfeasible ? "달성 불가" : `${(row.actualMargin * 100).toFixed(1)}%`}
+                </TableCell>
+                <TableCell className="bg-[#F2BE5C]/10 text-left text-[15px] font-bold text-[#8A6A1F]">
                   {row.isInfeasible
                     ? "—"
                     : `${Math.round(row.unitProfit).toLocaleString("ko-KR")}원`}
-                </TableCell>
-                <TableCell className="text-left font-semibold">
-                  {row.isInfeasible ? "달성 불가" : `${(row.actualMargin * 100).toFixed(1)}%`}
                 </TableCell>
               </TableRow>
             ))}
