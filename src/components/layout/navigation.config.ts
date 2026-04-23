@@ -11,11 +11,15 @@ export interface NavItem {
 }
 
 export interface NavGroup {
-  title: string;
+  title: string; // 빈 문자열이면 그룹 라벨 숨김 (최상단 단일 항목용)
   items: NavItem[];
 }
 
 export const navigation: NavGroup[] = [
+  {
+    title: "",
+    items: [{ label: "대시보드", path: "/dashboard", icon: "LayoutDashboard" }],
+  },
   { title: "주문", items: navOrders },
   { title: "분석", items: [...navForecast, ...navPromotion, ...navWeatherkey] },
   { title: "물류", items: navLogistics },
