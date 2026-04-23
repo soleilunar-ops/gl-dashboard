@@ -61,7 +61,6 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
               {group.items.map((item) => {
                 const activePath = resolveActivePathInGroup(group.items, pathname);
                 const isActive = activePath !== null && item.path === activePath;
-                const isDashboard = item.path === "/dashboard";
 
                 return (
                   <Link
@@ -70,9 +69,7 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
                     className={cn(
                       "flex items-center rounded-md px-3 py-2 text-[15px] transition-colors",
                       isActive
-                        ? isDashboard
-                          ? "bg-orange-50 font-semibold text-orange-700"
-                          : "bg-accent text-accent-foreground font-medium"
+                        ? "bg-accent text-accent-foreground font-medium"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                     )}
                     aria-current={isActive ? "page" : undefined}
