@@ -24,6 +24,9 @@ export interface HaruruDonePayload {
   citations?: {
     sql: number;
     rag: string[];
+    tables?: string[];
+    query?: string | null;
+    rationale?: string | null;
   };
 }
 

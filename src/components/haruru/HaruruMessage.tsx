@@ -18,15 +18,9 @@ interface HaruruMessageProps {
   onFeedback?: (turn: HaruruTurn, value: "up" | "down", comment?: string) => void;
 }
 
-function RefBadge({ source, refId }: { source: "sql" | "rag"; refId: string }) {
-  return (
-    <sup
-      title={`${source}.${refId}`}
-      className="ml-0.5 inline-flex cursor-help items-center rounded bg-orange-100 px-1 text-[10px] font-medium text-orange-700 hover:bg-orange-200"
-    >
-      {source}.{refId.split(".").pop()}
-    </sup>
-  );
+// 본문에는 근거 태그를 표시하지 않음 (사용자 가독성). 근거는 하단 "근거 보기" 패널에서만.
+function RefBadge(_: { source: "sql" | "rag"; refId: string }) {
+  return null;
 }
 
 /** React node를 재귀 순회하며 string 노드 안의 REF placeholder만 치환 */
@@ -194,17 +188,48 @@ export function HaruruMessage({ turn, onFeedback }: HaruruMessageProps) {
               </button>
             )}
             {showCitations && (
-              <div className="mt-2 space-y-1 rounded bg-gray-50 p-2.5 text-[11px] text-gray-600">
+              <div className="mt-2 space-y-2 rounded bg-gray-50 p-2.5 text-[11px] text-gray-600">
                 {hasSqlCitations && (
                   <div>
-                    <span className="font-medium text-gray-700">SQL</span>{" "}
-                    <span>{citationList!.sql}행 조회</span>
+                    <span className="font-medium text-gray-700">SQL 조회</span>{" "}
+                    <span>{citationList!.sql}행 반환</span>
+                  </div>
+                )}
+                {(citationList?.tables?.length ?? 0) > 0 && (
+                  <div>
+                    <span className="font-medium text-gray-700">사용 테이블</span>
+                    <div className="mt-0.5 flex flex-wrap gap-1">
+                      {citationList!.tables!.map((t) => (
+                        <span
+                          key={t}
+                          className="rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10px] text-orange-700"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {citationList?.query && (
+                  <details>
+                    <summary className="cursor-pointer font-medium text-gray-700 hover:text-gray-900">
+                      SQL 쿼리 (컬럼·조건 포함)
+                    </summary>
+                    <pre className="mt-1 overflow-x-auto rounded bg-white p-2 font-mono text-[10px] whitespace-pre-wrap text-gray-700">
+                      {citationList.query}
+                    </pre>
+                  </details>
+                )}
+                {citationList?.rationale && (
+                  <div>
+                    <span className="font-medium text-gray-700">조회 근거</span>{" "}
+                    <span>{citationList.rationale}</span>
                   </div>
                 )}
                 {hasRagCitations && (
                   <div>
-                    <span className="font-medium text-gray-700">RAG</span>{" "}
-                    <span>{citationList!.rag!.join(", ")}</span>
+                    <span className="font-medium text-gray-700">RAG 문서</span>{" "}
+                    <span className="font-mono text-[10px]">{citationList!.rag!.join(", ")}</span>
                   </div>
                 )}
               </div>

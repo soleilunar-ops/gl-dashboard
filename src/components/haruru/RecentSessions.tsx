@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { History, Plus } from "lucide-react";
-import { fetchRecentSessions, type HaruruRecentSession } from "./useHaruruAgent";
+import { History, Plus, X } from "lucide-react";
+import { deleteSession, fetchRecentSessions, type HaruruRecentSession } from "./useHaruruAgent";
 
 interface RecentSessionsProps {
   currentTurnsCount: number;
@@ -63,16 +63,35 @@ export function RecentSessions({
       {sessions.length > 0 ? (
         <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">
           {sessions.map((s) => (
-            <li key={s.session_id}>
+            <li key={s.session_id} className="group relative">
               <button
                 type="button"
                 onClick={() => onLoad(s.session_id)}
-                className="flex w-full items-center justify-between rounded border border-gray-200 bg-white px-3 py-2 text-left text-xs text-gray-700 hover:border-orange-300 hover:bg-orange-50"
+                className="flex w-full items-center justify-between rounded border border-gray-200 bg-white px-3 py-2 pr-9 text-left text-xs text-gray-700 hover:border-orange-300 hover:bg-orange-50"
               >
                 <span className="line-clamp-1 flex-1 pr-2">{s.title ?? "(제목 없음)"}</span>
                 <span className="shrink-0 text-[11px] text-gray-400">
                   {formatTime(s.last_active_at)}
                 </span>
+              </button>
+              <button
+                type="button"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (!confirm("이 대화를 삭제하시겠습니까?")) return;
+                  try {
+                    await deleteSession(s.session_id);
+                    setSessions((prev) => prev.filter((x) => x.session_id !== s.session_id));
+                  } catch (err) {
+                    alert(
+                      "삭제에 실패했습니다: " + (err instanceof Error ? err.message : String(err))
+                    );
+                  }
+                }}
+                aria-label="대화 삭제"
+                className="absolute top-1/2 right-2 hidden h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-white text-gray-400 ring-1 ring-gray-200 transition-colors group-hover:flex hover:text-red-500"
+              >
+                <X className="h-3 w-3" />
               </button>
             </li>
           ))}

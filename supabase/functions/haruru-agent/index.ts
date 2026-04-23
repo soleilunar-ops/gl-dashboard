@@ -104,24 +104,15 @@ async function getSeasonInfo(sb: any, today: string): Promise<string> {
     .limit(10);
   if (!seasons || seasons.length === 0) return "시즌 정보 없음 (season_config 비어있음)";
 
-  // 1) 오늘이 범위 내이고 is_closed=false인 시즌 우선
-  const active = seasons.find(
-    (s: any) => !s.is_closed && s.start_date <= today && today <= s.end_date
-  );
-  if (active) {
-    return `현재 활성 시즌: ${active.season}시즌 (${active.start_date} ~ ${active.end_date})`;
-  }
-  // 2) 가장 최근 종료된 시즌
-  const lastClosed = seasons.find((s: any) => s.is_closed);
-  if (lastClosed) {
-    return `현재 비수기. 가장 최근 시즌: ${lastClosed.season}시즌 (${lastClosed.start_date} ~ ${lastClosed.end_date})`;
-  }
-  // 3) fallback — 오늘 날짜가 아직 미개시 시즌이면 그 이전 시즌 중 가장 최근
-  const pastOrOngoing = seasons.find((s: any) => s.start_date <= today);
-  if (pastOrOngoing) {
-    return `참고 시즌: ${pastOrOngoing.season}시즌 (${pastOrOngoing.start_date} ~ ${pastOrOngoing.end_date})`;
-  }
-  return "시즌 정보 모호 — season_config 확인 필요";
+  // 비수기 여부 구분 없이, 존재하는 모든 시즌 범위를 나열.
+  // 어느 시즌이든 데이터가 있으면 조회 가능하다는 전제.
+  const lines = seasons
+    .slice(0, 5)
+    .map(
+      (s: any) =>
+        `- ${s.season}시즌 (${s.start_date} ~ ${s.end_date})${s.is_closed ? " 종료" : " 진행/예정"}`
+    );
+  return `데이터가 존재할 수 있는 시즌 전체:\n${lines.join("\n")}\n(현재 날짜가 시즌 밖이어도 해당 시즌 데이터는 조회 가능합니다.)`;
 }
 
 async function getDataCoverage(sb: any): Promise<string> {
@@ -226,17 +217,14 @@ function verify(
   _sqlRows: Record<string, unknown>[],
   _ragChunks: RagChunk[]
 ): { ok: boolean; issues: string[] } {
-  // 엄격한 숫자 매칭은 false positive가 너무 많음 (계산치·비율·성장률 등)
-  // 대신 실전 품질 기준: (1) 답변 길이 (2) 인용 태그 유무
-  const hasRefTag = /\[ref:(sql|rag)\.[^\]]+\]/.test(answer);
+  // 본문에는 근거 태그를 쓰지 않으므로 태그 유무로 검증하지 않음.
+  // 길이·형식 기본 체크만.
   const issues: string[] = [];
   if (answer.trim().length < 80) {
     issues.push("답변이 너무 짧음 — 4단계 구조로 풍부하게 재작성");
   }
-  // 3자리 이상 숫자가 3개 넘는데 ref 태그 0개면 hallucination 의심
-  const bigDigits = (answer.match(/\d{3,}/g) ?? []).length;
-  if (bigDigits >= 3 && !hasRefTag) {
-    issues.push("수치 다수인데 인용 태그 0개 — 출처 미상");
+  if (/\[ref:[^\]]+\]/.test(answer)) {
+    issues.push("본문에 [ref:...] 근거 태그 포함 — 제거하고 자연스러운 문장으로 재작성");
   }
   return { ok: issues.length === 0, issues };
 }
@@ -457,26 +445,32 @@ Deno.serve(async (req) => {
             sqlExecError = r.error;
             if (r.error) console.error(`sql_node run error: ${r.error}`);
           }
-          // 실행 에러가 있으면 에러 메시지를 피드백으로 주고 1회 재작성
-          if (sqlPlan && sqlExecError && sqlRows.length === 0) {
+          // (a) 실행 에러 발생 시 에러 피드백으로 1회 재작성
+          // (b) 에러 없이 0행일 때도 "범위 넓히기" 힌트로 1회 재작성
+          const shouldRetry = sqlPlan && sqlRows.length === 0 && (sqlExecError !== null || true);
+          if (shouldRetry) {
+            const retryHint = sqlExecError
+              ? `⚠ 이전 SQL 실행 시 에러 발생. 스키마 컬럼명/값을 정확히 확인해서 수정하세요. 순수 JSON 하나만.`
+              : `⚠ 이전 SQL이 0행 반환. 필터가 너무 좁습니다. 다음 중 하나로 완화하세요:\n- 날짜 범위를 최근 24개월로 확장\n- 카테고리를 한글 용어 → detail_category 매핑 재확인 (예: "핫팩" → '보온소품')\n- weather_unified 조건이 너무 좁은지 확인 (station='서울' AND precipitation>0 이 기본)\n- "이번 시즌" 같은 표현이면 25시즌+26시즌 모두 포함하는 날짜 범위로 작성\n순수 JSON 하나만.`;
             try {
               const fixedPlan = await callClaudeJson<SqlPlan>({
                 apiKey: anthropicKey,
                 model: sqlModel,
                 system:
                   SQL_PLANNER_PROMPT(todayStr, seasonInfo) +
-                  `\n\n데이터 범위: ${coverage}\n\n⚠ 이전 SQL 실행 시 에러 발생. 스키마 컬럼명/값을 정확히 확인해서 수정하세요. 순수 JSON 하나만.`,
-                userContent: `[이전 SQL 에러]\n${sqlExecError}\n\n[이전 SQL]\n${sqlPlan.sql}\n\n[원 질문]\naxis=${intentRes.axis}\n${sqlContextBlock}${question}`,
+                  `\n\n데이터 범위: ${coverage}\n\n${retryHint}`,
+                userContent: `[이전 SQL ${sqlExecError ? "에러" : "0행 결과"}]\n${sqlExecError ?? "rows=0 (SQL은 성공했으나 조건에 맞는 데이터 없음)"}\n\n[이전 SQL]\n${sqlPlan.sql}\n\n[원 질문]\naxis=${intentRes.axis}\n${sqlContextBlock}${question}`,
               });
               const r2 = await runSql(sb, fixedPlan.sql);
               if (!r2.error && r2.rows.length > 0) {
                 sqlPlan = fixedPlan;
                 sqlRows = r2.rows;
+                sqlExecError = null;
               } else if (r2.error) {
-                console.error(`sql_node fix retry error: ${r2.error}`);
+                console.error(`sql_node retry error: ${r2.error}`);
               }
             } catch (e) {
-              console.error(`sql_node fix retry fail: ${(e as Error).message}`);
+              console.error(`sql_node retry fail: ${(e as Error).message}`);
             }
           }
         }
@@ -622,6 +616,9 @@ Deno.serve(async (req) => {
             citations: {
               sql: sqlRows.length,
               rag: ragChunks.map((c) => `${c.source_table}.${c.id}`),
+              tables: sqlPlan?.tables ?? [],
+              query: sqlPlan?.sql ?? null,
+              rationale: sqlPlan?.rationale ?? null,
             },
           })
         );

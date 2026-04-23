@@ -45,7 +45,7 @@ export function useGenerateWeeklyBrief(opts: { onSuccess?: () => void } = {}) {
             apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
             Authorization: `Bearer ${token ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
           },
-          body: JSON.stringify(args),
+          body: JSON.stringify({ week_start: args.weekStart, force: args.force }),
         });
 
         // 응답 본문 확인 (에러 시에도)

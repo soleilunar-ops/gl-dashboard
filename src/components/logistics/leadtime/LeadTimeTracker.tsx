@@ -278,6 +278,68 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
         </div>
       </div>
 
+      {/* 발주건 상세 카드 — 선택된 건의 4단계 트래커 (테이블 위로 이동) */}
+      {selected && (
+        <Card className="mb-6">
+          <CardHeader>
+            <p className="text-center text-base font-semibold">
+              {selected.po_number}. {selected.product_name}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:overflow-x-auto">
+              {DB_STEPS.map(({ db, label }, idx) => (
+                <LeadTimeStageCard
+                  key={label}
+                  row={selected}
+                  db={db}
+                  label={label}
+                  isLast={idx === DB_STEPS.length - 1}
+                  draftDate={draftDates[db] ?? ""}
+                  draftExpected={draftExpected[db] ?? ""}
+                  onDraftDateChange={(v) => setDraftDates((d) => ({ ...d, [db]: v }))}
+                  onDraftExpectedChange={(v) => setDraftExpected((d) => ({ ...d, [db]: v }))}
+                  blInput={blInput}
+                  onBlInputChange={setBlInput}
+                  blLookupLoading={blLookupLoading}
+                  blMessage={blMessage}
+                  onBlLookup={() => void handleBlLookup()}
+                />
+              ))}
+            </div>
+          </CardContent>
+          <CardFooter className="flex flex-wrap justify-end gap-2 border-t-0 bg-transparent pt-0 pb-4">
+            <Button type="button" variant="outline" onClick={() => void handleSaveDates()}>
+              저장
+            </Button>
+            <Button
+              type="button"
+              onClick={() => selected && void approveOrder(selected.id)}
+              disabled={selected?.is_approved}
+            >
+              승인
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (!selected) return;
+                if (
+                  !window.confirm(
+                    `「${selected.po_number}」건을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`
+                  )
+                ) {
+                  return;
+                }
+                void deleteOrder(selected.id);
+              }}
+            >
+              삭제
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
+
       <div className="mb-10 overflow-x-auto">
         <Table>
           <TableHeader>
@@ -389,68 +451,6 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
           </TableBody>
         </Table>
       </div>
-
-      {/* 발주건 상세 카드 — 발주번호 + 품목명 중앙 정렬, 경계선 제거 */}
-      {selected && (
-        <Card className="mb-8">
-          <CardHeader>
-            <p className="text-center text-base font-semibold">
-              {selected.po_number}. {selected.product_name}
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:overflow-x-auto">
-              {DB_STEPS.map(({ db, label }, idx) => (
-                <LeadTimeStageCard
-                  key={label}
-                  row={selected}
-                  db={db}
-                  label={label}
-                  isLast={idx === DB_STEPS.length - 1}
-                  draftDate={draftDates[db] ?? ""}
-                  draftExpected={draftExpected[db] ?? ""}
-                  onDraftDateChange={(v) => setDraftDates((d) => ({ ...d, [db]: v }))}
-                  onDraftExpectedChange={(v) => setDraftExpected((d) => ({ ...d, [db]: v }))}
-                  blInput={blInput}
-                  onBlInputChange={setBlInput}
-                  blLookupLoading={blLookupLoading}
-                  blMessage={blMessage}
-                  onBlLookup={() => void handleBlLookup()}
-                />
-              ))}
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-wrap justify-end gap-2 border-t-0 bg-transparent pt-0 pb-4">
-            <Button type="button" variant="outline" onClick={() => void handleSaveDates()}>
-              저장
-            </Button>
-            <Button
-              type="button"
-              onClick={() => selected && void approveOrder(selected.id)}
-              disabled={selected?.is_approved}
-            >
-              승인
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => {
-                if (!selected) return;
-                if (
-                  !window.confirm(
-                    `「${selected.po_number}」건을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`
-                  )
-                ) {
-                  return;
-                }
-                void deleteOrder(selected.id);
-              }}
-            >
-              삭제
-            </Button>
-          </CardFooter>
-        </Card>
-      )}
 
       <NewLeadTimeDialog
         open={dialogOpen}

@@ -18,6 +18,7 @@ import { WeeklyBriefSectionChips } from "./WeeklyBriefSectionChips";
 import { WeeklyBriefFooter } from "./WeeklyBriefFooter";
 import { WeeklyBriefGenerateCTA } from "./WeeklyBriefGenerateCTA";
 import { WeeklyBriefHistory } from "./WeeklyBriefHistory";
+import { WeeklyBriefHistoryModal } from "./WeeklyBriefHistoryModal";
 import "./weekly-brief.css";
 
 function currentWeekStart(): string {
@@ -37,6 +38,7 @@ function isThisWeek(iso: string): boolean {
 export function WeeklyBriefCard() {
   const { data: gate, isLoading: gateLoading, refetch: refetchGate } = useWeeklyBriefGate();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const { data: reports } = useWeeklyBriefList(5, refreshKey);
   const audio = useAudioPlayer();
 
@@ -79,6 +81,14 @@ export function WeeklyBriefCard() {
                 <a href={`/dashboard?brief=${thisWeekReport.id}`} className="wr-btn">
                   📄 전체 보기
                 </a>
+                <button
+                  type="button"
+                  className="wr-btn"
+                  onClick={() => setHistoryOpen(true)}
+                  aria-label="저장된 리포트 전체 보기"
+                >
+                  📚 지난 리포트
+                </button>
                 <button
                   type="button"
                   className={`wr-btn ${
@@ -146,6 +156,16 @@ export function WeeklyBriefCard() {
                   최근 7일 데이터 집계 + Claude Sonnet 4.6 · 약 15~25초 소요
                 </p>
               </div>
+              <div className="wr-header-actions">
+                <button
+                  type="button"
+                  className="wr-btn"
+                  onClick={() => setHistoryOpen(true)}
+                  aria-label="저장된 리포트 전체 보기"
+                >
+                  📚 지난 리포트
+                </button>
+              </div>
             </header>
 
             <WeeklyBriefHistory limit={5} refreshKey={refreshKey} />
@@ -158,6 +178,11 @@ export function WeeklyBriefCard() {
           </>
         )}
       </article>
+      <WeeklyBriefHistoryModal
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        currentReportId={thisWeekReport?.id}
+      />
     </div>
   );
 }
