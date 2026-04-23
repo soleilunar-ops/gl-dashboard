@@ -27,11 +27,13 @@ export function useWeeklyBriefGate(): GateHookResult {
     (async () => {
       setIsLoading(true);
       try {
-        // RPC 이름이 Database 타입에 반영되지 않아 unknown 캐스트로 우회
-        const call = sb.rpc as unknown as (
-          name: string
-        ) => Promise<{ data: unknown; error: { message: string } | null }>;
-        const { data: gate, error: e } = await call("can_generate_weekly_brief");
+        // sb.rpc를 분리해서 호출하면 this 컨텍스트가 손실됨 (supabase-js 내부의 rest 프로퍼티 접근 실패).
+        // sb 자체를 캐스트하고 메서드 호출 형태를 유지해야 함.
+        const { data: gate, error: e } = await (
+          sb as unknown as {
+            rpc: (name: string) => Promise<{ data: unknown; error: { message: string } | null }>;
+          }
+        ).rpc("can_generate_weekly_brief");
         if (cancelled) return;
         if (e) {
           console.error("[useWeeklyBriefGate] RPC error:", e);

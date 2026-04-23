@@ -38,7 +38,7 @@ export function WeeklyBriefGenerateCTA({ gate, gateLoading, onSuccess }: Props) 
           className="wr-cta-button wr-cta-primary"
           onClick={() => {
             generate.reset();
-            generate.mutate({});
+            generate.mutate({ force: true });
           }}
         >
           다시 생성하기
@@ -52,7 +52,7 @@ export function WeeklyBriefGenerateCTA({ gate, gateLoading, onSuccess }: Props) 
       <button
         type="button"
         className="wr-cta-button wr-cta-primary"
-        onClick={() => generate.mutate({})}
+        onClick={() => generate.mutate({ force: true })}
         data-testid="weekly-brief-generate"
       >
         <SparkleIcon />

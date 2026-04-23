@@ -1,6 +1,4 @@
 import { navOrders } from "./nav-orders";
-import { navForecast } from "./nav-forecast";
-import { navPromotion } from "./nav-promotion";
 import { navLogistics } from "./nav-logistics";
 import { navWeatherkey } from "./nav-weatherkey";
 
@@ -21,6 +19,6 @@ export const navigation: NavGroup[] = [
     items: [{ label: "대시보드", path: "/dashboard", icon: "LayoutDashboard" }],
   },
   { title: "주문", items: navOrders },
-  { title: "분석", items: [...navForecast, ...navPromotion, ...navWeatherkey] },
+  { title: "분석", items: navWeatherkey },
   { title: "물류", items: navLogistics },
 ];

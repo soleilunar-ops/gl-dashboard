@@ -1,6 +1,7 @@
 "use client";
 
 // 2열 — Top3 게이지 + 물류 플로우(상해→인천→파주) + Insight(orange)
+import { Fragment } from "react";
 import type { SeasonProfile } from "@/lib/demo";
 
 interface Props {
@@ -88,8 +89,8 @@ export function BriefingInventoryColumn({ data }: Props) {
                 const active = data.inTransit!.currentStep === step;
                 const done = data.inTransit!.currentStep > step;
                 return (
-                  <>
-                    <div key={`s-${step}`} className="hb-flow-step">
+                  <Fragment key={step}>
+                    <div className="hb-flow-step">
                       <div
                         className={`hb-flow-dot ${active ? "hb-active" : done ? "hb-done" : "hb-inactive"}`}
                       />
@@ -100,12 +101,9 @@ export function BriefingInventoryColumn({ data }: Props) {
                       </span>
                     </div>
                     {idx < 2 && (
-                      <div
-                        key={`l-${step}`}
-                        className={`hb-flow-line ${done ? "hb-done" : "hb-pending"}`}
-                      />
+                      <div className={`hb-flow-line ${done ? "hb-done" : "hb-pending"}`} />
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </div>

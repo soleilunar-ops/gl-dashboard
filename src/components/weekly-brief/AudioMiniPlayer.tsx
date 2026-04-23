@@ -3,24 +3,12 @@
 import { useAudioPlayer } from "@/contexts/AudioPlayerContext";
 import "./weekly-brief.css";
 
-function formatTime(s: number): string {
-  if (!isFinite(s) || s < 0) return "0:00";
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${String(sec).padStart(2, "0")}`;
-}
-
 const sectionLabels: Record<string, string> = {
   insight: "종합 인사이트",
   all: "주간 리포트 전체",
-  orders: "§ 1 주문",
-  hotpack_season: "§ 2 핫팩 시즌",
-  offseason: "§ 2' 비시즌",
-  inventory: "§ 3 총재고",
-  import_leadtime: "§ 4 수입 리드타임",
-  milkrun: "§ 5 쿠팡 밀크런",
-  external: "§ 6 외부 신호",
-  noncompliance: "§ 7 납품 미준수",
+  sales_highlight: "1. 판매 하이라이트",
+  weather_trigger: "2. 날씨·트리거",
+  transport: "3. 운송 현황",
 };
 
 export function AudioMiniPlayer() {
@@ -29,7 +17,8 @@ export function AudioMiniPlayer() {
   if (!audio.reportId) return null;
 
   const label = sectionLabels[audio.section ?? ""] ?? audio.section ?? "";
-  const curTime = audio.progress * audio.duration;
+  const chunkInfo =
+    audio.totalChunks > 1 ? `${audio.currentChunk + 1} / ${audio.totalChunks} 청크` : "";
 
   return (
     <div className="wr-root">
@@ -53,9 +42,7 @@ export function AudioMiniPlayer() {
           <div className="wr-audio-progress">
             <div className="wr-audio-bar" style={{ width: `${audio.progress * 100}%` }} />
           </div>
-          <div className="wr-audio-time">
-            {formatTime(curTime)} / {formatTime(audio.duration)}
-          </div>
+          <div className="wr-audio-time">{chunkInfo}</div>
         </div>
         <button type="button" className="wr-audio-close" onClick={audio.close} aria-label="닫기">
           ✕

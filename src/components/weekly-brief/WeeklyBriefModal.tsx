@@ -6,18 +6,14 @@ import { useWeeklyBrief } from "@/lib/dashboard/weekly-brief/useWeeklyBriefList"
 import { ReportSection } from "./ReportSection";
 import { ReportSectionToc } from "./ReportSectionToc";
 import { AskAboutReport } from "./AskAboutReport";
+import { useAudioPlayer } from "@/contexts/AudioPlayerContext";
 import { stripRef } from "@/lib/dashboard/weekly-brief/stripRef";
 import "./weekly-brief.css";
 
 const SECTION_TITLES: Record<string, string> = {
-  orders: "§ 1. 주문 현황",
-  hotpack_season: "§ 2. 핫팩 시즌 분석",
-  offseason: "§ 2'. 비시즌 품목 분석",
-  inventory: "§ 3. 총재고",
-  import_leadtime: "§ 4. 수입 리드타임",
-  milkrun: "§ 5. 쿠팡 밀크런",
-  external: "§ 6. 외부 신호",
-  noncompliance: "§ 7. 납품 미준수",
+  sales_highlight: "1. 이번 주 판매 하이라이트",
+  weather_trigger: "2. 다음 주 날씨 · 트리거",
+  transport: "3. 운송 현황",
 };
 
 export function WeeklyBriefModal() {
@@ -25,6 +21,7 @@ export function WeeklyBriefModal() {
   const router = useRouter();
   const reportId = params.get("brief");
   const contentRef = useRef<HTMLElement | null>(null);
+  const audio = useAudioPlayer();
 
   const { data, isLoading, error } = useWeeklyBrief(reportId);
 
@@ -79,14 +76,16 @@ export function WeeklyBriefModal() {
                 </h2>
               )}
             </div>
-            <button
-              type="button"
-              className="wr-modal-close"
-              onClick={() => router.back()}
-              aria-label="닫기"
-            >
-              ✕
-            </button>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <button
+                type="button"
+                className="wr-modal-close"
+                onClick={() => router.back()}
+                aria-label="닫기"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           {isLoading && (
@@ -118,13 +117,31 @@ export function WeeklyBriefModal() {
                     <h3 className="wr-section-title">🔍 이번 주 종합 인사이트</h3>
                     <button
                       type="button"
-                      className="wr-section-tts"
+                      className={`wr-section-tts ${
+                        audio.reportId === data.id && audio.section === "insight" && audio.isPlaying
+                          ? "is-active"
+                          : ""
+                      }`}
                       onClick={() => {
-                        /* insight TTS는 외부 AudioMiniPlayer 통해 별도 호출 */
+                        if (
+                          audio.reportId === data.id &&
+                          audio.section === "insight" &&
+                          audio.isPlaying
+                        ) {
+                          audio.pauseResume();
+                        } else {
+                          audio.play(data.id, "insight");
+                        }
                       }}
                       aria-label="인사이트 음성 재생"
                     >
-                      🔊
+                      {audio.isLoading && audio.reportId === data.id && audio.section === "insight"
+                        ? "⏳"
+                        : audio.reportId === data.id &&
+                            audio.section === "insight" &&
+                            audio.isPlaying
+                          ? "⏸"
+                          : "🔊"}
                     </button>
                   </header>
                   <div className="wr-section-body">
@@ -158,7 +175,6 @@ export function WeeklyBriefModal() {
                   return (
                     <ReportSection
                       key={k}
-                      reportId={data.id}
                       sectionKey={k}
                       title={SECTION_TITLES[k]}
                       content={content}

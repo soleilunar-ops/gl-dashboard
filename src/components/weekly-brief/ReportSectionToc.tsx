@@ -4,14 +4,9 @@ import { useEffect, useState } from "react";
 import type { WeeklyBriefSections } from "@/lib/dashboard/weekly-brief/types";
 
 const TOC_ORDER: Array<{ key: keyof WeeklyBriefSections; label: string }> = [
-  { key: "orders", label: "§ 1 주문" },
-  { key: "hotpack_season", label: "§ 2 핫팩 시즌" },
-  { key: "offseason", label: "§ 2' 비시즌" },
-  { key: "inventory", label: "§ 3 총재고" },
-  { key: "import_leadtime", label: "§ 4 수입 리드타임" },
-  { key: "milkrun", label: "§ 5 쿠팡 밀크런" },
-  { key: "external", label: "§ 6 외부 신호" },
-  { key: "noncompliance", label: "§ 7 납품 미준수" },
+  { key: "sales_highlight", label: "1. 판매 하이라이트" },
+  { key: "weather_trigger", label: "2. 날씨 · 트리거" },
+  { key: "transport", label: "3. 운송 현황" },
 ];
 
 interface Props {

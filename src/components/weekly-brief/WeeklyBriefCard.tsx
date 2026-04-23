@@ -11,6 +11,7 @@
 import { useMemo, useState } from "react";
 import { useWeeklyBriefGate } from "@/lib/dashboard/weekly-brief/useWeeklyBriefGate";
 import { useWeeklyBriefList } from "@/lib/dashboard/weekly-brief/useWeeklyBriefList";
+import { useAudioPlayer } from "@/contexts/AudioPlayerContext";
 import { WeeklyBriefHeadline } from "./WeeklyBriefHeadline";
 import { WeeklyBriefAlerts } from "./WeeklyBriefAlerts";
 import { WeeklyBriefSectionChips } from "./WeeklyBriefSectionChips";
@@ -37,6 +38,7 @@ export function WeeklyBriefCard() {
   const { data: gate, isLoading: gateLoading, refetch: refetchGate } = useWeeklyBriefGate();
   const [refreshKey, setRefreshKey] = useState(0);
   const { data: reports } = useWeeklyBriefList(5, refreshKey);
+  const audio = useAudioPlayer();
 
   // 금주 리포트 1건 찾기 (가장 최근)
   const thisWeekReport = useMemo(
@@ -77,12 +79,43 @@ export function WeeklyBriefCard() {
                 <a href={`/dashboard?brief=${thisWeekReport.id}`} className="wr-btn">
                   📄 전체 보기
                 </a>
-                <a
-                  href={`/dashboard?brief=${thisWeekReport.id}#section-insight`}
-                  className="wr-btn"
+                <button
+                  type="button"
+                  className={`wr-btn ${
+                    audio.reportId === thisWeekReport.id &&
+                    audio.section === "insight" &&
+                    audio.isPlaying
+                      ? "is-active"
+                      : ""
+                  }`}
+                  onClick={() => {
+                    if (
+                      audio.reportId === thisWeekReport.id &&
+                      audio.section === "insight" &&
+                      audio.isPlaying
+                    ) {
+                      audio.pauseResume();
+                    } else {
+                      audio.play(thisWeekReport.id, "insight");
+                    }
+                  }}
+                  disabled={
+                    audio.isLoading &&
+                    audio.reportId === thisWeekReport.id &&
+                    audio.section === "insight"
+                  }
+                  aria-label="이번 주 인사이트 음성 재생"
                 >
-                  🔊 인사이트
-                </a>
+                  {audio.isLoading &&
+                  audio.reportId === thisWeekReport.id &&
+                  audio.section === "insight"
+                    ? "⏳ 생성 중..."
+                    : audio.reportId === thisWeekReport.id &&
+                        audio.section === "insight" &&
+                        audio.isPlaying
+                      ? "⏸ 일시정지"
+                      : "🔊 인사이트"}
+                </button>
               </div>
             </header>
 
