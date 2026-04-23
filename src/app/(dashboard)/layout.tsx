@@ -13,7 +13,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="bg-background flex h-full">
       <Sidebar open={sidebarOpen} onToggle={toggleSidebar} />
-      <div className="flex flex-1 flex-col">
+      {/* min-w-0 필수: 자식의 넓은 테이블(min-w-1260px)이 flex 컨테이너를 뚫고 나가는 것 방지 */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <Header onToggleSidebar={toggleSidebar} sidebarOpen={sidebarOpen} />
         <main className="bg-background flex-1 overflow-y-auto">{children}</main>
       </div>

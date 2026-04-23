@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef } from "react";
-import { FileSpreadsheet, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,20 +94,12 @@ export default function ChannelTable({
               type="button"
               variant="outline"
               size="sm"
-              className="gap-2"
               onClick={() => fileInputRef.current?.click()}
             >
-              <FileSpreadsheet className="h-4 w-4" />
               채널별 수수료율 업데이트
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-xs"
-              onClick={onDownloadChannelTemplate}
-            >
-              템플릿
+            <Button type="button" variant="outline" size="sm" onClick={onDownloadChannelTemplate}>
+              엑셀 다운로드
             </Button>
           </div>
         </div>
@@ -128,30 +120,33 @@ export default function ChannelTable({
       <CardContent>
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>채널명</TableHead>
-              <TableHead className="text-right">수수료율</TableHead>
-              <TableHead className="text-right">권장가 (VAT 포함)</TableHead>
-              <TableHead className="text-right">개당 순익</TableHead>
-              <TableHead className="text-right">마진율</TableHead>
+            {/* 제목행 — 아주 연한 #F2BE5C 배경 + 검정 텍스트 + 좌측 정렬 (본문과 동일) */}
+            <TableRow className="bg-[#F2BE5C]/10 hover:bg-[#F2BE5C]/10">
+              <TableHead className="text-foreground text-left font-semibold">채널명</TableHead>
+              <TableHead className="text-foreground text-left font-semibold">수수료율</TableHead>
+              <TableHead className="text-foreground text-left font-semibold">
+                권장가 (VAT 포함)
+              </TableHead>
+              <TableHead className="text-foreground text-left font-semibold">개당 순익</TableHead>
+              <TableHead className="text-foreground text-left font-semibold">마진율</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.channel} className={row.isMarginAlert ? "bg-red-50" : ""}>
-                <TableCell className="font-medium">{row.channel}</TableCell>
-                <TableCell className="text-right">{row.feeText}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-left font-medium">{row.channel}</TableCell>
+                <TableCell className="text-left">{row.feeText}</TableCell>
+                <TableCell className="text-left">
                   {row.isInfeasible
                     ? "—"
                     : `${Math.round(row.recommendedPriceVAT).toLocaleString("ko-KR")}원`}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-left">
                   {row.isInfeasible
                     ? "—"
                     : `${Math.round(row.unitProfit).toLocaleString("ko-KR")}원`}
                 </TableCell>
-                <TableCell className="text-right font-semibold">
+                <TableCell className="text-left font-semibold">
                   {row.isInfeasible ? "달성 불가" : `${(row.actualMargin * 100).toFixed(1)}%`}
                 </TableCell>
               </TableRow>

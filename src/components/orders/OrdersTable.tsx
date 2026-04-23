@@ -317,9 +317,13 @@ export function OrdersTable({
   };
 
   const pageNumbers = useMemo(() => {
+    // 항상 5개 페이지 번호 표시 (끝단에서도 5개 유지)
+    const windowSize = 5;
+    const half = Math.floor(windowSize / 2);
+    let start = Math.max(0, page - half);
+    let end = Math.min(totalPages - 1, start + windowSize - 1);
+    start = Math.max(0, end - windowSize + 1);
     const nums: number[] = [];
-    const start = Math.max(0, page - 2);
-    const end = Math.min(totalPages - 1, page + 2);
     for (let i = start; i <= end; i += 1) nums.push(i);
     return nums;
   }, [page, totalPages]);
@@ -327,7 +331,7 @@ export function OrdersTable({
   const dialogFiles = docOrderId !== null ? (attachmentsByOrder[docOrderId] ?? []) : [];
   const stickyBg = "bg-background";
   const headCommon =
-    "h-10 px-2 align-middle font-medium text-center text-xs whitespace-nowrap [&:has([role=checkbox])]:pr-0";
+    "h-10 px-2 align-middle font-medium text-center text-[13px] whitespace-nowrap [&:has([role=checkbox])]:pr-0";
   const headMuted = "bg-muted/60";
   const stickyHead = "bg-muted/80 backdrop-blur-sm";
 
@@ -335,7 +339,7 @@ export function OrdersTable({
     <div className="space-y-3">
       <div className="rounded-md border">
         <div className="relative max-w-full overflow-x-auto">
-          <Table className="min-w-[1260px]">
+          <Table className="min-w-[1260px] text-[13px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className={`${headCommon} ${headMuted} border-border min-w-10 border-r`}>
@@ -734,8 +738,8 @@ export function OrdersTable({
         </DialogContent>
       </Dialog>
 
-      <div className="flex items-center justify-between">
-        <p className="text-muted-foreground text-xs">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-muted-foreground text-xs whitespace-nowrap">
           {totalCount.toLocaleString("ko-KR")}건 · {page + 1} / {totalPages} 페이지
         </p>
         <Pagination>
@@ -743,6 +747,7 @@ export function OrdersTable({
             <PaginationItem>
               <PaginationPrevious
                 href="#"
+                text=""
                 onClick={(e) => {
                   e.preventDefault();
                   if (page > 0) onPageChange(page - 1);
@@ -767,6 +772,7 @@ export function OrdersTable({
             <PaginationItem>
               <PaginationNext
                 href="#"
+                text=""
                 onClick={(e) => {
                   e.preventDefault();
                   if (page < totalPages - 1) onPageChange(page + 1);

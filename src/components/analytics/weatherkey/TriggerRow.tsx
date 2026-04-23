@@ -1,17 +1,7 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
-import { AlertTriangle, Snowflake, TrendingUp, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TRIGGER_COLORS, TRIGGER_LABELS, type TriggerName } from "./_tokens";
-
-const ICONS: Record<TriggerName, LucideIcon> = {
-  cold_shock: Zap,
-  compound: AlertTriangle,
-  first_freeze: Snowflake,
-  search_spike_hotpack: TrendingUp,
-  search_spike_any: TrendingUp,
-};
 
 const LEVEL_BG: Record<string, string> = {
   critical: "bg-[color:var(--hotpack-trigger-critical)]/10",
@@ -23,12 +13,6 @@ const LEVEL_BAR: Record<string, string> = {
   critical: "bg-[color:var(--hotpack-trigger-critical)]",
   high: "bg-[color:var(--hotpack-trigger-high)]",
   medium: "bg-[color:var(--hotpack-trigger-medium)]",
-};
-
-const LEVEL_TEXT: Record<string, string> = {
-  critical: "text-[color:var(--hotpack-trigger-critical)]",
-  high: "text-[color:var(--hotpack-trigger-high)]",
-  medium: "text-[color:var(--hotpack-trigger-medium)]",
 };
 
 interface Props {
@@ -49,7 +33,6 @@ export default function TriggerRow({
   onClick,
   isHighlighted,
 }: Props) {
-  const Icon = ICONS[trigger];
   const { level } = TRIGGER_COLORS[trigger];
   const label = TRIGGER_LABELS[trigger];
 
@@ -63,7 +46,6 @@ export default function TriggerRow({
           LEVEL_BAR[level]
         )}
       />
-      <Icon className={cn("h-3.5 w-3.5 shrink-0", LEVEL_TEXT[level])} aria-hidden />
       <span className="shrink-0 font-medium">{label}</span>
       {subTriggers && subTriggers.length > 0 && (
         <span className="flex gap-1">

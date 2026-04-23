@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
@@ -129,49 +129,38 @@ export default function AIBriefStubCard({ seasonName }: Props) {
   const result = state.kind === "result" ? state : null;
 
   return (
-    <Card>
+    <Card className="py-0">
       <CardContent className="flex flex-col gap-4 p-5">
         {/* 헤더 */}
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-base font-semibold">AI 리포트</div>
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-[color:var(--hotpack-trigger-high)]" aria-hidden />
-            <div className="text-base font-semibold">AI 시즌 브리프</div>
-          </div>
-          <span className="text-muted-foreground bg-muted/40 rounded border px-2 py-0.5 font-mono text-[11px]">
-            {result ? result.report.model : "claude-sonnet-4-6"}
-          </span>
-        </div>
-
-        <div className="text-muted-foreground text-sm leading-relaxed">
-          선택한 시즌(
-          <span className="text-foreground font-medium">{seasonName ?? "–"}</span>
-          )의 판매·기온·키워드 데이터를 Claude가 분석한 운영 리포트
-        </div>
-
-        {/* Action bar */}
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            onClick={() => handleGenerate(Boolean(result))}
-            disabled={isLoading || !seasonName}
-            size="sm"
-            variant="outline"
-            className="h-8 gap-2 text-sm"
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <RefreshCw className="h-4 w-4" aria-hidden />
-            )}
-            {isLoading ? "분석 중..." : "다시 생성"}
-          </Button>
-          {result && (
-            <span className="text-muted-foreground text-xs">
-              생성 {new Date(result.report.generated_at).toLocaleString("ko-KR")}
-              {result.cached && " · 캐시"}
+            <Button
+              onClick={() => handleGenerate(Boolean(result))}
+              disabled={isLoading || !seasonName}
+              size="sm"
+              variant="outline"
+              className="text-foreground bg-muted/40 h-8 gap-2 rounded-md border px-3 font-mono text-xs font-normal"
+            >
+              {isLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {isLoading ? "분석 중..." : "다시 생성"}
+            </Button>
+            <span className="text-foreground bg-muted/40 inline-flex h-8 items-center rounded-md border px-3 font-mono text-xs">
+              {result ? result.report.model : "claude-sonnet-4-6"}
             </span>
-          )}
-          <span className="text-muted-foreground ml-auto text-xs">rate limit 10분 1회</span>
+          </div>
         </div>
+
+        {result && (
+          <div className="text-muted-foreground -mt-2 text-right text-xs">
+            생성 {new Date(result.report.generated_at).toLocaleString("ko-KR")}
+            {result.cached && " · 캐시"}
+          </div>
+        )}
 
         {state.kind === "loading" && (
           <div className="bg-muted/40 animate-pulse rounded-md border p-4 text-sm">
@@ -202,7 +191,7 @@ function BriefBody({ data }: { data: BriefJson }) {
       <Section num={1} title="한 줄 요약">
         <p className="text-sm leading-relaxed">
           {data.summary.text}{" "}
-          <span className="ml-1 inline-flex items-center rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+          <span className="text-foreground bg-muted ml-1 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold">
             {data.summary.tag}
           </span>
         </p>
@@ -216,10 +205,10 @@ function BriefBody({ data }: { data: BriefJson }) {
           {data.baseline_change.chips.map((c) => (
             <div
               key={c.label}
-              className="bg-muted/40 flex items-baseline gap-1.5 rounded border px-2.5 py-1 text-xs"
+              className="text-foreground bg-muted inline-flex items-baseline gap-1.5 rounded-md px-3 py-1 text-xs font-semibold"
             >
-              <span className="text-muted-foreground">{c.label}</span>
-              <span className="font-semibold tabular-nums">{c.value}</span>
+              <span className="text-muted-foreground font-medium">{c.label}</span>
+              <span className="tabular-nums">{c.value}</span>
             </div>
           ))}
         </div>
@@ -227,7 +216,7 @@ function BriefBody({ data }: { data: BriefJson }) {
 
       <Section num={3} title="첫 돌파일 관찰">
         <p className="text-sm leading-relaxed">{renderInlineCode(data.first_breakthrough.text)}</p>
-        <div className="mt-2 inline-block rounded border border-dashed border-amber-300 bg-amber-50/60 px-3 py-1.5 text-xs font-medium text-amber-900">
+        <div className="text-foreground bg-muted mt-2 inline-block rounded-md px-3 py-1.5 text-xs font-semibold">
           {data.first_breakthrough.highlight}
         </div>
       </Section>
@@ -244,27 +233,24 @@ function BriefBody({ data }: { data: BriefJson }) {
 }
 
 function KpiStrip({ k }: { k: BriefJson["kpis"] }) {
-  const cards = [
+  const cards: Array<{ label: string; value: React.ReactNode; sublabel?: string }> = [
     { label: "시즌 총판매", value: k.total_units_label },
     { label: "총 매출", value: k.total_gmv_label },
     {
       label: "최고 판매일",
-      value: (
-        <>
-          {k.peak_units.toLocaleString("ko-KR")}
-          <span className="text-muted-foreground ml-1.5 text-xs font-normal">
-            {k.peak_date_mmdd}
-          </span>
-        </>
-      ),
+      value: k.peak_units.toLocaleString("ko-KR"),
+      sublabel: k.peak_date_mmdd,
     },
     { label: "기온-판매 연관도", value: k.r_log.toFixed(3) },
   ];
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {cards.map((c, i) => (
-        <div key={i} className="bg-muted/20 rounded-md border px-3 py-2.5">
+        <div key={i} className="bg-muted/20 rounded-md border px-3 py-2.5 text-center">
           <div className="text-muted-foreground text-[11px]">{c.label}</div>
+          {c.sublabel ? (
+            <div className="text-muted-foreground mt-0.5 text-xs">{c.sublabel}</div>
+          ) : null}
           <div className="mt-0.5 text-lg font-semibold tabular-nums">{c.value}</div>
         </div>
       ))}

@@ -7,11 +7,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ORDER_COMPANIES, type OrderCompanyCode } from "@/lib/orders/orderMeta";
-import type { OrderErpSystem } from "./_hooks/useOrders";
+import type { OrderErpSystem, OrderStatus } from "./_hooks/useOrders";
 import type { OrderErpDealKind } from "./OrderErpSyncPanel";
 
 /** 거래유형 버튼 고정 순서 — 변경 이유: 생산입고 필터 버튼 제거(후속 Supabase 테이블 매핑 시 정리) */
 const ALL_DEAL_KINDS: OrderErpDealKind[] = ["purchase", "sales", "returns"];
+
+/** 상태 필터 버튼 고정 순서 — 전체/승인대기/승인완료/거절 */
+const ALL_STATUS_KINDS: OrderStatus[] = ["all", "pending", "approved", "rejected"];
+
+function statusLabel(s: OrderStatus): string {
+  if (s === "all") return "전체";
+  if (s === "pending") return "승인대기";
+  if (s === "approved") return "승인완료";
+  return "거절";
+}
 
 interface Props {
   /** 상단 카드에서 허용된 기업(목록 버튼은 항상 노출, 여기 없으면 비활성) */
@@ -26,6 +36,9 @@ interface Props {
   onToggleNarrowDealKind: (...args: [OrderErpDealKind]) => void;
   itemSearch: string;
   onItemSearchChange: (...args: [string]) => void;
+  /** 현재 상태 필터(전체/승인대기/승인완료/거절) */
+  status?: OrderStatus;
+  onStatusChange?: (...args: [OrderStatus]) => void;
   variant?: "card" | "embedded";
   hideEmbeddedLabel?: boolean;
 }
@@ -59,6 +72,8 @@ export function OrdersListFilters({
   onToggleNarrowDealKind,
   itemSearch,
   onItemSearchChange,
+  status,
+  onStatusChange,
   variant = "card",
   hideEmbeddedLabel = false,
 }: Props) {
@@ -123,6 +138,25 @@ export function OrdersListFilters({
           })}
         </div>
       </div>
+      {status !== undefined && onStatusChange ? (
+        <div>
+          <Label className="mb-1.5 block text-xs">상태</Label>
+          <div className="flex flex-wrap gap-1">
+            {ALL_STATUS_KINDS.map((s) => (
+              <Button
+                key={s}
+                type="button"
+                variant={status === s ? "secondary" : "outline"}
+                size="sm"
+                className="h-7 shrink-0 px-2.5 text-[0.8rem]"
+                onClick={() => onStatusChange(s)}
+              >
+                {statusLabel(s)}
+              </Button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="min-w-[200px] flex-1">
         <Label className="mb-1.5 block text-xs">품목 검색</Label>
         <div className="relative">
@@ -141,7 +175,7 @@ export function OrdersListFilters({
 
   if (variant === "embedded") {
     return (
-      <div className="border-muted space-y-2 border-t pt-3">
+      <div className="space-y-2">
         {!hideEmbeddedLabel ? (
           <p className="text-muted-foreground text-xs font-medium">목록 필터</p>
         ) : null}

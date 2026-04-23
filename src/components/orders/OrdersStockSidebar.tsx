@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,8 @@ interface Props {
   orderRow: OrderDashboardRow | null;
   /** 메모 저장·승인 후 목록 재조회 */
   onOrderUpdated: () => void;
+  /** 다이얼로그가 닫힐 때(사용자 액션) — 선택 상태 해제 */
+  onClose?: () => void;
 }
 
 /** 표시용 연도 (예: 26년) */
@@ -155,8 +157,20 @@ async function postOverlay(
   }
 }
 
-/** 선택 품목 재고 + 선택 행 계약 상세 */
-export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) {
+/** 가로 배치용 상세 항목 블록 */
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-muted-foreground text-xs">{label}</p>
+      <p className="text-foreground mt-0.5 truncate text-sm font-medium" title={value}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/** 선택 품목 재고 + 선택 행 계약 상세 — 다이얼로그 팝업 */
+export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }: Props) {
   const [row, setRow] = useState<CurrentStockRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,10 +195,6 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
   /** 실입고·실송금 입력 초기 동기화(이행률·저장과 공유) */
   const [rqDraft, setRqDraft] = useState("");
   const [rmDraft, setRmDraft] = useState("");
-  const [exchangeRateCnyKrw, setExchangeRateCnyKrw] = useState<number | null>(null);
-  const [exchangeRateUsdKrw, setExchangeRateUsdKrw] = useState<number | null>(null);
-  const [exchangeLoading, setExchangeLoading] = useState(false);
-  const [exchangeError, setExchangeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orderRow) return;
@@ -194,45 +204,6 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
     setRqDraft(rq === 0 && o.rq === undefined ? "" : String(rq));
     setRmDraft(rm === 0 && o.rm === undefined ? "" : String(rm));
   }, [orderRow?.order_id, orderRow?.memo]);
-
-  /** 거래 행 바뀔 때만 환율 조회 에러 초기화(표시값은 유지) */
-  useEffect(() => {
-    setExchangeError(null);
-  }, [orderRow?.order_id]);
-
-  const fetchFxRates = useCallback(async () => {
-    setExchangeLoading(true);
-    setExchangeError(null);
-    try {
-      const [usdRes, cnyRes] = await Promise.all([
-        fetch("/api/exchange-rate?from=USD&to=KRW"),
-        fetch("/api/exchange-rate?from=CNY&to=KRW"),
-      ]);
-      const usdData = (await usdRes.json()) as { rate?: number; error?: string };
-      const cnyData = (await cnyRes.json()) as { rate?: number; error?: string };
-      if (
-        !usdRes.ok ||
-        !cnyRes.ok ||
-        typeof usdData.rate !== "number" ||
-        typeof cnyData.rate !== "number"
-      ) {
-        setExchangeRateUsdKrw(null);
-        setExchangeRateCnyKrw(null);
-        setExchangeError(
-          usdData.error ?? cnyData.error ?? "실시간 환율(CNY/USD)을 불러오지 못했습니다."
-        );
-        return;
-      }
-      setExchangeRateUsdKrw(usdData.rate);
-      setExchangeRateCnyKrw(cnyData.rate);
-    } catch {
-      setExchangeRateUsdKrw(null);
-      setExchangeRateCnyKrw(null);
-      setExchangeError("실시간 환율(CNY/USD)을 불러오지 못했습니다.");
-    } finally {
-      setExchangeLoading(false);
-    }
-  }, []);
 
   const persistMfgYear = useCallback(
     (nextY: number) => {
@@ -352,63 +323,13 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
     return remain > 0 ? remain : 0;
   }, [orderRow, receivedCumulativeLive]);
 
-  if (itemId === null) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm">품목 행을 선택하세요.</p>
-        </CardContent>
-      </Card>
-    );
-  }
+  // 다이얼로그 열림 여부 — 행을 선택했을 때만 열림
+  const open = orderRow !== null;
 
-  if (loading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-3/4" />
-        </CardContent>
-      </Card>
-    );
-  }
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) onClose?.();
+  };
 
-  if (error) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-destructive text-sm">조회 실패: {error}</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!row) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm">품목 정보 없음</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const current = row.current_stock ?? 0;
-  const base = row.base_stock_qty ?? 0;
-  const delta = current - base;
-  const name = row.item_name_norm ?? row.item_name_raw ?? `item_id:${row.item_id}`;
   const oid = orderRow?.order_id;
   const contractQty = Number(orderRow?.quantity ?? 0);
   const contractAmt =
@@ -418,53 +339,96 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
   /** 계약 수량·합계금액이 모두 있을 때만 수량↔금액 연동 — 변경 이유: 이행률 축 단일화 */
   const linkedContract = contractQty > 0 && contractAmt > 0;
 
+  const itemDisplayName =
+    row?.item_name_norm ?? row?.item_name_raw ?? (itemId !== null ? `item_id:${itemId}` : "—");
+  const current = row?.current_stock ?? 0;
+  const base = row?.base_stock_qty ?? 0;
+  const delta = current - base;
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">재고 승인 여부 결정하기</CardTitle>
-        <p className="text-muted-foreground text-xs">
-          #{row.seq_no} · {name}
-        </p>
-        {row.category ? (
-          <Badge variant="outline" className="mt-1 w-fit text-xs">
-            {row.category}
-          </Badge>
-        ) : null}
-      </CardHeader>
-
-      {orderRow && oid !== null && oid !== undefined ? (
-        <CardContent className="border-border space-y-3 border-t pt-3">
-          <p className="text-xs font-medium">계약 상세</p>
-          <div className="text-muted-foreground space-y-1 text-xs">
-            <p>
-              <span className="text-foreground font-medium">계약일</span>{" "}
-              {orderRow.tx_date?.slice(0, 10) ?? "—"}
-            </p>
-            <p>
-              <span className="text-foreground font-medium">ERP코드</span>{" "}
-              {orderRow.erp_code ?? "—"}
-            </p>
-            <p className="line-clamp-3">
-              <span className="text-foreground font-medium">품목</span>{" "}
-              {orderRow.item_name ?? orderRow.erp_item_name_raw ?? "—"}
-            </p>
-            <p className="line-clamp-2">
-              <span className="text-foreground font-medium">거래처</span>{" "}
-              {orderRow.counterparty ?? "—"}
-            </p>
-            {linkedContract ? (
-              <p className="text-muted-foreground pt-1 text-[11px] leading-relaxed">
-                실입고·실송금은 동일 이행률로 연동 저장됩니다. 입력 후 포커스가 벗어날 때 계약별
-                이행률이 함께 저장됩니다.
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-semibold">재고 승인 여부 결정하기</DialogTitle>
+          {row ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-muted-foreground text-xs">
+                #{row.seq_no} · {itemDisplayName}
               </p>
-            ) : null}
-          </div>
+              {row.category ? (
+                <Badge variant="outline" className="text-xs">
+                  {row.category}
+                </Badge>
+              ) : null}
+            </div>
+          ) : null}
+        </DialogHeader>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs">제조년도</Label>
-            <div className="flex flex-wrap gap-2">
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        ) : error ? (
+          <p className="text-destructive text-sm">조회 실패: {error}</p>
+        ) : orderRow && oid !== null && oid !== undefined ? (
+          <div className="space-y-5">
+            {/* 계약 상세 — 가로 4열 */}
+            <section className="border-border border-t pt-4">
+              <p className="mb-3 text-sm font-semibold">계약 상세</p>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-3 md:grid-cols-4">
+                <DetailItem label="계약일" value={orderRow.tx_date?.slice(0, 10) ?? "—"} />
+                <DetailItem label="ERP코드" value={orderRow.erp_code ?? "—"} />
+                <DetailItem
+                  label="품목"
+                  value={orderRow.item_name ?? orderRow.erp_item_name_raw ?? "—"}
+                />
+                <DetailItem label="거래처" value={orderRow.counterparty ?? "—"} />
+              </div>
+            </section>
+
+            {/* 제조년도 · 수량 · 합계 — 명시적 그리드 행으로 행간 정렬 통일
+                행 1: 라벨(+배지)  /  행 2: 서브정보  /  행 3: 입력 2열  /  행 4: 이행률 */}
+            <section className="border-border grid grid-cols-1 gap-x-6 gap-y-2 border-t pt-4 md:grid-cols-3">
+              {/* Row 1 — 라벨 */}
+              <div className="flex h-6 items-center">
+                <Label className="text-sm font-semibold">제조년도</Label>
+              </div>
+              <div className="flex h-6 items-center justify-between">
+                <Label className="text-sm font-semibold">수량</Label>
+                <Badge
+                  variant={qtyPhaseDisp.variant}
+                  className={
+                    qtyPhaseDisp.className ? `text-[10px] ${qtyPhaseDisp.className}` : "text-[10px]"
+                  }
+                >
+                  {qtyPhaseDisp.label}
+                </Badge>
+              </div>
+              <div className="flex h-6 items-center">
+                <Label className="text-sm font-semibold">합계</Label>
+              </div>
+
+              {/* Row 2 — 서브 정보(수량만 실데이터, 나머지는 높이 맞춤용 빈 슬롯) */}
+              <div aria-hidden className="text-xs">
+                &nbsp;
+              </div>
+              <p className="text-muted-foreground text-xs tabular-nums">
+                실입고(누적){" "}
+                <span className="text-foreground font-medium">
+                  {formatNum(receivedCumulativeLive)}
+                </span>
+                <span className="text-muted-foreground mx-1">/</span>
+                계약수량{" "}
+                <span className="text-foreground font-medium">{formatNum(contractQty)}</span>
+              </p>
+              <div aria-hidden className="text-xs">
+                &nbsp;
+              </div>
+
+              {/* Row 3 — 입력(제조년도: Select 단일 / 수량·합계: 입력 2열) */}
               <Select value={String(mfgY)} onValueChange={(v) => persistMfgYear(Number(v))}>
-                <SelectTrigger className="h-8 w-[88px] text-xs">
+                <SelectTrigger className="h-9 w-full text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -475,72 +439,95 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label className="text-xs">수량</Label>
-              <Badge
-                variant={qtyPhaseDisp.variant}
-                className={
-                  qtyPhaseDisp.className ? `text-[10px] ${qtyPhaseDisp.className}` : "text-[10px]"
-                }
-              >
-                {qtyPhaseDisp.label}
-              </Badge>
-            </div>
-            <p className="text-muted-foreground text-xs tabular-nums">
-              실입고(누적){" "}
-              <span className="text-foreground font-medium">
-                {formatNum(receivedCumulativeLive)}
-              </span>
-              <span className="text-muted-foreground mx-1">/</span>
-              계약수량 <span className="text-foreground font-medium">{formatNum(contractQty)}</span>
-            </p>
-            <div className="flex items-center gap-2">
-              <Input
-                type="text"
-                inputMode="numeric"
-                className="h-8 flex-1 text-right text-xs tabular-nums"
-                placeholder="누적 실입고 수량"
-                value={rqDraft}
-                onChange={(e) => setRqDraft(e.target.value)}
-                aria-label="누적 실입고 수량"
-                onBlur={(e) => {
-                  const raw = e.target.value.replace(/,/g, "").trim();
-                  const n = raw === "" ? 0 : Number(raw);
-                  if (!Number.isFinite(n)) return;
-                  void (async () => {
-                    const nextRq = Math.max(0, n);
-                    let nextRm = parseNumericInput(rmDraft) ?? 0;
-                    if (linkedContract) {
-                      nextRm = roundContractKrw((nextRq / contractQty) * contractAmt);
-                      setRmDraft(nextRm === 0 ? "" : String(nextRm));
-                    }
-                    const patch: Record<string, number | undefined> = { receivedQty: nextRq };
-                    if (linkedContract) patch.remittanceAmount = nextRm;
-                    const result = await postOverlay(oid, patch);
-                    if (result.ok) {
-                      if (result.autoApproved) {
-                        toast.success("계약 이행이 완료되어 승인완료 처리되었습니다.");
+              <div className="flex items-center gap-2">
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  className="h-9 flex-1 text-right text-sm tabular-nums"
+                  placeholder="누적 실입고 수량"
+                  value={rqDraft}
+                  onChange={(e) => setRqDraft(e.target.value)}
+                  aria-label="누적 실입고 수량"
+                  onBlur={(e) => {
+                    const raw = e.target.value.replace(/,/g, "").trim();
+                    const n = raw === "" ? 0 : Number(raw);
+                    if (!Number.isFinite(n)) return;
+                    void (async () => {
+                      const nextRq = Math.max(0, n);
+                      let nextRm = parseNumericInput(rmDraft) ?? 0;
+                      if (linkedContract) {
+                        nextRm = roundContractKrw((nextRq / contractQty) * contractAmt);
+                        setRmDraft(nextRm === 0 ? "" : String(nextRm));
                       }
-                      onOrderUpdated();
-                    }
-                  })();
-                }}
-              />
-              {/* 남은 수량 표시 — 변경 이유: 계약 대비 잔여 수량을 우측 비활성 숫자로 즉시 확인 */}
-              <Input
-                readOnly
-                disabled
-                className="bg-muted h-8 w-[170px] text-right text-xs tabular-nums"
-                value={formatNum(remainingQtyLive)}
-                aria-label="남은 수량"
-              />
-            </div>
-            {!linkedContract ? (
-              <div className="space-y-1 pt-0.5">
+                      const patch: Record<string, number | undefined> = { receivedQty: nextRq };
+                      if (linkedContract) patch.remittanceAmount = nextRm;
+                      const result = await postOverlay(oid, patch);
+                      if (result.ok) {
+                        if (result.autoApproved) {
+                          toast.success("계약 이행이 완료되어 승인완료 처리되었습니다.");
+                        }
+                        onOrderUpdated();
+                      }
+                    })();
+                  }}
+                />
+                {/* 남은 수량 표시 — 계약 대비 잔여 */}
+                <Input
+                  readOnly
+                  disabled
+                  className="bg-muted h-9 flex-1 text-right text-sm tabular-nums"
+                  value={formatNum(remainingQtyLive)}
+                  aria-label="남은 수량"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  className="h-9 flex-1 text-right text-sm tabular-nums"
+                  placeholder="실송금액"
+                  value={rmDraft}
+                  onChange={(e) => setRmDraft(e.target.value)}
+                  aria-label="실송금액"
+                  onBlur={(e) => {
+                    const raw = e.target.value.replace(/,/g, "").trim();
+                    const n = raw === "" ? 0 : Number(raw);
+                    if (!Number.isFinite(n)) return;
+                    void (async () => {
+                      const nextRm = Math.max(0, n);
+                      let nextRq = parseNumericInput(rmDraft) ?? 0;
+                      if (linkedContract) {
+                        nextRq = roundContractQty((nextRm / contractAmt) * contractQty);
+                        setRqDraft(nextRq === 0 ? "" : String(nextRq));
+                      }
+                      const patch: Record<string, number | undefined> = {
+                        remittanceAmount: nextRm,
+                      };
+                      if (linkedContract) patch.receivedQty = nextRq;
+                      const result = await postOverlay(oid, patch);
+                      if (result.ok) {
+                        if (result.autoApproved) {
+                          toast.success("계약 이행이 완료되어 승인완료 처리되었습니다.");
+                        }
+                        onOrderUpdated();
+                      }
+                    })();
+                  }}
+                />
+                <Input
+                  readOnly
+                  disabled
+                  className="bg-muted h-9 flex-1 text-right text-sm tabular-nums"
+                  value={formatContractAmountKrw(orderRow.total_amount)}
+                  aria-label="계약금액(KRW)"
+                />
+              </div>
+
+              {/* Row 4 — 이행률(제조년도 열은 빈 슬롯) */}
+              <div aria-hidden className="min-h-[36px]">
+                &nbsp;
+              </div>
+              <div className="space-y-1">
                 <div className="text-muted-foreground flex justify-between text-[11px]">
                   <span>수량 이행률</span>
                   <span className="tabular-nums">
@@ -554,189 +541,113 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated }: Props) 
                   aria-label="계약 수량 대비 실입고 비율"
                 />
               </div>
+              <div className="space-y-1">
+                {linkedContract ? (
+                  <>
+                    <div className="text-muted-foreground flex justify-between text-[11px]">
+                      <span>계약 이행률</span>
+                      <span className="tabular-nums">
+                        {fulfillmentUnifiedPct !== null
+                          ? `${fulfillmentUnifiedPct >= 100 ? fulfillmentUnifiedPct.toFixed(0) : fulfillmentUnifiedPct.toFixed(1)}%`
+                          : "—"}
+                      </span>
+                    </div>
+                    <Progress
+                      value={
+                        fulfillmentUnifiedPct !== null ? Math.min(100, fulfillmentUnifiedPct) : 0
+                      }
+                      aria-label="계약 수량·금액 대비 실적 이행 비율"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <div className="text-muted-foreground flex justify-between text-[11px]">
+                      <span>금액 이행률</span>
+                      <span className="tabular-nums">
+                        {fulfillmentPct.amt !== null
+                          ? `${fulfillmentPct.amt >= 100 ? fulfillmentPct.amt.toFixed(0) : fulfillmentPct.amt.toFixed(1)}%`
+                          : "—"}
+                      </span>
+                    </div>
+                    <Progress
+                      value={fulfillmentPct.amt !== null ? Math.min(100, fulfillmentPct.amt) : 0}
+                      aria-label="계약 합계 대비 실송금 비율"
+                    />
+                  </>
+                )}
+              </div>
+            </section>
+
+            {/* 현재 재고 정보 — 계약 상세와 동일한 DetailItem 스타일 */}
+            {row ? (
+              <section className="border-border grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-4 md:grid-cols-4">
+                <DetailItem label="현재 수량" value={current.toLocaleString("ko-KR")} />
+                <DetailItem
+                  label="기준 재고"
+                  value={`${base.toLocaleString("ko-KR")}${row.base_date ? ` (${row.base_date})` : ""}`}
+                />
+                <DetailItem
+                  label="누적 변동"
+                  value={`${delta >= 0 ? "+" : ""}${delta.toLocaleString("ko-KR")}`}
+                />
+                <DetailItem
+                  label="최근 변동"
+                  value={
+                    row.last_movement_date
+                      ? `${row.last_movement_date} · ${row.last_movement_type ?? "—"}`
+                      : "이력 없음"
+                  }
+                />
+              </section>
             ) : null}
-          </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs">합계</Label>
-            <Input
-              type="text"
-              inputMode="decimal"
-              className="h-8 text-right text-xs tabular-nums"
-              placeholder="실송금액"
-              value={rmDraft}
-              onChange={(e) => setRmDraft(e.target.value)}
-              aria-label="실송금액"
-              onBlur={(e) => {
-                const raw = e.target.value.replace(/,/g, "").trim();
-                const n = raw === "" ? 0 : Number(raw);
-                if (!Number.isFinite(n)) return;
-                void (async () => {
-                  const nextRm = Math.max(0, n);
-                  let nextRq = parseNumericInput(rqDraft) ?? 0;
-                  if (linkedContract) {
-                    nextRq = roundContractQty((nextRm / contractAmt) * contractQty);
-                    setRqDraft(nextRq === 0 ? "" : String(nextRq));
-                  }
-                  const patch: Record<string, number | undefined> = {
-                    remittanceAmount: nextRm,
-                  };
-                  if (linkedContract) patch.receivedQty = nextRq;
-                  const result = await postOverlay(oid, patch);
-                  if (result.ok) {
-                    if (result.autoApproved) {
-                      toast.success("계약 이행이 완료되어 승인완료 처리되었습니다.");
-                    }
-                    onOrderUpdated();
-                  }
-                })();
-              }}
-            />
-            <Input
-              readOnly
-              disabled
-              className="bg-muted h-8 text-right text-xs tabular-nums"
-              value={formatContractAmountKrw(orderRow.total_amount)}
-              aria-label="계약금액(KRW)"
-            />
-            {!linkedContract ? (
-              <div className="space-y-1 pt-0.5">
-                <div className="text-muted-foreground flex justify-between text-[11px]">
-                  <span>금액 이행률</span>
-                  <span className="tabular-nums">
-                    {fulfillmentPct.amt !== null
-                      ? `${fulfillmentPct.amt >= 100 ? fulfillmentPct.amt.toFixed(0) : fulfillmentPct.amt.toFixed(1)}%`
-                      : "—"}
-                  </span>
-                </div>
-                <Progress
-                  value={fulfillmentPct.amt !== null ? Math.min(100, fulfillmentPct.amt) : 0}
-                  aria-label="계약 합계 대비 실송금 비율"
-                />
-              </div>
-            ) : (
-              <div className="space-y-1 pt-0.5">
-                <div className="text-muted-foreground flex justify-between text-[11px]">
-                  <span>계약 이행률 (수량·금액 동일 비율)</span>
-                  <span className="tabular-nums">
-                    {fulfillmentUnifiedPct !== null
-                      ? `${fulfillmentUnifiedPct >= 100 ? fulfillmentUnifiedPct.toFixed(0) : fulfillmentUnifiedPct.toFixed(1)}%`
-                      : "—"}
-                  </span>
-                </div>
-                <Progress
-                  value={fulfillmentUnifiedPct !== null ? Math.min(100, fulfillmentUnifiedPct) : 0}
-                  aria-label="계약 수량·금액 대비 실적 이행 비율"
-                />
-              </div>
-            )}
-
-            <div className="border-border flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-muted-foreground text-[11px]">현재 환율 (USD/KRW 참고)</p>
-                <p className="text-foreground font-medium tabular-nums">
-                  {exchangeLoading ? (
-                    <span className="text-muted-foreground text-xs">조회 중…</span>
-                  ) : exchangeRateUsdKrw !== null && exchangeRateCnyKrw !== null ? (
-                    <>
-                      1 CNY ={" "}
-                      {exchangeRateCnyKrw.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} KRW
-                      <br />1 USD ={" "}
-                      {exchangeRateUsdKrw.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} KRW
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground text-xs">버튼으로 조회하세요.</span>
-                  )}
-                </p>
-                {exchangeError ? (
-                  <p className="text-destructive pt-0.5 text-[10px]">{exchangeError}</p>
-                ) : null}
-              </div>
+            {/* 승인/취소 액션 — 버튼 크기/위치 통일 */}
+            <div className="border-border flex flex-wrap items-center justify-end gap-2 border-t pt-4">
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
-                className="shrink-0"
-                disabled={exchangeLoading}
-                onClick={() => void fetchFxRates()}
+                variant="default"
+                className="h-9 min-w-[80px] px-5 text-sm"
+                disabled={submitting || orderRow.status !== "pending" || orderRow.order_id === null}
+                onClick={() => void callApprove("approve")}
               >
-                실시간 환율 조회
+                승인
               </Button>
+              {orderRow.status === "approved" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  className="h-9 min-w-[80px] px-5 text-sm"
+                  disabled={submitting}
+                  onClick={() => void callApprove("unapprove")}
+                >
+                  취소
+                </Button>
+              ) : orderRow.status === "pending" ? (
+                <OrdersRejectPopover
+                  orderIds={[oid]}
+                  triggerLabel="취소"
+                  triggerClassName="h-9 min-w-[80px] px-5 text-sm"
+                  onDone={onOrderUpdated}
+                />
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  className="h-9 min-w-[80px] px-5 text-sm"
+                  disabled
+                >
+                  취소
+                </Button>
+              )}
             </div>
           </div>
-
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Button
-              type="button"
-              size="sm"
-              variant="default"
-              disabled={submitting || orderRow.status !== "pending" || orderRow.order_id === null}
-              onClick={() => void callApprove("approve")}
-            >
-              승인
-            </Button>
-            {orderRow.status === "approved" ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={submitting}
-                onClick={() => void callApprove("unapprove")}
-              >
-                취소
-              </Button>
-            ) : orderRow.status === "pending" ? (
-              <OrdersRejectPopover
-                orderIds={[oid]}
-                triggerLabel="취소"
-                triggerClassName="h-8"
-                onDone={onOrderUpdated}
-              />
-            ) : (
-              <Button type="button" size="sm" variant="outline" disabled>
-                취소
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      ) : (
-        <CardContent className="border-border border-t pt-3">
-          <p className="text-muted-foreground text-xs">
-            테이블에서 거래 행을 눌러 계약 상세를 표시합니다.
-          </p>
-        </CardContent>
-      )}
-
-      <CardContent className={`space-y-3 ${orderRow && oid !== null ? "pt-0" : ""}`}>
-        <div>
-          <p className="text-muted-foreground text-xs">현재 수량</p>
-          <p className="text-2xl font-semibold tabular-nums">{current.toLocaleString("ko-KR")}</p>
-        </div>
-        <div className="grid grid-cols-2 gap-3 text-xs">
-          <div>
-            <p className="text-muted-foreground">기준 재고</p>
-            <p className="tabular-nums">{base.toLocaleString("ko-KR")}</p>
-            <p className="text-muted-foreground">{row.base_date ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">누적 변동</p>
-            <p className={`tabular-nums ${delta >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-              {delta >= 0 ? "+" : ""}
-              {delta.toLocaleString("ko-KR")}
-            </p>
-          </div>
-        </div>
-        {row.last_movement_date ? (
-          <div className="border-border border-t pt-2 text-xs">
-            <p className="text-muted-foreground">최근 변동</p>
-            <p>
-              {row.last_movement_date} · {row.last_movement_type ?? "—"}
-            </p>
-          </div>
         ) : (
-          <p className="text-muted-foreground text-xs">변동 이력 없음</p>
+          <p className="text-muted-foreground text-sm">테이블에서 거래 행을 눌러 주세요.</p>
         )}
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }
