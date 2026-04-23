@@ -52,13 +52,9 @@ function sameSeasonDayDelta(
   if (Number.isNaN(cur.getTime()) || Number.isNaN(base.getTime())) return undefined;
   const baseAligned = new Date(cur.getFullYear(), base.getMonth(), base.getDate());
   const diff = Math.round((cur.getTime() - baseAligned.getTime()) / 86400000);
-  const label =
-    diff === 0
-      ? "25시즌과 동일"
-      : diff > 0
-        ? `25시즌보다 ${diff}일 늦음`
-        : `25시즌보다 ${Math.abs(diff)}일 빠름`;
-  return { text: label, tone: "neutral" };
+  if (diff === 0) return { text: "25시즌과 동일", tone: "neutral" };
+  if (diff > 0) return { text: `25시즌보다 ${diff}일 늦음`, tone: "down" };
+  return { text: `25시즌보다 ${Math.abs(diff)}일 빠름`, tone: "up" };
 }
 
 function buildCards(current: SeasonStats | null, baseline: SeasonStats | null) {
@@ -127,46 +123,12 @@ export default function SeasonKpiStrip({ season }: Props) {
   }
 
   const cards = buildCards(data.current, data.baseline);
-  const insight = buildInsightSentence(data.current, data.baseline);
 
   return (
-    <div className="space-y-2">
-      {insight && (
-        <div className="text-muted-foreground text-xs">
-          <span className="text-foreground font-medium">요약: </span>
-          {insight}
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        {cards.map((c) => (
-          <KpiCard key={c.label} label={c.label} value={c.value} delta={c.delta} hint={c.hint} />
-        ))}
-      </div>
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      {cards.map((c) => (
+        <KpiCard key={c.label} label={c.label} value={c.value} delta={c.delta} hint={c.hint} />
+      ))}
     </div>
   );
-}
-
-function buildInsightSentence(current: SeasonStats | null, baseline: SeasonStats | null): string {
-  const parts: string[] = [];
-  if (current?.total_units != null && baseline?.total_units) {
-    const d = ((current.total_units - baseline.total_units) / baseline.total_units) * 100;
-    const sign = d >= 0 ? "+" : "";
-    parts.push(`총 판매 ${sign}${d.toFixed(1)}%`);
-  }
-  if (current?.first_freeze && baseline?.first_freeze) {
-    const cur = new Date(current.first_freeze);
-    const base = new Date(baseline.first_freeze);
-    const aligned = new Date(cur.getFullYear(), base.getMonth(), base.getDate());
-    const diff = Math.round((cur.getTime() - aligned.getTime()) / 86400000);
-    if (diff !== 0) {
-      parts.push(`첫 영하 ${diff > 0 ? `${diff}일 늦음` : `${Math.abs(diff)}일 빠름`}`);
-    }
-  }
-  if (current?.r_log != null) {
-    const abs = Math.abs(current.r_log);
-    const strength = abs >= 0.8 ? "강함" : abs >= 0.5 ? "보통" : "약함";
-    parts.push(`기온-판매 연관도 ${strength}`);
-  }
-  if (parts.length === 0) return "";
-  return `25시즌 대비 ${parts.join(" · ")}`;
 }

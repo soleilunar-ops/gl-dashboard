@@ -19,14 +19,16 @@ export function tempCategory(t: number): TempBand {
 }
 
 export const CHART_TOKENS = {
-  lineTemp: "#041A40",
+  lineTemp: "#F2BE5C",
+  /** 기온 축 / 기준선용 회색 텍스트 — 차트 장식 텍스트는 기본 회색으로 통일 */
+  axisTempText: "#6B7280",
   lineMa: "#5B95C7",
-  zeroLine: "rgba(70, 130, 80, 0.55)",
-  // 이벤트 마커 — 블루 팔레트와 대비되는 앰버/황색
+  zeroLine: "rgba(107, 114, 128, 0.55)",
+  // 이벤트 마커 — 블루 바 팔레트와 대비되는 #A90000 레드 계열
   eventMarker: {
-    featured: "rgba(234, 179, 8, 0.95)", // Amber 500 — 진하게
-    normal: "rgba(234, 179, 8, 0.5)",
-    label: "rgba(180, 125, 0, 0.95)", // Dark amber 라벨 배경
+    featured: "#A90000",
+    normal: "rgba(169, 0, 0, 0.55)",
+    label: "#A90000",
   },
   triggerMarker: {
     cold_shock: "rgba(184, 74, 46, 0.85)", // 터라코타 빨강 — 기온 블루와 대비

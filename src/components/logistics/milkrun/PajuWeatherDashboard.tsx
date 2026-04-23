@@ -6,7 +6,7 @@ import { getBuiltinCnHolidayPeriodsForYears } from "@/lib/cn-official-holidays-b
 import type { CnHolidayPeriod } from "@/lib/cn-holiday-period";
 import { addDays, differenceInCalendarDays, format, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
-import { RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { DailyWeather, WeatherWarningCode } from "@/lib/kma-daily-weather";
 import { todayKstYmdDash } from "@/lib/kma-time";
 import MilkrunWeatherTab from "@/components/logistics/milkrun/MilkrunWeatherTab";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 type ForecastDayRow = {
@@ -85,6 +86,10 @@ export default function PajuWeatherDashboard() {
   const [holidayPayload, setHolidayPayload] = useState<CnHolidayPayload | null>(null);
   const [holidayError, setHolidayError] = useState<string | null>(null);
   const [holidayLoading, setHolidayLoading] = useState(true);
+  /** 출고일(재작업 카드와 11일 예보 카드 강조를 공유) */
+  const [orderDate, setOrderDate] = useState(() => todayKstYmdDash());
+  /** 예보 슬라이드 시프트 — 0 기본, 좌우 화살표로 ±1씩 이동 */
+  const [forecastShift, setForecastShift] = useState(0);
 
   const yearsToLoad = useMemo(() => {
     const y = new Date().getFullYear();
@@ -121,6 +126,12 @@ export default function PajuWeatherDashboard() {
       note: "국무원 일정 기반 내장 데이터(오프라인)",
     }));
   }, [holidayPayload, fallbackHolidayPeriods]);
+
+  const holidayVerifier = holidayPayload?.verifier ?? null;
+  const holidayVerifierMessage =
+    holidayVerifier === "nager+claude-web-search"
+      ? "AI 검증 적용됨: 연휴·대체근무일·발주 마감 권장일이 Claude 웹 검증 결과로 보강되었습니다."
+      : "AI 검증 미적용: 국무원 일정 기준 내장 데이터를 표시합니다.";
 
   const loadForecast = useCallback(async () => {
     setForecastLoading(true);
@@ -175,26 +186,139 @@ export default function PajuWeatherDashboard() {
   }, [loadForecast, loadCnHolidays]);
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void loadForecast()}
-          disabled={forecastLoading}
-        >
-          <RefreshCw className={cn("mr-2 h-4 w-4", forecastLoading && "animate-spin")} />
-          새로고침
-        </Button>
-      </div>
+    <Tabs defaultValue="weather" className="gap-6">
+      <TabsList>
+        <TabsTrigger value="weather">출고 관련 날씨</TabsTrigger>
+        <TabsTrigger value="holidays">중국 연휴 일정</TabsTrigger>
+      </TabsList>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="space-y-3 xl:col-span-2">
-          <h2 className="text-sm font-medium">출고일 기준 재작업일 (D-2 / D-1)</h2>
-          <MilkrunWeatherTab />
-        </div>
+      <TabsContent value="weather" className="space-y-8">
+        <MilkrunWeatherTab orderDate={orderDate} onOrderDateChange={setOrderDate} />
 
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              {forecastLoading
+                ? "파주 일별 예보"
+                : `파주 일별 예보 (${forecast?.horizonDays ?? "—"}일)`}
+            </CardTitle>
+            {forecast?.generatedAt && (
+              <p className="text-muted-foreground text-xs">
+                {format(parseISO(forecast.generatedAt), "yyyy-MM-dd HH:mm", { locale: ko })} 기준
+              </p>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {errForecast && <p className="text-destructive text-sm">{errForecast}</p>}
+            {forecastLoading && !forecast ? (
+              <div className="flex gap-2">
+                {Array.from({ length: 11 }).map((_, i) => (
+                  <Skeleton key={i} className="h-40 flex-1 rounded-lg" />
+                ))}
+              </div>
+            ) : forecast && forecast.days.length > 0 ? (
+              (() => {
+                const days = forecast.days;
+                const total = days.length;
+                // 11일 기준: 중앙 5일 선명, 양쪽 3일씩 반투명 — shift로 좌우 이동 가능
+                const baseCenter = Math.floor(total / 2);
+                const clearCenter = Math.max(2, Math.min(total - 3, baseCenter + forecastShift));
+                const clearStart = clearCenter - 2;
+                const clearEnd = clearCenter + 2;
+                const minShift = -Math.min(3, baseCenter - 2);
+                const maxShift = Math.min(3, total - 3 - baseCenter);
+                const canLeft = forecastShift > minShift;
+                const canRight = forecastShift < maxShift;
+                return (
+                  <div className="flex items-stretch gap-2">
+                    {/* 왼쪽 화살표 */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={!canLeft}
+                      onClick={() => setForecastShift((v) => Math.max(minShift, v - 1))}
+                      aria-label="이전"
+                      className="h-auto shrink-0 self-stretch"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </Button>
+
+                    {/* 카드 목록 — 중앙 5일 선명, 나머지 반투명 */}
+                    <div className="flex flex-1 gap-2">
+                      {days.map((row, idx) => {
+                        const w = row.data;
+                        const wd = format(parseISO(`${row.date}T12:00:00+09:00`), "M/d (EEE)", {
+                          locale: ko,
+                        });
+                        const inCenter = idx >= clearStart && idx <= clearEnd;
+                        return (
+                          <div
+                            key={row.date}
+                            className={cn(
+                              "bg-card flex min-w-0 flex-1 flex-col items-center justify-between gap-2 rounded-lg border p-3 text-center text-sm shadow-sm transition-opacity duration-300",
+                              !inCenter && "opacity-40"
+                            )}
+                          >
+                            {/* 날짜 (굵게) + 경고 배지 */}
+                            <div className="flex w-full items-center justify-center gap-1.5">
+                              <span className="text-foreground text-xs font-bold">{wd}</span>
+                              {w.warnings.length > 0 ? (
+                                <div className="flex flex-wrap justify-center gap-1">
+                                  {w.warnings.map((c) => (
+                                    <Badge
+                                      key={c}
+                                      variant="destructive"
+                                      className="px-1 py-0 text-[10px]"
+                                    >
+                                      {WARNING_LABEL[c]}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                            {/* 이모지 + 요약 */}
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="text-2xl leading-none">{w.emoji}</span>
+                              <span className="line-clamp-2 text-xs leading-tight">
+                                {w.summaryKo}
+                              </span>
+                            </div>
+                            {/* 기온/강수 */}
+                            <div className="flex flex-col items-center gap-0.5">
+                              <p className="text-xs [font-variant-numeric:tabular-nums]">
+                                {formatInt(w.tmin)}° / {formatInt(w.tmax)}°
+                              </p>
+                              <p className="text-muted-foreground text-xs [font-variant-numeric:tabular-nums]">
+                                강수 {formatInt(w.popMax)}%
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* 오른쪽 화살표 */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={!canRight}
+                      onClick={() => setForecastShift((v) => Math.min(maxShift, v + 1))}
+                      aria-label="다음"
+                      className="h-auto shrink-0 self-stretch"
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </Button>
+                  </div>
+                );
+              })()
+            ) : null}
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="holidays">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">중국 연휴 기간</CardTitle>
@@ -206,7 +330,7 @@ export default function PajuWeatherDashboard() {
               </p>
             )}
             {holidayError && <p className="text-destructive text-xs">{holidayError}</p>}
-            <ul className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+            <ul className="space-y-3 pr-1">
               {holidayPeriods.length === 0 ? (
                 <li className="text-muted-foreground">
                   표시할 연휴가 없습니다. 해당 연도 내장 일정이 있으면 여기에 나옵니다.
@@ -246,9 +370,15 @@ export default function PajuWeatherDashboard() {
                 ))
               )}
             </ul>
-            <p className="text-muted-foreground text-xs">
-              Claude 웹 검증이 성공하면 연휴·대체근무일·발주 마감 권장일을 보강합니다. AI를 쓸 수
-              없을 때는 국무원 일정 기준 내장 데이터를 표시합니다(Nager 단일일만 쓰지 않음).
+            <p
+              className={cn(
+                "text-xs",
+                holidayVerifier === "nager+claude-web-search"
+                  ? "text-emerald-700"
+                  : "text-muted-foreground"
+              )}
+            >
+              {holidayVerifierMessage}
             </p>
             {!holidayLoading && !holidayPayload && (
               <p className="text-[11px] text-amber-600">
@@ -267,70 +397,7 @@ export default function PajuWeatherDashboard() {
             )}
           </CardContent>
         </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            {forecastLoading
-              ? "파주 일별 예보"
-              : `파주 일별 예보 (${forecast?.horizonDays ?? "—"}일)`}
-          </CardTitle>
-          {forecast?.generatedAt && (
-            <p className="text-muted-foreground text-xs">
-              생성 시각(서버){" "}
-              {format(parseISO(forecast.generatedAt), "yyyy-MM-dd HH:mm", { locale: ko })}
-            </p>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {errForecast && <p className="text-destructive text-sm">{errForecast}</p>}
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {forecastLoading && !forecast
-              ? Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton key={i} className="h-36 min-w-[132px] shrink-0 rounded-lg" />
-                ))
-              : forecast?.days.map((row) => {
-                  const w = row.data;
-                  const wd = format(parseISO(`${row.date}T12:00:00+09:00`), "M/d (EEE)", {
-                    locale: ko,
-                  });
-                  return (
-                    <div
-                      key={row.date}
-                      className={cn(
-                        "bg-card min-w-[132px] shrink-0 rounded-lg border p-3 text-sm shadow-sm",
-                        w.warnings.length > 0 && "border-amber-500/50"
-                      )}
-                    >
-                      <div className="text-muted-foreground mb-1 text-xs">
-                        <span>{wd}</span>
-                      </div>
-                      <div className="mb-1 flex items-center gap-1">
-                        <span className="text-lg">{w.emoji}</span>
-                        <span className="line-clamp-2 text-xs leading-tight">{w.summaryKo}</span>
-                      </div>
-                      <p className="text-xs [font-variant-numeric:tabular-nums]">
-                        {formatInt(w.tmin)}° / {formatInt(w.tmax)}°
-                      </p>
-                      <p className="text-muted-foreground text-xs [font-variant-numeric:tabular-nums]">
-                        강수 {formatInt(w.popMax)}%
-                      </p>
-                      {w.warnings.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {w.warnings.map((c) => (
-                            <Badge key={c} variant="destructive" className="px-1 py-0 text-[10px]">
-                              {WARNING_LABEL[c]}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }

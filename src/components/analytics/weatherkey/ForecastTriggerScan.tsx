@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Snowflake, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createClient } from "@/lib/supabase/client";
@@ -155,18 +154,18 @@ export default function ForecastTriggerScan({ seasonInfo, nextSeason }: Props = 
     <Card className="h-[220px]">
       <CardContent className="flex h-full flex-col gap-1.5 overflow-auto p-3">
         {isOffSeason && (
-          <div className="text-muted-foreground border-muted-foreground/30 rounded border border-dashed px-2 py-1 text-[10px] leading-tight">
-            🍂 <span className="font-medium">비시즌</span>
+          <div className="text-foreground py-1 text-center text-sm leading-tight">
+            <span className="font-semibold">비시즌</span>
             {nextSeason && (
               <>
-                {" · "}다음: <span className="font-medium">{nextSeason.season}</span>{" "}
+                {" · "}다음: <span className="font-semibold">{nextSeason.season}</span>{" "}
                 {formatDateKorean(nextSeason.start_date)}
                 {daysToNext != null && daysToNext > 0 && ` (D-${daysToNext})`}
               </>
             )}
           </div>
         )}
-        <div className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
+        <div className="text-muted-foreground text-center text-[10px] font-medium tracking-wide uppercase">
           예보 기반 날씨 경보 · 오늘~10일 후
         </div>
         {hits.length === 0 ? (
@@ -199,13 +198,8 @@ function ForecastHitRow({
   isHighlighted?: boolean;
   onClick?: () => void;
 }) {
-  // first_freeze가 희소성 높아 우선 표시 아이콘·색 결정
+  // first_freeze가 희소성 높아 우선 색 결정
   const primary = hit.first_freeze ? "first_freeze" : "cold_shock";
-  const Icon = primary === "first_freeze" ? Snowflake : Zap;
-  const iconColor =
-    primary === "first_freeze"
-      ? "text-[color:var(--hotpack-trigger-high)]"
-      : "text-[color:var(--hotpack-trigger-critical)]";
   const bgColor =
     primary === "first_freeze"
       ? "bg-[color:var(--hotpack-trigger-high)]/10"
@@ -243,14 +237,13 @@ function ForecastHitRow({
       onClick={onClick}
       aria-pressed={isHighlighted}
       className={cn(
-        "relative flex w-full items-center gap-2 overflow-hidden rounded-md border py-1.5 pr-2 pl-3 text-left text-xs transition-shadow",
+        "relative flex w-full items-center gap-2 overflow-hidden rounded-md border py-1.5 pr-2 pl-4 text-left text-xs transition-shadow",
         bgColor,
         isHighlighted && "ring-primary/60 ring-2",
         "cursor-pointer hover:shadow-sm"
       )}
     >
       <span aria-hidden className={cn("absolute top-0 left-0 h-full w-1 rounded-l-md", barColor)} />
-      <Icon className={cn("h-3.5 w-3.5 shrink-0", iconColor)} aria-hidden />
       <span className="shrink-0 font-medium">{label}</span>
       <span className="text-muted-foreground ml-auto truncate text-[11px] tabular-nums">
         {detail}

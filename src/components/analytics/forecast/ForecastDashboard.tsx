@@ -56,7 +56,7 @@ export default function ForecastDashboard() {
   return (
     <div className="space-y-6 p-6">
       <header>
-        <h1 className="text-2xl font-bold">수요 예측 (핫팩 34 SKU)</h1>
+        <h1 className="text-3xl font-bold tracking-tight md:text-4xl">수요 예측 (핫팩 34 SKU)</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           쿠팡 일간성과 + Model A(LightGBM) 예측 + Model B(비율) 발주 · AI 인사이트
         </p>

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
-import { CalendarDays } from "lucide-react";
 import {
   Bar,
   CartesianGrid,
@@ -16,9 +15,14 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+
+/** 차트 색상 — 입고(#BBBF4E 올리브), 출고(#A90000 진한 레드), 재고선(#F2BE5C 골드) */
+const COLOR_INBOUND = "#BBBF4E";
+const COLOR_OUTBOUND = "#A90000";
+const COLOR_STOCK = "#F2BE5C";
 
 type Preset = "7d" | "30d" | "custom";
 
@@ -102,12 +106,13 @@ export function GlWarehouseTrendChart() {
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle>GL창고 일별 입출고 현황</CardTitle>
-          <CardDescription>
-            막대: orders 기준 일별 입고·출고 수량 · 선: 현재 총재고에서 역산한 일말 재고 추이(참고)
-          </CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="bg-muted/40 flex rounded-lg border p-0.5">
+          {/* 기간 표시 — 7일/30일 버튼과 동일한 글씨 크기·색상 */}
+          <span className="text-muted-foreground text-sm">
+            기간 {rangeFrom} ~ {rangeTo}
+          </span>
+          <div className="bg-muted/40 flex items-center gap-1 rounded-lg border p-0.5">
             <Button
               type="button"
               variant={preset === "7d" ? "default" : "ghost"}
@@ -133,10 +138,9 @@ export function GlWarehouseTrendChart() {
                 type="button"
                 variant={preset === "custom" ? "default" : "outline"}
                 size="sm"
-                className="h-8"
+                className="h-8 rounded-md px-3"
                 onClick={() => setPreset("custom")}
               >
-                <CalendarDays className="mr-1 h-4 w-4" />
                 기간설정
               </Button>
             </PopoverTrigger>
@@ -178,9 +182,11 @@ export function GlWarehouseTrendChart() {
         </div>
       </CardHeader>
       <CardContent>
-        <p className="text-muted-foreground mb-2 text-xs">
-          기간 {rangeFrom} ~ {rangeTo}
-        </p>
+        {/* 좌·우 축 라벨 — 수평 정렬 */}
+        <div className="mb-1 flex items-center justify-between px-2 text-xs font-medium text-gray-600">
+          <span>입·출고</span>
+          <span>재고</span>
+        </div>
         {loading ? (
           <Skeleton className="h-[280px] w-full" />
         ) : error ? (
@@ -190,34 +196,54 @@ export function GlWarehouseTrendChart() {
         ) : (
           <div className="h-[300px] w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+              {/* left margin 확보 — Y축 라벨 잘림 방지 */}
+              <ComposedChart data={chartData} margin={{ top: 12, right: 16, left: 12, bottom: 4 }}>
+                <defs>
+                  <linearGradient id="grad-inbound" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor={COLOR_INBOUND} stopOpacity={0.95} />
+                    <stop offset="1" stopColor={COLOR_INBOUND} stopOpacity={0.75} />
+                  </linearGradient>
+                  <linearGradient id="grad-outbound" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor={COLOR_OUTBOUND} stopOpacity={0.95} />
+                    <stop offset="1" stopColor={COLOR_OUTBOUND} stopOpacity={0.75} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="2 4" stroke="#E5E7EB" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: "#475569" }}
+                  interval="preserveStartEnd"
+                  tickLine={false}
+                  axisLine={{ stroke: "#E5E7EB" }}
+                />
                 <YAxis
                   yAxisId="left"
-                  tick={{ fontSize: 11 }}
-                  width={36}
-                  label={{ value: "입·출고", angle: -90, position: "insideLeft", fontSize: 10 }}
+                  tick={{ fontSize: 11, fill: "#475569" }}
+                  width={48}
+                  tickLine={false}
+                  axisLine={false}
                 />
                 <YAxis
                   yAxisId="right"
                   orientation="right"
-                  tick={{ fontSize: 11 }}
-                  width={44}
-                  label={{ value: "재고(우)", angle: 90, position: "insideRight", fontSize: 10 }}
+                  tick={{ fontSize: 11, fill: "#475569" }}
+                  width={56}
+                  tickLine={false}
+                  axisLine={false}
                 />
                 <Tooltip
+                  cursor={{ fill: "rgba(0,0,0,0.03)" }}
                   content={({ active, payload, label }) => {
                     if (!active || !payload?.length) return null;
                     const row = payload[0]?.payload as { date?: string };
                     const labels: Record<string, string> = {
                       inbound: "입고량",
                       outbound: "출고량",
-                      stockEnd: "재고(일말·우축)",
+                      stockEnd: "일말 재고",
                     };
                     return (
-                      <div className="bg-popover text-popover-foreground rounded-md border px-3 py-2 text-xs shadow-md">
-                        <p className="font-medium">{row.date ?? String(label)}</p>
+                      <div className="bg-popover text-popover-foreground rounded-md border px-3 py-2 text-xs shadow-lg">
+                        <p className="font-bold text-gray-900">{row.date ?? String(label)}</p>
                         <ul className="mt-1 space-y-0.5">
                           {payload.map((p) => {
                             const key = String(p.dataKey ?? "");
@@ -238,30 +264,58 @@ export function GlWarehouseTrendChart() {
                   yAxisId="left"
                   dataKey="inbound"
                   name="inbound"
-                  fill="#378ADD"
-                  radius={[2, 2, 0, 0]}
+                  fill="url(#grad-inbound)"
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={18}
                 />
                 <Bar
                   yAxisId="left"
                   dataKey="outbound"
                   name="outbound"
-                  fill="#D85A30"
-                  radius={[2, 2, 0, 0]}
+                  fill="url(#grad-outbound)"
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={18}
                 />
                 <Line
                   yAxisId="right"
                   type="monotone"
                   dataKey="stockEnd"
                   name="stockEnd"
-                  stroke="#16a34a"
-                  strokeWidth={2}
-                  strokeDasharray="4 4"
-                  dot={{ r: 3, fill: "#16a34a" }}
+                  stroke={COLOR_STOCK}
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: COLOR_STOCK, strokeWidth: 0 }}
+                  activeDot={{ r: 5, fill: COLOR_STOCK, stroke: "#fff", strokeWidth: 2 }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         )}
+        {/* 범례 — 아이콘 + 설명 (선/막대 접두어 제거) */}
+        {!loading && !error && chartData.length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-5 text-xs text-gray-700">
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="inline-block h-0.5 w-5"
+                style={{ backgroundColor: COLOR_STOCK }}
+                aria-hidden
+              />
+              일말 재고 추이
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="inline-block h-3 w-3 rounded-sm"
+                style={{ backgroundColor: COLOR_INBOUND }}
+                aria-hidden
+              />
+              <span
+                className="inline-block h-3 w-3 rounded-sm"
+                style={{ backgroundColor: COLOR_OUTBOUND }}
+                aria-hidden
+              />
+              입출고 수량
+            </span>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

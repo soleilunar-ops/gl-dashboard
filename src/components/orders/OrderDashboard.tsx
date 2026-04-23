@@ -1,17 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { ORDER_COMPANIES, type OrderCompanyCode } from "@/lib/orders/orderMeta";
 import { OrdersMarginProvider } from "@/components/analytics/cost/OrdersMarginContext";
-import { OrdersHeader } from "./OrdersHeader";
 import { OrdersListFilters } from "./OrdersListFilters";
 import { OrdersTable } from "./OrdersTable";
 import { OrdersActionPanel } from "./OrdersActionPanel";
@@ -28,20 +28,7 @@ import {
 } from "./_hooks/useOrders";
 import type { PurchaseDashboardRow } from "./_hooks/buildContractRows";
 
-const PAGE_SIZE = 20;
-
-/** 브라우저에 저장하는 마지막 ERP 데이터 조회 완료 시각 (ISO 문자열) */
-const ERP_SYNC_TIME_STORAGE_KEY = "orders-dashboard-last-erp-sync-at";
-
-/** ERP 연동 시각 표시용 (한국어 로캘) */
-function formatKoreanDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("ko-KR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(d);
-}
+const PAGE_SIZE = 10;
 
 function isoDate(d: Date): string {
   // 로컬 날짜 고정 — 변경 이유: toISOString(UTC)로 전월 1일이 하루 전으로 밀리는 오프셋 방지
@@ -144,8 +131,6 @@ export default function OrderDashboard() {
   const [rawEcountRows, setRawEcountRows] = useState<OrderDashboardRow[] | null>(null);
   /** 원천 ecount_* 추출 에러 */
   const [rawEcountError, setRawEcountError] = useState<string | null>(null);
-  /** 마지막 「ERP 데이터 불러오기」 성공 시각 */
-  const [lastErpSyncAtIso, setLastErpSyncAtIso] = useState<string | null>(null);
   /** 상단 ERP 원천 조회용 기간 */
   const [syncDateFrom, setSyncDateFrom] = useState<string | null>(defaultSyncFrom);
   const [syncDateTo, setSyncDateTo] = useState<string | null>(defaultSyncTo);
@@ -210,15 +195,6 @@ export default function OrderDashboard() {
     setNarrowDealKinds((prev) => prev.filter((k) => listScopeDealKinds.includes(k)));
   }, [listScopeDealKinds]);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(ERP_SYNC_TIME_STORAGE_KEY);
-      if (saved) setLastErpSyncAtIso(saved);
-    } catch {
-      /* 저장소 접근 불가 시 무시 */
-    }
-  }, []);
-
   const toggleNarrowCompany = useCallback((code: OrderErpSystem) => {
     setNarrowCompanies((prev) =>
       prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
@@ -280,32 +256,6 @@ export default function OrderDashboard() {
 
   const selectedIds = useMemo(() => [...selected], [selected]);
 
-  const scrollToStockApprovalCard = useCallback(() => {
-    const scrollOnce = () => {
-      const card = document.getElementById("orders-stock-approval-card");
-      if (!card) return;
-      const scroller = card.closest("main");
-      if (!(scroller instanceof HTMLElement)) {
-        card.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-      const scrollerRect = scroller.getBoundingClientRect();
-      const cardRect = card.getBoundingClientRect();
-      const currentTop = scroller.scrollTop;
-      const topOffset = 10;
-      const desiredTop = currentTop + (cardRect.top - scrollerRect.top) - topOffset;
-      scroller.scrollTo({ top: Math.max(0, desiredTop), behavior: "smooth" });
-    };
-
-    // 카드 렌더/확장 이후에도 첨부 화면처럼 안정적으로 맞추기 위해 2회 보정
-    requestAnimationFrame(() => {
-      scrollOnce();
-      requestAnimationFrame(() => {
-        scrollOnce();
-      });
-    });
-  }, []);
-
   /** 서버 API(service_role)로 원천 조회 — 변경 이유: 브라우저 anon은 RLS로 0건만 올 수 있음 */
   const fetchRawEcountRows = useCallback(async (): Promise<OrderDashboardRow[]> => {
     const res = await fetch("/api/orders/ecount-excel-source", {
@@ -344,14 +294,6 @@ export default function OrderDashboard() {
       setFocusedItemId(null);
       const extracted = await fetchRawEcountRows();
       setRawEcountRows(extracted);
-
-      const finishedAt = new Date().toISOString();
-      setLastErpSyncAtIso(finishedAt);
-      try {
-        localStorage.setItem(ERP_SYNC_TIME_STORAGE_KEY, finishedAt);
-      } catch {
-        /* 저장 실패 무시 */
-      }
 
       toast.success(`Supabase에서 ${extracted.length.toLocaleString("ko-KR")}건을 불러왔습니다.`);
 
@@ -435,212 +377,199 @@ export default function OrderDashboard() {
 
   return (
     <OrdersMarginProvider value={null}>
-      <div className="flex flex-col gap-4">
-        {/* 제목 + 대상 기업·거래·ERP·엑셀·새로고침만 */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">기업/기간 선택</CardTitle>
-            <p className="text-muted-foreground text-xs">
-              기업을 고른 뒤 「ERP 데이터 불러오기」로 해당 기업의 Supabase 엑셀 원천 테이블만
-              조회합니다. (지엘: 구매/판매/생산, 지엘팜·HNB: 구매/판매)
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Label className="text-muted-foreground w-full text-xs sm:w-auto">
-                  기업(중복선택 가능)
-                </Label>
-                <Button
-                  type="button"
-                  variant={selectedCompanyCodes.length === 0 ? "secondary" : "outline"}
-                  size="sm"
-                  className="h-9 shrink-0"
-                  onClick={() => setSelectedCompanyCodes([])}
-                >
-                  전체
-                </Button>
-                <div className="flex flex-wrap justify-start gap-1">
-                  {ORDER_COMPANIES.map((c) => (
+      <Tabs defaultValue="list" className="gap-4">
+        <TabsList>
+          <TabsTrigger value="list">주문 목록</TabsTrigger>
+          <TabsTrigger value="contract">신규 계약 추가</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list" className="flex flex-col gap-4">
+          {/* 기업/기간 선택 + ERP 불러오기/엑셀 업로드/새로고침 */}
+          <Card>
+            <CardContent className="py-6">
+              <div className="flex flex-col gap-4">
+                {/* 기업 · 기간 가로 배치 — 중앙 정렬 */}
+                <div className="flex flex-col items-center justify-center gap-4 lg:flex-row lg:gap-8">
+                  {/* 기업 선택 */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Label className="text-muted-foreground text-sm font-medium">기업</Label>
                     <Button
-                      key={c.code}
                       type="button"
-                      variant={selectedCompanyCodes.includes(c.code) ? "secondary" : "outline"}
+                      variant={selectedCompanyCodes.length === 0 ? "secondary" : "outline"}
                       size="sm"
-                      className="h-9 shrink-0 px-3"
-                      onClick={() => toggleCompanyCode(c.code)}
+                      className="h-9 shrink-0"
+                      onClick={() => setSelectedCompanyCodes([])}
                     >
-                      {c.label}
+                      전체
                     </Button>
-                  ))}
+                    {ORDER_COMPANIES.map((c) => (
+                      <Button
+                        key={c.code}
+                        type="button"
+                        variant={selectedCompanyCodes.includes(c.code) ? "secondary" : "outline"}
+                        size="sm"
+                        className="h-9 shrink-0 px-3"
+                        onClick={() => toggleCompanyCode(c.code)}
+                      >
+                        {c.label}
+                      </Button>
+                    ))}
+                  </div>
+                  {/* 기간 선택 */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Label className="text-muted-foreground text-sm font-medium">기간</Label>
+                    <Popover open={syncCalendarOpen} onOpenChange={setSyncCalendarOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-9 shrink-0 font-normal">
+                          <CalendarDays className="mr-1 h-4 w-4" />
+                          {syncDateFrom ?? "전체"} ~ {syncDateTo ?? "전체"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <div className="flex border-b">
+                          {SYNC_DATE_PRESETS.map((p) => (
+                            <Button
+                              key={p.label}
+                              variant="ghost"
+                              size="sm"
+                              className="rounded-none"
+                              onClick={() => {
+                                const [from, to] = p.compute();
+                                setSyncDateFrom(from);
+                                setSyncDateTo(to);
+                              }}
+                            >
+                              {p.label}
+                            </Button>
+                          ))}
+                        </div>
+                        <Calendar
+                          mode="range"
+                          selected={{
+                            from: syncDateFrom ? new Date(syncDateFrom) : undefined,
+                            to: syncDateTo ? new Date(syncDateTo) : undefined,
+                          }}
+                          onSelect={(range) => {
+                            setSyncDateFrom(range?.from ? isoDate(range.from) : null);
+                            setSyncDateTo(range?.to ? isoDate(range.to) : null);
+                          }}
+                          numberOfMonths={2}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+
+                {/* 중앙 주요 버튼(크게) + 바로 옆 새로고침 아이콘 */}
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <Button
+                    type="button"
+                    className="h-11 px-6 text-base"
+                    disabled={ingestLoading}
+                    onClick={() => void loadDataForSelection()}
+                  >
+                    {ingestLoading
+                      ? "Supabase에서 데이터를 불러오는 중입니다…"
+                      : "ERP 데이터 불러오기"}
+                  </Button>
+                  <OrdersExcelUploadDialog
+                    companyCode={singleCompanyOrNull}
+                    purchases={purchases}
+                    onImported={refetch}
+                    triggerClassName="h-11 px-6 text-base"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="새로고침"
+                    title="새로고침"
+                    className="h-9 w-9"
+                    onClick={() => {
+                      // 새로고침 초기화 동작 — 변경 이유: 버튼 클릭 시 표의 모든 표시 데이터를 즉시 비움
+                      setUseRawEcountView(true);
+                      setRawEcountRows([]);
+                      setRawEcountError(null);
+                      setSelected(new Set());
+                      setFocusedOrderRow(null);
+                      setFocusedItemId(null);
+                      setPage(0);
+                      toast.success("표시 데이터를 초기화했습니다.");
+                    }}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
-              <div className="flex flex-wrap items-end gap-2">
-                <Label className="text-muted-foreground w-full text-xs sm:w-auto">기간(선택)</Label>
-                <Popover open={syncCalendarOpen} onOpenChange={setSyncCalendarOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-9 shrink-0 font-normal">
-                      <CalendarDays className="mr-1 h-4 w-4" />
-                      {syncDateFrom ?? "전체"} ~ {syncDateTo ?? "전체"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <div className="flex border-b">
-                      {SYNC_DATE_PRESETS.map((p) => (
-                        <Button
-                          key={p.label}
-                          variant="ghost"
-                          size="sm"
-                          className="rounded-none"
-                          onClick={() => {
-                            const [from, to] = p.compute();
-                            setSyncDateFrom(from);
-                            setSyncDateTo(to);
-                          }}
-                        >
-                          {p.label}
-                        </Button>
-                      ))}
-                    </div>
-                    <Calendar
-                      mode="range"
-                      selected={{
-                        from: syncDateFrom ? new Date(syncDateFrom) : undefined,
-                        to: syncDateTo ? new Date(syncDateTo) : undefined,
-                      }}
-                      onSelect={(range) => {
-                        setSyncDateFrom(range?.from ? isoDate(range.from) : null);
-                        setSyncDateTo(range?.to ? isoDate(range.to) : null);
-                      }}
-                      numberOfMonths={2}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="flex flex-wrap items-end gap-3">
-                <Button
-                  type="button"
-                  className="h-9 shrink-0"
-                  disabled={ingestLoading}
-                  onClick={() => void loadDataForSelection()}
-                >
-                  {ingestLoading
-                    ? "Supabase에서 데이터를 불러오는 중입니다…"
-                    : "ERP 데이터 불러오기"}
-                </Button>
-                <OrdersExcelUploadDialog
-                  companyCode={singleCompanyOrNull}
-                  purchases={purchases}
-                  onImported={refetch}
-                  triggerClassName="h-9 shrink-0"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-9 shrink-0"
-                  size="sm"
-                  onClick={() => {
-                    // 새로고침 초기화 동작 — 변경 이유: 버튼 클릭 시 표의 모든 표시 데이터를 즉시 비움
-                    setUseRawEcountView(true);
-                    setRawEcountRows([]);
-                    setRawEcountError(null);
-                    setSelected(new Set());
-                    setFocusedOrderRow(null);
-                    setFocusedItemId(null);
-                    setPage(0);
-                    toast.success("표시 데이터를 초기화했습니다.");
-                  }}
-                >
-                  새로고침
-                </Button>
-              </div>
-              <p className="text-muted-foreground text-xs">
-                마지막 조회 시각:{" "}
-                {lastErpSyncAtIso
-                  ? formatKoreanDateTime(lastErpSyncAtIso)
-                  : "기록 없음 · ERP 데이터 불러오기 후 표시"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* 신규 계약 — 폼 내 기업 선택(상단 필터와 독립) */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">신규 계약 추가</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <OrderContractAddForm onAdded={refetch} />
-          </CardContent>
-        </Card>
-
-        {/* 검색 · ERP 적재 · 주문 테이블(건수·상태는 테이블 하단) */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">검색</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <p className="text-muted-foreground text-xs">
-              상단에서 고른 기업·거래 유형과 동일한 범위로 목록을 조회합니다. 「ERP 데이터
-              불러오기」는 Supabase 엑셀 원천(기업별 테이블)을 합쳐 일자 기준 최신순으로 보여줍니다.
-            </p>
-            <OrdersListFilters
-              variant="embedded"
-              hideEmbeddedLabel
-              listScopeCompanies={listScopeCompanies}
-              listScopeDealKinds={listScopeDealKinds}
-              narrowCompanies={narrowCompanies}
-              narrowDealKinds={narrowDealKinds}
-              onToggleNarrowCompany={toggleNarrowCompany}
-              onToggleNarrowDealKind={toggleNarrowDealKind}
-              itemSearch={itemSearch}
-              onItemSearchChange={(v) => {
-                setItemSearch(v);
-                setPage(0);
-              }}
-            />
-            <div className="border-muted space-y-3 border-t pt-3">
-              {!useRawEcountView ? (
-                <>
+          {/* 검색 · ERP 적재 · 주문 테이블(건수·상태는 테이블 하단) */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">검색</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <OrdersListFilters
+                variant="embedded"
+                hideEmbeddedLabel
+                listScopeCompanies={listScopeCompanies}
+                listScopeDealKinds={listScopeDealKinds}
+                narrowCompanies={narrowCompanies}
+                narrowDealKinds={narrowDealKinds}
+                onToggleNarrowCompany={toggleNarrowCompany}
+                onToggleNarrowDealKind={toggleNarrowDealKind}
+                itemSearch={itemSearch}
+                onItemSearchChange={(v) => {
+                  setItemSearch(v);
+                  setPage(0);
+                }}
+                status={useRawEcountView ? undefined : status}
+                onStatusChange={
+                  useRawEcountView
+                    ? undefined
+                    : (s) => {
+                        setStatus(s);
+                        setPage(0);
+                      }
+                }
+              />
+              <div className="space-y-3">
+                {!useRawEcountView ? (
                   <OrdersActionPanel
                     selectedIds={selectedIds}
                     onActionComplete={handleActionComplete}
                   />
-                  <OrdersHeader
-                    status={status}
-                    onStatusChange={(s) => {
-                      setStatus(s);
-                      setPage(0);
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    Supabase 원천(구매·판매·생산) 추출 결과를 표시 중입니다. 일자 기준 최신순입니다.
+                  </p>
+                )}
+                {/* 테이블 하단 배치 — 변경 이유: 현재 재고 카드가 주문표 아래에 항상 나오도록 레이아웃 단순화 */}
+                <div id="orders-dashboard-table" className="min-w-0 scroll-mt-28 space-y-3">
+                  <OrdersTable
+                    rows={displayedRows satisfies OrderDashboardRow[]}
+                    totalCount={displayedTotalCount}
+                    loading={displayedLoading}
+                    error={displayedError}
+                    page={page}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setPage}
+                    selected={useRawEcountView ? new Set<number>() : selected}
+                    onSelectedChange={useRawEcountView ? () => {} : setSelected}
+                    onRowFocus={(row) => {
+                      setFocusedOrderRow(row);
+                      setFocusedItemId(row.item_id ?? null);
                     }}
                   />
-                </>
-              ) : (
-                <p className="text-muted-foreground text-xs">
-                  Supabase 원천(구매·판매·생산) 추출 결과를 표시 중입니다. 일자 기준 최신순입니다.
-                </p>
-              )}
-              {/* 테이블 하단 배치 — 변경 이유: 현재 재고 카드가 주문표 아래에 항상 나오도록 레이아웃 단순화 */}
-              <div id="orders-dashboard-table" className="min-w-0 scroll-mt-28 space-y-3">
-                <OrdersTable
-                  rows={displayedRows satisfies OrderDashboardRow[]}
-                  totalCount={displayedTotalCount}
-                  loading={displayedLoading}
-                  error={displayedError}
-                  page={page}
-                  pageSize={PAGE_SIZE}
-                  onPageChange={setPage}
-                  selected={useRawEcountView ? new Set<number>() : selected}
-                  onSelectedChange={useRawEcountView ? () => {} : setSelected}
-                  onRowFocus={(row) => {
-                    setFocusedOrderRow(row);
-                    setFocusedItemId(row.item_id ?? null);
-                    scrollToStockApprovalCard();
-                  }}
-                />
-                <div id="orders-stock-approval-card" className="scroll-mt-20">
+                  {/* 재고 승인 다이얼로그 — 행 선택 시 열림 */}
                   <OrdersStockSidebar
                     itemId={focusedItemId}
                     orderRow={focusedOrderRow}
+                    onClose={() => {
+                      setFocusedOrderRow(null);
+                      setFocusedItemId(null);
+                    }}
                     onOrderUpdated={() => {
                       if (useRawEcountView) {
                         void (async () => {
@@ -663,10 +592,22 @@ export default function OrderDashboard() {
                   />
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="contract" className="flex flex-col gap-4">
+          {/* 신규 계약 — 폼 내 기업 선택(상단 필터와 독립) */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">신규 계약 추가</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <OrderContractAddForm onAdded={refetch} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </OrdersMarginProvider>
   );
 }

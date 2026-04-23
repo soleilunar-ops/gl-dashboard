@@ -16,12 +16,12 @@ export default function CurrentPriceCard({ result, referencePriceVAT }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">현재가 진단</CardTitle>
+        <CardTitle className="text-lg font-bold tracking-tight">현재가 진단</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {!hasRef ? (
           <p className="text-muted-foreground text-sm">
-            ② 시장 조건의 &quot;역산용 노출가&quot;를 입력하면 현재가 기준 실제 마진을 분석합니다.
+            시장 조건의 &quot;역산용 노출가&quot;를 입력하면 현재가 기준 실제 마진을 분석합니다.
           </p>
         ) : (
           <>

@@ -5,7 +5,7 @@ export default function MilkrunWeatherPage() {
   return (
     <div className="space-y-6 p-6">
       <header>
-        <h1 className="text-xl font-medium">파주·재작업·중국 연휴</h1>
+        <h1 className="text-3xl font-bold tracking-tight md:text-4xl">재작업 요소</h1>
       </header>
       <PajuWeatherDashboard />
     </div>

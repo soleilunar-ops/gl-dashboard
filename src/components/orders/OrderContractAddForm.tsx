@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { CalendarDays, RefreshCw } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -47,6 +47,7 @@ function parsePositiveRate(raw: string): number | null {
 /** 수동 구매 계약 추가 — orders INSERT (승인대기) */
 export default function OrderContractAddForm({ onAdded }: Props) {
   const listId = useId();
+  const [itemPopoverOpen, setItemPopoverOpen] = useState(false);
   const [localCompanyCode, setLocalCompanyCode] = useState<ContractCompanyCode>("gl");
   /** 대시보드 상단 기업 필터와 무관하게 폼 내 선택값만 사용 */
   const effectiveCompanyCode: ContractCompanyCode = localCompanyCode;
@@ -61,13 +62,13 @@ export default function OrderContractAddForm({ onAdded }: Props) {
   const [txDate, setTxDate] = useState<Date>(() => new Date());
   const [calOpen, setCalOpen] = useState(false);
   const [selectedMappingId, setSelectedMappingId] = useState<number | null>(null);
+  /** 품목 입력칸 표시값 — 검색 타이핑과 datalist 선택을 모두 처리 */
+  const [itemInputValue, setItemInputValue] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [quantityInput, setQuantityInput] = useState("");
   const [unitPriceInput, setUnitPriceInput] = useState("");
   const [currency, setCurrency] = useState<CurrencyCode>("CNY");
   const [exchangeRateInput, setExchangeRateInput] = useState("");
-  const [exchangeLoading, setExchangeLoading] = useState(false);
-  const [exchangeFetchError, setExchangeFetchError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -78,41 +79,30 @@ export default function OrderContractAddForm({ onAdded }: Props) {
     [items, selectedMappingId]
   );
 
+  /** 입력값 기준으로 필터링된 품목 옵션 — 코드 또는 품목명 부분일치, 대소문자 무시 */
+  const filteredItemOptions = useMemo(() => {
+    const q = itemInputValue.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((opt) => opt.label.toLowerCase().includes(q));
+  }, [items, itemInputValue]);
+
   useEffect(() => {
     setSelectedMappingId(null);
+    setItemInputValue("");
     setSupplierName("");
   }, [effectiveCompanyCode]);
 
-  const fetchExchangeRate = useCallback(async () => {
+  const syncExchangeInputByCurrency = useCallback(() => {
     if (currency === "KRW") {
       setExchangeRateInput("1");
-      setExchangeFetchError(null);
-      setExchangeLoading(false);
-      return;
+    } else if (exchangeRateInput.trim() === "") {
+      setExchangeRateInput("");
     }
-    setExchangeLoading(true);
-    setExchangeFetchError(null);
-    try {
-      const res = await fetch(`/api/exchange-rate?from=${currency}&to=KRW`);
-      const data = (await res.json()) as { rate?: number; error?: string };
-      if (!res.ok || typeof data.rate !== "number") {
-        setExchangeFetchError(
-          data.error ?? "실시간 환율을 불러오지 못했습니다. 직접 입력해 주세요."
-        );
-        return;
-      }
-      setExchangeRateInput(String(data.rate));
-      setExchangeFetchError(null);
-    } catch {
-      setExchangeFetchError("실시간 환율을 불러오지 못했습니다. 직접 입력해 주세요.");
-    } finally {
-      setExchangeLoading(false);
-    }
-  }, [currency]);
+  }, [currency, exchangeRateInput]);
 
   useEffect(() => {
-    void fetchExchangeRate();
-  }, [fetchExchangeRate]);
+    syncExchangeInputByCurrency();
+  }, [syncExchangeInputByCurrency]);
 
   const quantity = Number(quantityInput);
   const unitPrice = Number(unitPriceInput);
@@ -182,6 +172,7 @@ export default function OrderContractAddForm({ onAdded }: Props) {
       setQuantityInput("");
       setUnitPriceInput("");
       setSelectedMappingId(null);
+      setItemInputValue("");
       onAdded();
     } catch (e) {
       setError(e instanceof Error ? e.message : "네트워크 오류");
@@ -191,7 +182,7 @@ export default function OrderContractAddForm({ onAdded }: Props) {
   };
 
   return (
-    <div className="border-border rounded-lg border p-3">
+    <div>
       {optsError ? (
         <p className="text-destructive mb-2 text-xs">옵션 로드 오류: {optsError}</p>
       ) : null}
@@ -223,7 +214,7 @@ export default function OrderContractAddForm({ onAdded }: Props) {
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 w-full justify-start font-normal md:max-w-[280px]"
+                className="h-9 w-full justify-start font-normal"
               >
                 <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
                 {format(txDate, "yyyy년 M월 d일", { locale: ko })}
@@ -245,22 +236,60 @@ export default function OrderContractAddForm({ onAdded }: Props) {
 
         <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
           <Label className="text-xs">품목코드 및 품목명</Label>
-          <Select
-            value={selectedMappingId !== null ? String(selectedMappingId) : ""}
-            onValueChange={(v) => setSelectedMappingId(v ? Number(v) : null)}
-            disabled={loadingOpts || items.length === 0}
-          >
-            <SelectTrigger className="h-9 w-full">
-              <SelectValue placeholder={loadingOpts ? "로딩 중…" : "품목 선택"} />
-            </SelectTrigger>
-            <SelectContent>
-              {items.map((opt) => (
-                <SelectItem key={opt.mappingId} value={String(opt.mappingId)}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* 커스텀 콤보박스 — 전체 UI와 일관된 shadcn 디자인 토큰 사용 */}
+          <Popover open={itemPopoverOpen} onOpenChange={setItemPopoverOpen}>
+            <PopoverAnchor asChild>
+              <Input
+                value={itemInputValue}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setItemInputValue(v);
+                  const match = items.find((opt) => opt.label === v);
+                  setSelectedMappingId(match ? match.mappingId : null);
+                  setItemPopoverOpen(true);
+                }}
+                onFocus={() => setItemPopoverOpen(true)}
+                placeholder={loadingOpts ? "로딩 중…" : "품목코드 또는 품목명으로 검색"}
+                disabled={loadingOpts || items.length === 0}
+                autoComplete="off"
+                className="h-9"
+              />
+            </PopoverAnchor>
+            <PopoverContent
+              align="start"
+              sideOffset={4}
+              className="max-h-[300px] w-[var(--radix-popover-trigger-width)] gap-0 overflow-y-auto p-1"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+            >
+              {filteredItemOptions.length === 0 ? (
+                <div className="text-muted-foreground px-2 py-2 text-sm">
+                  일치하는 품목이 없습니다
+                </div>
+              ) : (
+                filteredItemOptions.map((opt) => {
+                  const isSelected = opt.mappingId === selectedMappingId;
+                  return (
+                    <button
+                      key={opt.mappingId}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()} // 입력 포커스 유지
+                      onClick={() => {
+                        setItemInputValue(opt.label);
+                        setSelectedMappingId(opt.mappingId);
+                        setItemPopoverOpen(false);
+                      }}
+                      className={cn(
+                        "hover:bg-accent hover:text-accent-foreground flex w-full cursor-pointer items-center rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                        isSelected && "bg-accent text-accent-foreground font-medium"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div className="space-y-1.5">
@@ -324,27 +353,9 @@ export default function OrderContractAddForm({ onAdded }: Props) {
         </div>
 
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-1">
-            <Label className="text-xs">
-              환율 <span className="text-muted-foreground font-normal">{exchangePairHint}</span>
-            </Label>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground h-auto min-h-7 max-w-[148px] shrink-0 px-1.5 py-1 text-left text-[10px] leading-tight sm:max-w-none sm:text-[11px]"
-              disabled={exchangeLoading || currency === "KRW"}
-              onClick={() => void fetchExchangeRate()}
-              title="실시간 환율 다시 조회"
-            >
-              <span className="inline-flex items-center gap-1">
-                <RefreshCw
-                  className={cn("h-3.5 w-3.5 shrink-0", exchangeLoading && "animate-spin")}
-                />
-                실시간 환율 조회
-              </span>
-            </Button>
-          </div>
+          <Label className="text-xs">
+            환율 <span className="text-muted-foreground font-normal">{exchangePairHint}</span>
+          </Label>
           <Input
             type="text"
             inputMode="decimal"
@@ -353,30 +364,9 @@ export default function OrderContractAddForm({ onAdded }: Props) {
             className="h-9 cursor-text tabular-nums"
             value={exchangeRateInput}
             onChange={(e) => setExchangeRateInput(e.target.value)}
-            placeholder={currency === "KRW" ? "1" : "실시간 조회 또는 직접 입력·조정"}
+            placeholder={currency === "KRW" ? "1" : "직접 입력"}
             disabled={currency === "KRW"}
-            aria-describedby={
-              [
-                currency !== "KRW" ? "exchange-rate-editable-hint" : "",
-                exchangeFetchError ? "exchange-rate-hint" : "",
-              ]
-                .filter(Boolean)
-                .join(" ") || undefined
-            }
           />
-          {currency !== "KRW" ? (
-            <p
-              id="exchange-rate-editable-hint"
-              className="text-muted-foreground text-[10px] leading-tight"
-            >
-              조회 후에도 칸을 눌러 숫자를 직접 바꿀 수 있습니다.
-            </p>
-          ) : null}
-          {exchangeFetchError ? (
-            <p id="exchange-rate-hint" className="text-muted-foreground text-[10px] leading-tight">
-              {exchangeFetchError}
-            </p>
-          ) : null}
         </div>
 
         <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">

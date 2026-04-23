@@ -133,49 +133,47 @@ export default function LogisticsUnifiedTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground text-sm">
-        GL 창고와 쿠팡 센터 재고를 한눈에 요약합니다. 상세는 각 탭에서 확인하세요.
-      </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardContent className="p-4">
-            <p className="text-muted-foreground text-xs">GL 창고 재고(수량 합)</p>
+          <CardContent className="px-4 py-3 text-center">
+            <p className="text-foreground text-base font-bold tracking-tight">
+              GL 창고 재고(수량 합)
+            </p>
             {loading ? (
-              <Skeleton className="mt-2 h-8 w-28" />
+              <Skeleton className="mx-auto mt-1.5 h-8 w-28" />
             ) : (
-              <p className="mt-1 text-xl font-medium tabular-nums">{glQty.toLocaleString()}</p>
+              <p className="mt-1.5 text-2xl font-semibold tabular-nums">{glQty.toLocaleString()}</p>
             )}
-            <p className="text-muted-foreground mt-1 text-xs">{items.length} 품목</p>
+            <p className="text-muted-foreground mt-0.5 text-sm">{items.length} 품목</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
-            <p className="text-muted-foreground text-xs">오늘 입고 / 출고</p>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-lg font-medium text-emerald-600 tabular-nums">
+          <CardContent className="px-4 py-3 text-center">
+            <p className="text-foreground text-base font-bold tracking-tight">오늘 입고 / 출고</p>
+            <div className="mt-4 flex items-baseline justify-center gap-2">
+              <span className="text-2xl font-semibold text-emerald-600 tabular-nums">
                 +{todayIn.toLocaleString()}
               </span>
               <span className="text-muted-foreground">/</span>
-              <span className="text-lg font-medium text-rose-600 tabular-nums">
+              <span className="text-2xl font-semibold text-rose-600 tabular-nums">
                 −{todayOut.toLocaleString()}
               </span>
             </div>
-            <p className="text-muted-foreground mt-1 text-xs">GL 창고 · orders 기준</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
-            <p className="text-muted-foreground text-xs">쿠팡 센터 재고</p>
+          <CardContent className="px-4 py-3 text-center">
+            <p className="text-foreground text-base font-bold tracking-tight">쿠팡 센터 재고</p>
             {coupangLoading ? (
-              <Skeleton className="mt-2 h-8 w-28" />
+              <Skeleton className="mx-auto mt-1.5 h-8 w-28" />
             ) : (
-              <p className="mt-1 text-xl font-medium tabular-nums">
+              <p className="mt-1.5 text-2xl font-semibold tabular-nums">
                 {(coupangBoxSum ?? 0).toLocaleString()}
               </p>
             )}
-            <div className="text-muted-foreground mt-1 text-xs">
+            <div className="text-muted-foreground mt-0.5 text-sm">
               {coupangLoading ? (
-                <Skeleton className="mt-1 h-4 w-32" />
+                <Skeleton className="mx-auto mt-1 h-4 w-32" />
               ) : (
                 <>
                   {coupangSkuCount.toLocaleString("ko-KR")} SKU ·{" "}
@@ -186,16 +184,18 @@ export default function LogisticsUnifiedTab() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
-            <p className="text-muted-foreground text-xs">쿠팡 발주 상태</p>
+          <CardContent className="px-4 py-3">
+            <p className="text-foreground text-center text-base font-bold tracking-tight">
+              쿠팡 발주 상태
+            </p>
             {coupangLoading ? (
-              <div className="mt-2 space-y-2">
+              <div className="mt-1.5 space-y-2">
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-full" />
               </div>
             ) : (
-              <ul className="text-foreground mt-2 space-y-1.5 text-sm tabular-nums">
+              <ul className="text-foreground mt-1.5 space-y-1 text-sm tabular-nums">
                 <li className="flex justify-between gap-3">
                   <span className="text-muted-foreground">발주상태</span>
                   <span className="font-medium">{coupangOrderOk.toLocaleString("ko-KR")}</span>
@@ -212,9 +212,6 @@ export default function LogisticsUnifiedTab() {
                 </li>
               </ul>
             )}
-            <p className="text-muted-foreground mt-2 text-[11px] leading-snug">
-              최신 기준일 행 기준
-            </p>
           </CardContent>
         </Card>
       </div>

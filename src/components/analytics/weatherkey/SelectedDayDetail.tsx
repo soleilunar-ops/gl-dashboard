@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Sparkles, Trophy } from "lucide-react";
+import { Loader2, Trophy } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -136,12 +136,8 @@ export default function SelectedDayDetail({ season }: Props) {
         )}
 
         {/* AI 분석 */}
-        <div className="mb-4 flex gap-2 rounded-md border border-[color:var(--hotpack-trigger-high)]/30 bg-[color:var(--hotpack-trigger-high)]/5 p-3">
-          <Sparkles
-            className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--hotpack-trigger-high)]"
-            aria-hidden
-          />
-          <div className="flex-1 text-sm leading-relaxed">
+        <div className="mb-4 rounded-md border border-[color:var(--hotpack-trigger-high)]/30 bg-[color:var(--hotpack-trigger-high)]/5 p-3">
+          <div className="text-sm leading-relaxed">
             {aiState.kind === "loading" && (
               <div className="text-muted-foreground flex items-center gap-1.5">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> AI 맥락 분석 중…

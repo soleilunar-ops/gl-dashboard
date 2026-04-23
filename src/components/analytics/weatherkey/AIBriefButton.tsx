@@ -1,6 +1,5 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -16,12 +15,11 @@ export default function AIBriefButton({ onOpen }: Props) {
     <Button
       variant="outline"
       size="sm"
-      className="h-8 gap-1.5 text-xs"
+      className="h-8 text-xs"
       onClick={onOpen}
-      aria-label="AI 시즌 브리프 열기"
+      aria-label="AI 리포트 열기"
     >
-      <Sparkles className="h-3.5 w-3.5" aria-hidden />
-      AI 브리프
+      AI 리포트
     </Button>
   );
 }

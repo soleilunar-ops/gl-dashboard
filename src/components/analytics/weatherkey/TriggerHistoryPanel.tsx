@@ -1,18 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
-import type { LucideIcon } from "lucide-react";
-import {
-  AlertTriangle,
-  CloudSnow,
-  Info,
-  Snowflake,
-  Thermometer,
-  TrendingUp,
-  Zap,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import SelectedDayDetail from "./SelectedDayDetail";
@@ -29,52 +19,18 @@ import { useSeasonTriggerHistory, type TriggerEvent } from "./_hooks/useSeasonTr
 import { TRIGGER_COLORS, TRIGGER_LABELS, TRIGGER_PRIORITY, type TriggerName } from "./_tokens";
 import type { SeasonDaily, TriggerEffect } from "./_types";
 
-const TRIGGER_CRITERIA: Record<TriggerName, string> = {
-  cold_shock: "전날 대비 최저기온이 6℃ 이상 하락한 날",
-  compound: "같은 날 '갑작스러운 추위'와 '첫 영하'가 동시 발동",
-  first_freeze: "시즌 첫 최저기온 0℃ 미만을 기록한 날",
-  search_spike_hotpack: "'핫팩' 검색량이 최근 7일 평균의 1.5배 이상",
-  search_spike_any: "관련 키워드 중 하나라도 최근 7일 평균의 1.5배 이상",
-};
-
-// 절대 상태 트리거 (배수>1인 것만 노출)
+// 절대 상태 라벨 (배수>1인 것만 노출)
 const STATE_LABEL: Record<StateKey, string> = {
   cold_wave: "한파",
   freeze: "영하일",
   snow: "강설",
   cold_and_big_diff: "선선+큰 일교차",
 };
-const STATE_CRITERIA: Record<StateKey, string> = {
-  cold_wave: "최저기온 −12℃ 이하",
-  freeze: "최고기온 0℃ 미만",
-  snow: "적설량 > 0",
-  cold_and_big_diff: "최고기온 0~10℃ 이고 일교차 8~12℃",
-};
-const STATE_ICONS: Record<StateKey, LucideIcon> = {
-  cold_wave: Snowflake,
-  freeze: Snowflake,
-  snow: CloudSnow,
-  cold_and_big_diff: Thermometer,
-};
 const STATE_LEVEL: Record<StateKey, "critical" | "high" | "medium"> = {
   cold_wave: "critical",
   freeze: "high",
   snow: "high",
   cold_and_big_diff: "medium",
-};
-
-const ICONS: Record<TriggerName, LucideIcon> = {
-  cold_shock: Zap,
-  compound: AlertTriangle,
-  first_freeze: Snowflake,
-  search_spike_hotpack: TrendingUp,
-  search_spike_any: TrendingUp,
-};
-
-const LEVEL_TEXT: Record<string, string> = {
-  critical: "text-[color:var(--hotpack-trigger-critical)]",
-  high: "text-[color:var(--hotpack-trigger-high)]",
-  medium: "text-[color:var(--hotpack-trigger-medium)]",
 };
 
 const LEVEL_BORDER: Record<string, string> = {
@@ -119,6 +75,10 @@ export default function TriggerHistoryPanel({ season }: Props) {
   const { data: stateEvents, loading: stateEvLoading } = useSeasonStateEvents(season);
   const { data: stateLift, loading: stateLiftLoading } = useSeasonStateLift(season);
   const { highlighted, toggleHighlight } = useHighlightQuery();
+  /** 종류별 접기/펼치기 상태 — 기본 모두 펼침 */
+  const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({});
+  const isOpen = (k: string) => openKeys[k] !== false;
+  const toggleOpen = (k: string) => setOpenKeys((prev) => ({ ...prev, [k]: prev[k] === false }));
 
   const byKey = useMemo(() => {
     const m = new Map<TriggerName, TriggerEffect>();
@@ -211,8 +171,6 @@ export default function TriggerHistoryPanel({ season }: Props) {
     );
   }
 
-  const totalFired = Array.from(byKey.values()).reduce((acc, e) => acc + (e.fired_days ?? 0), 0);
-
   // compound에 흡수된 first_freeze처럼 실제 event 카드가 0개면 섹션 숨김
   const visibleTriggers = TRIGGER_PRIORITY.filter((key) => {
     const events = eventsByTrigger.get(key) ?? [];
@@ -220,17 +178,11 @@ export default function TriggerHistoryPanel({ season }: Props) {
   });
 
   return (
-    <Card>
+    <Card className="py-0">
       <CardContent className="flex flex-col gap-4 p-5">
-        <div className="flex items-baseline justify-between">
-          <div>
-            <div className="text-base font-semibold">시즌 날씨 경보 이력</div>
-            <div className="text-muted-foreground text-sm">
-              <span className="font-medium">{season}</span> · 총{" "}
-              <span className="text-foreground font-semibold">{totalFired}일</span> 경보 · 각 카드 =
-              전날 대비 날씨·판매 변화
-            </div>
-          </div>
+        <div>
+          <div className="text-base font-semibold">시즌 날씨 경보 이력</div>
+          <div className="text-muted-foreground text-sm">전날 대비 날씨·판매 변화</div>
         </div>
 
         <SelectedDayDetail season={season} />
@@ -242,132 +194,104 @@ export default function TriggerHistoryPanel({ season }: Props) {
         ) : visibleTriggers.length > 0 ? (
           <div className="flex flex-col gap-4">
             {visibleTriggers.map((key) => {
-              const e = byKey.get(key);
               const events = eventsByTrigger.get(key) ?? [];
-              const firedDays = e?.fired_days ?? events.length;
               const { level } = TRIGGER_COLORS[key];
-              const Icon = ICONS[key];
+              const open = isOpen(key);
 
               return (
                 <div key={key} className="flex flex-col gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Icon className={cn("h-4 w-4 shrink-0", LEVEL_TEXT[level])} aria-hidden />
+                  <button
+                    type="button"
+                    onClick={() => toggleOpen(key)}
+                    aria-expanded={open}
+                    className="flex w-full items-center gap-2 text-left"
+                  >
                     <span className="text-sm font-semibold">{TRIGGER_LABELS[key]}</span>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          aria-label={`${TRIGGER_LABELS[key]} 기준 보기`}
-                          className="text-muted-foreground hover:text-foreground inline-flex h-4 w-4 items-center justify-center rounded-full"
-                        >
-                          <Info className="h-3.5 w-3.5" aria-hidden />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent align="start" className="w-64 text-xs">
-                        <div className="mb-1 font-semibold">{TRIGGER_LABELS[key]} 기준</div>
-                        <div className="text-muted-foreground leading-relaxed">
-                          {TRIGGER_CRITERIA[key]}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                    <span className="text-muted-foreground text-xs tabular-nums">
-                      {firedDays}일{e?.multiplier != null && ` · 평균 ${e.multiplier.toFixed(2)}배`}
-                      {e?.precision_pct != null && ` · 적중률 ${Math.round(e.precision_pct)}%`}
-                    </span>
-                  </div>
+                    <ChevronDown
+                      className={cn(
+                        "text-muted-foreground ml-auto h-4 w-4 transition-transform",
+                        open && "rotate-180"
+                      )}
+                      aria-hidden
+                    />
+                  </button>
 
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
-                    {events.map((ev) => {
-                      const curr = dailyLookup.get(ev.date);
-                      const prev = dailyLookup.get(addDaysIso(ev.date, -1));
-                      const isActive = highlighted === ev.date;
-                      return (
-                        <EventCard
-                          key={`${key}-${ev.date}`}
-                          ev={ev}
-                          curr={curr}
-                          prev={prev}
-                          trigger={key}
-                          isActive={isActive}
-                          borderClass={LEVEL_BORDER[level]}
-                          onClick={() => toggleHighlight(ev.date)}
-                        />
-                      );
-                    })}
-                  </div>
+                  {open ? (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                      {events.map((ev) => {
+                        const curr = dailyLookup.get(ev.date);
+                        const prev = dailyLookup.get(addDaysIso(ev.date, -1));
+                        const isActive = highlighted === ev.date;
+                        return (
+                          <EventCard
+                            key={`${key}-${ev.date}`}
+                            ev={ev}
+                            curr={curr}
+                            prev={prev}
+                            trigger={key}
+                            isActive={isActive}
+                            borderClass={LEVEL_BORDER[level]}
+                            onClick={() => toggleHighlight(ev.date)}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
           </div>
         ) : null}
 
-        {/* 절대 상태 트리거 (배수>1) */}
         {stateSections.length > 0 && (
           <div className="flex flex-col gap-4">
-            <div className="text-muted-foreground border-t pt-4 text-[11px] font-medium tracking-wide uppercase">
-              절대 상태 트리거 (배수 &gt; 1)
-            </div>
             {stateSections.map((s) => {
-              const Icon = STATE_ICONS[s.key];
               const level = STATE_LEVEL[s.key];
+              const openKey = `state-${s.key}`;
+              const open = isOpen(openKey);
               return (
                 <div key={s.key} className="flex flex-col gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Icon className={cn("h-4 w-4 shrink-0", LEVEL_TEXT[level])} aria-hidden />
+                  <button
+                    type="button"
+                    onClick={() => toggleOpen(openKey)}
+                    aria-expanded={open}
+                    className="flex w-full items-center gap-2 text-left"
+                  >
                     <span className="text-sm font-semibold">{STATE_LABEL[s.key]}</span>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          aria-label={`${STATE_LABEL[s.key]} 기준 보기`}
-                          className="text-muted-foreground hover:text-foreground inline-flex h-4 w-4 items-center justify-center rounded-full"
-                        >
-                          <Info className="h-3.5 w-3.5" aria-hidden />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent align="start" className="w-64 text-xs">
-                        <div className="mb-1 font-semibold">{STATE_LABEL[s.key]} 기준</div>
-                        <div className="text-muted-foreground leading-relaxed">
-                          {STATE_CRITERIA[s.key]}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                    <span className="text-muted-foreground text-xs tabular-nums">
-                      {s.key === "cold_and_big_diff"
-                        ? `총 ${s.firedDays}일 중 유효 ${s.filteredDays}일 (전날 대비 ↑ · 판매 ≥ 시즌 평균)`
-                        : `${s.firedDays}일`}
-                      {s.multiplier != null && ` · 평균 ${s.multiplier.toFixed(2)}배`}
-                    </span>
-                  </div>
+                    <ChevronDown
+                      className={cn(
+                        "text-muted-foreground ml-auto h-4 w-4 transition-transform",
+                        open && "rotate-180"
+                      )}
+                      aria-hidden
+                    />
+                  </button>
 
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
-                    {s.events.map((ev) => {
-                      const curr = dailyLookup.get(ev.date);
-                      const prev = dailyLookup.get(addDaysIso(ev.date, -1));
-                      const isActive = highlighted === ev.date;
-                      return (
-                        <StateEventCard
-                          key={`${s.key}-${ev.date}`}
-                          ev={ev}
-                          curr={curr}
-                          prev={prev}
-                          isActive={isActive}
-                          borderClass={LEVEL_BORDER[level]}
-                          onClick={() => toggleHighlight(ev.date)}
-                        />
-                      );
-                    })}
-                  </div>
+                  {open ? (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                      {s.events.map((ev) => {
+                        const curr = dailyLookup.get(ev.date);
+                        const prev = dailyLookup.get(addDaysIso(ev.date, -1));
+                        const isActive = highlighted === ev.date;
+                        return (
+                          <StateEventCard
+                            key={`${s.key}-${ev.date}`}
+                            ev={ev}
+                            curr={curr}
+                            prev={prev}
+                            isActive={isActive}
+                            borderClass={LEVEL_BORDER[level]}
+                            onClick={() => toggleHighlight(ev.date)}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
           </div>
         )}
-
-        <div className="text-muted-foreground mt-1 rounded border border-dashed px-3 py-1.5 text-xs leading-relaxed">
-          💡 <b>급증 감지</b>(전날 대비 변화) + <b>절대 상태</b>(그 날씨 자체) 둘 다 배수 &gt; 1인
-          트리거만 노출. 카드 클릭 시 상단에 선택일 상세 표시
-        </div>
       </CardContent>
     </Card>
   );
@@ -408,7 +332,7 @@ function EventCard({
       onClick={onClick}
       aria-pressed={isActive}
       className={cn(
-        "flex flex-col gap-1 rounded-md border p-2.5 text-left transition-colors",
+        "flex flex-col items-center gap-1 rounded-md border p-3 text-center transition-colors",
         isActive
           ? "border-primary bg-primary/10"
           : cn("bg-background hover:bg-muted/50", borderClass)
@@ -417,7 +341,7 @@ function EventCard({
       <div className="text-sm font-medium tabular-nums">{formatDate(ev.date)}</div>
 
       {/* 날씨 */}
-      <div className="flex items-baseline gap-1.5 tabular-nums">
+      <div className="flex items-baseline justify-center gap-1.5 tabular-nums">
         <span className="text-base font-semibold">
           {curr?.temp_min != null ? `${curr.temp_min.toFixed(1)}℃` : "–"}
         </span>
@@ -437,7 +361,7 @@ function EventCard({
       </div>
 
       {/* 판매 */}
-      <div className="flex items-baseline gap-1.5 tabular-nums">
+      <div className="flex items-baseline justify-center gap-1.5 tabular-nums">
         <span className="text-sm font-medium">{formatUnits(curr?.units_sold)}개</span>
         {salesDeltaPct != null && (
           <span
@@ -499,14 +423,14 @@ function StateEventCard({
       onClick={onClick}
       aria-pressed={isActive}
       className={cn(
-        "flex flex-col gap-1 rounded-md border p-2.5 text-left transition-colors",
+        "flex flex-col items-center gap-1 rounded-md border p-3 text-center transition-colors",
         isActive
           ? "border-primary bg-primary/10"
           : cn("bg-background hover:bg-muted/50", borderClass)
       )}
     >
       <div className="text-sm font-medium tabular-nums">{formatDate(ev.date)}</div>
-      <div className="flex items-baseline gap-1.5 tabular-nums">
+      <div className="flex items-baseline justify-center gap-1.5 tabular-nums">
         <span className="text-base font-semibold">
           {curr?.temp_min != null ? `${curr.temp_min.toFixed(1)}℃` : "–"}
         </span>
@@ -524,7 +448,7 @@ function StateEventCard({
           </span>
         )}
       </div>
-      <div className="flex items-baseline gap-1.5 tabular-nums">
+      <div className="flex items-baseline justify-center gap-1.5 tabular-nums">
         <span className="text-sm font-medium">{formatUnits(curr?.units_sold)}개</span>
         {salesDeltaPct != null && (
           <span

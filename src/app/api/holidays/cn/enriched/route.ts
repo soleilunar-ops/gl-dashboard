@@ -468,7 +468,7 @@ export async function GET(request: Request) {
         verifyError = null;
       }
     } else {
-      verifyError = "ANTHROPIC_API_KEY가 없어 AI 검증을 건너뛰었습니다.";
+      verifyError = "final_key가 없어 AI 검증을 건너뛰었습니다.";
     }
 
     // Claude가 적용되지 않았고 해당 연도 내장표가 있으면 Nager 대신 내장 데이터 사용

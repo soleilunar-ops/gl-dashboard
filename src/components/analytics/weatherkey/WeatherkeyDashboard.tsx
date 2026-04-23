@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AIBriefStubCard from "./AIBriefStubCard";
 import DashboardHeader from "./DashboardHeader";
 import ForecastTriggerScan from "./ForecastTriggerScan";
@@ -53,22 +54,37 @@ export default function WeatherkeyDashboard() {
             </div>
           )}
 
-          <SeasonKpiStrip season={effective} />
+          <Tabs defaultValue="season" className="gap-4">
+            <TabsList>
+              <TabsTrigger value="season">시즌별</TabsTrigger>
+              <TabsTrigger value="weather">날씨별 판매</TabsTrigger>
+              <TabsTrigger value="ai">AI 리포트</TabsTrigger>
+            </TabsList>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <section className="xl:col-span-2">
-              <SeasonTimelineChart season={effective} />
-            </section>
-            <aside className="flex flex-col gap-4 self-start">
-              <ForecastTriggerScan seasonInfo={sr.current} nextSeason={sr.next} />
-            </aside>
-          </div>
+            <TabsContent value="season" className="space-y-4">
+              <SeasonKpiStrip season={effective} />
 
-          <TriggerGuidePanel season={effective} />
-          <TriggerHistoryPanel season={effective} />
-          <StaticStateLiftPanel season={effective} />
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                <section className="xl:col-span-2">
+                  <SeasonTimelineChart season={effective} />
+                </section>
+                <aside className="flex flex-col gap-4 self-start">
+                  <ForecastTriggerScan seasonInfo={sr.current} nextSeason={sr.next} />
+                </aside>
+              </div>
 
-          <AIBriefStubCard seasonName={effective} />
+              <TriggerGuidePanel season={effective} />
+            </TabsContent>
+
+            <TabsContent value="weather" className="space-y-4">
+              <TriggerHistoryPanel season={effective} />
+              <StaticStateLiftPanel season={effective} />
+            </TabsContent>
+
+            <TabsContent value="ai">
+              <AIBriefStubCard seasonName={effective} />
+            </TabsContent>
+          </Tabs>
 
           {autoLoading && !effective && (
             <div className="text-muted-foreground text-xs" aria-live="polite">

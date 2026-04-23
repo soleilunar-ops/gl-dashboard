@@ -40,7 +40,7 @@ function formatInt(n: number): string {
 function WeatherCardBody({ slot, onRetry }: { slot: DaySlot; onRetry: () => void }) {
   if (!slot.ok) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-2 text-center">
         <p className="text-muted-foreground text-sm">{slot.message}</p>
         <Button type="button" size="sm" variant="outline" onClick={onRetry}>
           다시 시도
@@ -50,39 +50,61 @@ function WeatherCardBody({ slot, onRetry }: { slot: DaySlot; onRetry: () => void
   }
 
   const w = slot.data;
+  const pcp = w.source === "단기예보" && w.pcpSum !== undefined ? `${formatInt(w.pcpSum)}mm` : "—";
+  const wsd = w.source === "단기예보" && w.wsdMax !== undefined ? `${formatInt(w.wsdMax)}m/s` : "—";
+  const reh = w.source === "단기예보" && w.rehAvg !== undefined ? `${formatInt(w.rehAvg)}%` : "—";
   return (
-    <div className="space-y-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">{w.source}</Badge>
-        <span className="text-2xl">{w.emoji}</span>
-        <span className="font-medium">{w.summaryKo}</span>
+    <div className="space-y-4 text-center text-sm">
+      {/* 날씨 아이콘 + 단어 (크게) */}
+      <div className="flex flex-col items-center gap-1">
+        <span className="text-5xl leading-none">{w.emoji}</span>
+        <span className="text-xl font-semibold">{w.summaryKo}</span>
+        <p className="text-muted-foreground text-xs [font-variant-numeric:tabular-nums]">
+          최고 {formatInt(w.tmax)}°C / 최저 {formatInt(w.tmin)}°C
+        </p>
       </div>
-      <p>{`최고 ${formatInt(w.tmax)}°C / 최저 ${formatInt(w.tmin)}°C`}</p>
-      <p>{`강수확률 ${formatInt(w.popMax)}%`}</p>
-      <p>
-        강수량(mm): {w.source === "단기예보" && w.pcpSum !== undefined ? formatInt(w.pcpSum) : "—"}
+
+      {/* 강수 */}
+      <p className="[font-variant-numeric:tabular-nums]">
+        강수확률 {formatInt(w.popMax)}% · 강수량 {pcp}
       </p>
-      <p>
-        풍속(m/s): {w.source === "단기예보" && w.wsdMax !== undefined ? formatInt(w.wsdMax) : "—"}
+
+      {/* 풍속·습도 */}
+      <p className="[font-variant-numeric:tabular-nums]">
+        풍속 {wsd} · 습도 {reh}
       </p>
-      <p>
-        습도(%): {w.source === "단기예보" && w.rehAvg !== undefined ? formatInt(w.rehAvg) : "—"}
-      </p>
-      {w.warnings.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {w.warnings.map((code) => (
-            <Badge key={code} variant="destructive" className="font-normal">
-              {WARNING_LABEL[code]}
-            </Badge>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-export default function MilkrunWeatherTab() {
-  const [orderDate, setOrderDate] = useState<string>(() => todayKstYmdDash());
+function SlotWarnings({ slot }: { slot: DaySlot }) {
+  if (!slot.ok || slot.data.warnings.length === 0) return null;
+  return (
+    <div className="flex flex-wrap justify-center gap-1.5">
+      {slot.data.warnings.map((code) => (
+        <Badge key={code} variant="destructive" className="font-normal">
+          {WARNING_LABEL[code]}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+interface MilkrunWeatherTabProps {
+  orderDate?: string;
+  onOrderDateChange?: (next: string) => void;
+}
+
+export default function MilkrunWeatherTab({
+  orderDate: orderDateProp,
+  onOrderDateChange,
+}: MilkrunWeatherTabProps = {}) {
+  const [orderDateSelf, setOrderDateSelf] = useState<string>(() => todayKstYmdDash());
+  const orderDate = orderDateProp ?? orderDateSelf;
+  const setOrderDate = (next: string) => {
+    if (onOrderDateChange) onOrderDateChange(next);
+    else setOrderDateSelf(next);
+  };
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [payload, setPayload] = useState<OrderWeatherPayload | null>(null);
@@ -121,7 +143,7 @@ export default function MilkrunWeatherTab() {
   const titleFor = (slot: DaySlot) => {
     const d = parseISO(`${slot.date}T12:00:00+09:00`);
     const wd = format(d, "yyyy-MM-dd (EEE)", { locale: ko });
-    return `${wd} — ${slot.label}`;
+    return `${wd} ${slot.label}`;
   };
 
   return (
@@ -147,8 +169,14 @@ export default function MilkrunWeatherTab() {
             />
           </PopoverContent>
         </Popover>
-        <span className="text-muted-foreground text-sm">📍 파주시 (고정)</span>
-        <Button type="button" variant="ghost" size="sm" onClick={() => void load()}>
+        <span className="text-foreground text-sm">위치 : 파주시</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={() => void load()}
+        >
           새로고침
         </Button>
       </div>
@@ -194,7 +222,10 @@ export default function MilkrunWeatherTab() {
                 className={cn(slot.ok && slot.data.warnings.length > 0 && "border-amber-500/40")}
               >
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">{titleFor(slot)}</CardTitle>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <CardTitle className="text-base">{titleFor(slot)}</CardTitle>
+                    <SlotWarnings slot={slot} />
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {payload ? <WeatherCardBody slot={slot} onRetry={() => void load()} /> : null}
