@@ -1,0 +1,27 @@
+# Docker 빌드 컨텍스트에서 불필요한 파일 제외
+.git
+.github
+.husky
+.next
+.vercel
+node_modules
+coverage
+dist
+out
+
+# Next.js·대시보드 전용 (크롤 서비스와 무관)
+src/app
+src/components
+public
+supabase
+
+# 개발 전용
+*.log
+.env
+.env.local
+.env.development
+*.md
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
