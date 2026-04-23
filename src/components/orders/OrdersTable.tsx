@@ -580,7 +580,7 @@ export function OrdersTable({
                   persistedDocs.map((doc) => (
                     <li
                       key={doc.id}
-                      className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 last:border-0"
+                      className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0"
                     >
                       <span className="flex min-w-0 items-center gap-1.5 truncate">
                         <FileIcon className="text-muted-foreground size-3.5 shrink-0" />
@@ -606,25 +606,28 @@ export function OrdersTable({
                 )}
               </ul>
             </div>
-            <label className="flex cursor-pointer flex-col gap-2 text-xs">
-              <span className="font-medium">파일 추가 (저장 시 업로드)</span>
-              <input
-                type="file"
-                multiple
-                accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf"
-                className="file:bg-muted text-xs text-transparent file:mr-2 file:rounded file:border file:px-2 file:py-1"
-                onChange={(e) => {
-                  if (docOrderId === null) return;
-                  const files = e.target.files ? Array.from(e.target.files) : [];
-                  if (!files.length) return;
-                  setAttachmentsByOrder((prev) => ({
-                    ...prev,
-                    [docOrderId]: [...(prev[docOrderId] ?? []), ...files],
-                  }));
-                  e.target.value = "";
-                }}
-              />
-            </label>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="font-medium">파일 추가</span>
+              <label className="border-input hover:bg-accent inline-flex h-7 cursor-pointer items-center rounded-md border bg-white px-3 text-xs shadow-xs">
+                파일 선택
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf"
+                  className="sr-only"
+                  onChange={(e) => {
+                    if (docOrderId === null) return;
+                    const files = e.target.files ? Array.from(e.target.files) : [];
+                    if (!files.length) return;
+                    setAttachmentsByOrder((prev) => ({
+                      ...prev,
+                      [docOrderId]: [...(prev[docOrderId] ?? []), ...files],
+                    }));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
             <ul className="border-border max-h-36 shrink-0 space-y-2 overflow-y-auto rounded-md border p-2 text-xs">
               {dialogFiles.length === 0 ? (
                 <li className="text-muted-foreground py-4 text-center">
@@ -634,7 +637,7 @@ export function OrdersTable({
                 dialogFiles.map((file, i) => (
                   <li
                     key={`${file.name}-${i}-${file.lastModified}`}
-                    className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 last:border-0"
+                    className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0"
                   >
                     <span className="flex min-w-0 items-center gap-1.5 truncate">
                       <FileIcon className="text-muted-foreground size-3.5 shrink-0" />
@@ -711,7 +714,7 @@ export function OrdersTable({
               </p>
             )}
           </div>
-          <DialogFooter className="flex flex-wrap gap-2 sm:justify-end">
+          <DialogFooter className="flex flex-wrap gap-2 border-t-0 bg-transparent sm:justify-end">
             <Button
               type="button"
               variant="outline"

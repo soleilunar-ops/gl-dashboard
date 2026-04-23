@@ -110,38 +110,42 @@ export function FavoriteShortcuts() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>즐겨찾기 메뉴 선택</DialogTitle>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+          {/* 제목 영역 — 연노랑 강조 + 가운데 정렬 */}
+          <DialogHeader className="border-b border-[#FEF3C7] bg-[#FFFBEB] px-6 py-4">
+            <DialogTitle className="text-center">즐겨찾기 메뉴 선택</DialogTitle>
           </DialogHeader>
-          <p className="text-muted-foreground text-sm">
-            사이드바 메뉴 중 자주 사용하는 탭을 최대 {max}개까지 선택하세요. ({favorites.length}/
-            {max})
-          </p>
-          <div className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
-            {allNavs.map((item) => {
-              const active = isFavorite(item.path);
-              const disabled = !active && favorites.length >= max;
-              return (
-                <button
-                  key={item.path}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => toggleFavorite(item)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                    active
-                      ? "border-[#F2BE5C] bg-[#FDF3D0] text-[#8A6A1F]"
-                      : "border-transparent hover:border-[#F9DB94] hover:bg-[#FDF3D0]/70",
-                    disabled &&
-                      "cursor-not-allowed opacity-50 hover:border-transparent hover:bg-transparent"
-                  )}
-                >
-                  <span className="flex-1">{item.label}</span>
-                  {active && <Check className="h-4 w-4 shrink-0 text-[#C78D26]" />}
-                </button>
-              );
-            })}
+          {/* 본문 — 상하 여백 py-5 로 균등 */}
+          <div className="space-y-4 px-6 py-5">
+            <p className="text-muted-foreground text-sm">
+              사이드바 메뉴 중 자주 사용하는 탭을 최대 {max}개까지 선택하세요. ({favorites.length}/
+              {max})
+            </p>
+            <div className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
+              {allNavs.map((item) => {
+                const active = isFavorite(item.path);
+                const disabled = !active && favorites.length >= max;
+                return (
+                  <button
+                    key={item.path}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => toggleFavorite(item)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                      active
+                        ? "border-[#F2BE5C] bg-[#FDF3D0] text-[#8A6A1F]"
+                        : "border-transparent hover:border-[#F9DB94] hover:bg-[#FDF3D0]/70",
+                      disabled &&
+                        "cursor-not-allowed opacity-50 hover:border-transparent hover:bg-transparent"
+                    )}
+                  >
+                    <span className="flex-1">{item.label}</span>
+                    {active && <Check className="h-4 w-4 shrink-0 text-[#C78D26]" />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

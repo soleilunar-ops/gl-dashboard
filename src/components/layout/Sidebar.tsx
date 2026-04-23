@@ -17,6 +17,7 @@ import {
   Triangle,
   Upload,
   Menu,
+  Snowflake,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { navigation, type NavItem } from "./navigation.config";
@@ -44,6 +45,7 @@ const iconMap: Record<string, LucideIcon> = {
   Truck,
   Triangle,
   Upload,
+  Snowflake,
 };
 
 interface SidebarProps {
@@ -63,9 +65,9 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
       )}
     >
       <div className="flex h-full w-60 flex-col">
-        {/* 로고 + 사이드바 토글 */}
-        <div className="flex h-14 items-center justify-between gap-2 px-4">
-          <Link href="/" className="flex min-w-0 flex-1 items-center" aria-label="홈으로">
+        {/* 불 캐릭터 + 중앙 로고 + 사이드바 토글 */}
+        <div className="flex h-14 items-center gap-2 px-4">
+          <Link href="/" className="shrink-0" aria-label="홈으로">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/사이드바.png"
@@ -73,11 +75,21 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
               className="h-9 w-auto object-contain"
             />
           </Link>
+          <div className="flex min-w-0 flex-1 items-center justify-start">
+            <Link href="/" aria-label="홈으로">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/mascot/하루루투명.png"
+                alt="하루루 로고"
+                className="h-9 w-auto object-contain"
+              />
+            </Link>
+          </div>
           <button
             type="button"
             onClick={onToggle}
             aria-label="사이드바 접기"
-            className="text-muted-foreground hover:bg-accent hover:text-accent-foreground rounded-md p-2 transition-colors"
+            className="text-muted-foreground hover:bg-accent hover:text-accent-foreground shrink-0 rounded-md p-2 transition-colors"
           >
             <Menu className="h-5 w-5" />
           </button>

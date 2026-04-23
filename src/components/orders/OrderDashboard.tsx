@@ -386,10 +386,10 @@ export default function OrderDashboard() {
         <TabsContent value="list" className="flex flex-col gap-4">
           {/* 기업/기간 선택 + ERP 불러오기/엑셀 업로드/새로고침 */}
           <Card>
-            <CardContent className="py-6">
+            <CardContent className="py-4">
               <div className="flex flex-col gap-4">
                 {/* 기업 · 기간 가로 배치 — 중앙 정렬 */}
-                <div className="flex flex-col items-center justify-center gap-4 lg:flex-row lg:gap-8">
+                <div className="flex flex-col items-center justify-center gap-3 lg:flex-row lg:gap-8">
                   {/* 기업 선택 */}
                   <div className="flex flex-wrap items-center gap-2">
                     <Label className="text-muted-foreground text-sm font-medium">기업</Label>
@@ -460,11 +460,11 @@ export default function OrderDashboard() {
                   </div>
                 </div>
 
-                {/* 중앙 주요 버튼(크게) + 바로 옆 새로고침 아이콘 */}
-                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                {/* 중앙 주요 버튼 + 바로 옆 새로고침 아이콘 */}
+                <div className="flex flex-wrap items-center justify-center gap-3">
                   <Button
                     type="button"
-                    className="h-11 px-6 text-base"
+                    className="h-9 px-5 text-sm"
                     disabled={ingestLoading}
                     onClick={() => void loadDataForSelection()}
                   >
@@ -476,7 +476,7 @@ export default function OrderDashboard() {
                     companyCode={singleCompanyOrNull}
                     purchases={purchases}
                     onImported={refetch}
-                    triggerClassName="h-11 px-6 text-base"
+                    triggerClassName="h-9 px-5 text-sm"
                   />
                   <Button
                     type="button"
@@ -535,15 +535,11 @@ export default function OrderDashboard() {
                 }
               />
               <div className="space-y-3">
-                {!useRawEcountView ? (
+                {!useRawEcountView && (
                   <OrdersActionPanel
                     selectedIds={selectedIds}
                     onActionComplete={handleActionComplete}
                   />
-                ) : (
-                  <p className="text-muted-foreground text-xs">
-                    Supabase 원천(구매·판매·생산) 추출 결과를 표시 중입니다. 일자 기준 최신순입니다.
-                  </p>
                 )}
                 {/* 테이블 하단 배치 — 변경 이유: 현재 재고 카드가 주문표 아래에 항상 나오도록 레이아웃 단순화 */}
                 <div id="orders-dashboard-table" className="min-w-0 scroll-mt-28 space-y-3">

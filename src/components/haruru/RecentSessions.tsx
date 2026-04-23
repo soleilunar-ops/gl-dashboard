@@ -1,14 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { History, Plus } from "lucide-react";
-import { fetchRecentSessions, type HaruruRecentSession } from "./useHaruruAgent";
+import { X } from "lucide-react";
+import {
+  fetchRecentSessions,
+  deleteRecentSession,
+  type HaruruRecentSession,
+} from "./useHaruruAgent";
 
 interface RecentSessionsProps {
-  currentTurnsCount: number;
+  /** 토글 상태 — true일 때만 목록 렌더 */
+  open: boolean;
+  /** 세션 클릭 시 재생 */
   onLoad: (sessionId: string) => void;
-  onNew: () => void;
-  refreshKey?: number; // 바뀌면 재조회
+  /** 바뀌면 세션 리스트 재조회 */
+  refreshKey?: number;
+  /** 표시할 최대 개수 */
+  maxItems?: number;
 }
 
 function formatTime(iso: string): string {
@@ -25,54 +33,64 @@ function formatTime(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export function RecentSessions({
-  currentTurnsCount,
-  onLoad,
-  onNew,
-  refreshKey,
-}: RecentSessionsProps) {
+export function RecentSessions({ open, onLoad, refreshKey, maxItems = 4 }: RecentSessionsProps) {
   const [sessions, setSessions] = useState<HaruruRecentSession[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  // 표시는 maxItems개지만, 실제로는 버퍼로 더 받아둠 → 삭제 시 다음 세션이 자동으로 자리 채움
+  const BUFFER_MULTIPLIER = 5;
 
   useEffect(() => {
-    fetchRecentSessions(10)
+    if (!open) return;
+    setLoading(true);
+    fetchRecentSessions(Math.max(maxItems * BUFFER_MULTIPLIER, 20))
       .then(setSessions)
       .finally(() => setLoading(false));
-  }, [refreshKey]);
+  }, [open, refreshKey, maxItems]);
 
+  // 삭제: 낙관적으로 UI 먼저 제거 → 실패 시 재조회로 복구
+  const handleDelete = async (id: string) => {
+    setSessions((prev) => prev.filter((s) => s.session_id !== id));
+    try {
+      await deleteRecentSession(id);
+    } catch (e) {
+      console.error("세션 삭제 실패:", e);
+      fetchRecentSessions(Math.max(maxItems * BUFFER_MULTIPLIER, 20)).then(setSessions);
+    }
+  };
+
+  if (!open) return null;
   if (loading) return null;
-  if (sessions.length === 0 && currentTurnsCount === 0) return null;
+
+  // 실제 화면에는 maxItems개만 표시 (나머지는 삭제 시 보충용 버퍼)
+  const visible = sessions.slice(0, maxItems);
 
   return (
     <div className="w-full max-w-2xl">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
-          <History className="h-3.5 w-3.5" />
-          <span>최근 대화</span>
-        </div>
-        {currentTurnsCount > 0 && (
-          <button
-            type="button"
-            onClick={onNew}
-            className="flex items-center gap-1 rounded border border-orange-200 bg-white px-2 py-0.5 text-xs text-orange-600 hover:bg-orange-50"
-          >
-            <Plus className="h-3 w-3" />새 대화
-          </button>
-        )}
-      </div>
-      {sessions.length > 0 ? (
-        <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-          {sessions.map((s) => (
-            <li key={s.session_id}>
+      {visible.length > 0 ? (
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {visible.map((s) => (
+            <li key={s.session_id} className="group/session relative">
               <button
                 type="button"
                 onClick={() => onLoad(s.session_id)}
-                className="flex w-full items-center justify-between rounded border border-gray-200 bg-white px-3 py-2 text-left text-xs text-gray-700 hover:border-orange-300 hover:bg-orange-50"
+                className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-gray-200 bg-white px-3 py-2.5 pr-9 text-left text-xs text-gray-700 hover:border-orange-300 hover:bg-orange-50"
               >
                 <span className="line-clamp-1 flex-1 pr-2">{s.title ?? "(제목 없음)"}</span>
                 <span className="shrink-0 text-[11px] text-gray-400">
                   {formatTime(s.last_active_at)}
                 </span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(s.session_id);
+                }}
+                aria-label="이 대화 삭제"
+                className="absolute top-1/2 right-2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-gray-400 opacity-0 transition-opacity group-hover/session:opacity-100 hover:bg-red-50 hover:text-red-500 focus-visible:opacity-100"
+              >
+                <X className="h-3.5 w-3.5" />
               </button>
             </li>
           ))}

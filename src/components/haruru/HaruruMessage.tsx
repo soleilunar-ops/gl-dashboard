@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ThumbsUp, ThumbsDown, Loader2 } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   encodeRefPlaceholders,
@@ -16,6 +16,8 @@ import { AxisChip } from "./AxisChip";
 interface HaruruMessageProps {
   turn: HaruruTurn;
   onFeedback?: (turn: HaruruTurn, value: "up" | "down", comment?: string) => void;
+  /** "대화 끝내기" 버튼 클릭 시 호출 — 현재 대화 턴 전체 초기화 */
+  onReset?: () => void;
 }
 
 function RefBadge({ source, refId }: { source: "sql" | "rag"; refId: string }) {
@@ -135,15 +137,15 @@ const mdComponents = {
   hr: () => <hr className="my-3 border-gray-200" />,
 };
 
-export function HaruruMessage({ turn, onFeedback }: HaruruMessageProps) {
+export function HaruruMessage({ turn, onFeedback, onReset }: HaruruMessageProps) {
   const [showCitations, setShowCitations] = useState(false);
   const [downComment, setDownComment] = useState("");
   const [downOpen, setDownOpen] = useState(false);
 
   if (turn.role === "user") {
     return (
-      <div className="mb-3 flex justify-end">
-        <div className="max-w-[85%] rounded-2xl bg-orange-100 px-4 py-2 text-sm whitespace-pre-wrap text-gray-800">
+      <div className="mb-4 flex justify-end">
+        <div className="max-w-[85%] rounded-2xl border border-orange-200 bg-orange-100 px-5 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-gray-800 shadow-sm">
           {turn.content}
         </div>
       </div>
@@ -161,7 +163,7 @@ export function HaruruMessage({ turn, onFeedback }: HaruruMessageProps) {
     <div className="mb-4 flex justify-start">
       <div
         className={cn(
-          "max-w-[95%] rounded-2xl border bg-white px-5 py-3 text-[15px] leading-relaxed text-gray-800 shadow-sm",
+          "max-w-[85%] rounded-2xl border border-gray-200 bg-white px-5 py-3 text-[15px] leading-relaxed text-gray-800 shadow-sm",
           turn.error && "border-red-200 bg-red-50"
         )}
       >
@@ -237,6 +239,16 @@ export function HaruruMessage({ turn, onFeedback }: HaruruMessageProps) {
                 >
                   <ThumbsDown className="h-3.5 w-3.5" />
                 </button>
+                {onReset && (
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    className="ml-2 flex cursor-pointer items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] font-medium text-gray-500 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
+                  >
+                    <X className="h-3 w-3" />
+                    대화 끝내기
+                  </button>
+                )}
               </div>
             )}
 

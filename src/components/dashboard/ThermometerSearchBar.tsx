@@ -1,23 +1,42 @@
 "use client";
 
-import { useState } from "react";
-import { Search } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Search, Check } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HARURU_MODELS } from "@/components/haruru/ModelPicker";
 import { cn } from "@/lib/utils";
 
 interface ThermometerSearchBarProps {
   placeholder?: string;
   onSearch?: (query: string) => void;
+  /** 선택된 모델 ID */
+  model: string;
+  /** 모델 변경 콜백 */
+  onModelChange: (next: string) => void;
+  /** 모델 선택 비활성화 */
+  modelDisabled?: boolean;
+  /** 20°C 라벨 오른쪽에 붙일 노드 (예: 최근 대화 토글 버튼) */
+  toolbarSlot?: ReactNode;
 }
 
-/** 온도계 모양 검색창: 튜브와 전구를 하나의 SVG 패스로 그려 이음매 없이 연결 */
+/**
+ * 온도계 모양 검색창:
+ *  - 왼쪽 돋보기: 클릭 시 Claude API 모델 선택 Popover
+ *  - 오른쪽 전구(동그라미): 검색 제출 버튼
+ *  - 하단 눈금: 20°C 옆에 toolbarSlot (최근 대화 버튼 등)
+ */
 export function ThermometerSearchBar({
   placeholder = "무엇이든 물어보세요, 하루루!",
   onSearch,
+  model,
+  onModelChange,
+  modelDisabled,
+  toolbarSlot,
 }: ThermometerSearchBarProps) {
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
 
-  // 눈금 21개 (20°C ~ 40°C, 5단위 강조)
   const ticks = Array.from({ length: 21 });
 
   return (
@@ -36,8 +55,6 @@ export function ThermometerSearchBar({
               : "drop-shadow-[0_6px_18px_rgba(242,190,92,0.22)]"
           )}
         >
-          {/* 온도계 외곽 — 튜브+전구가 하나의 path
-              ※ overflow-visible 필수: 전구 arc가 viewBox 우측 경계에 맞닿아서 stroke가 잘림 */}
           <svg
             viewBox="0 0 640 80"
             className="absolute inset-0 h-full w-full overflow-visible"
@@ -58,7 +75,6 @@ export function ThermometerSearchBar({
               </radialGradient>
             </defs>
 
-            {/* 온도계 몸체: 왼쪽 캡(28r 반원) → 위 직선 → 전구(40r 큰 원) → 아래 직선 */}
             <path
               d="M 28 12 L 571.43 12 A 40 40 0 1 1 571.43 68 L 28 68 A 28 28 0 1 1 28 12 Z"
               fill="url(#thermo-tube)"
@@ -67,19 +83,58 @@ export function ThermometerSearchBar({
               strokeLinejoin="round"
             />
 
-            {/* 전구 내부 수은(따뜻한 온기) */}
             <circle cx="600" cy="40" r="30" fill="url(#bulb-mercury)" />
-
-            {/* 유리 반사 하이라이트 */}
             <ellipse cx="588" cy="28" rx="6" ry="4" fill="rgba(255,255,255,0.75)" />
           </svg>
 
-          {/* 입력 영역 (튜브 위에 오버레이) */}
+          {/* 입력 영역 */}
           <div
             className="absolute flex items-center"
             style={{ left: "5%", right: "15%", top: 0, bottom: 0 }}
           >
-            <Search className="h-5 w-5 shrink-0 text-[#C89B4A]/80" aria-hidden />
+            {/* 돋보기 버튼 → 모델 선택 Popover */}
+            <Popover open={modelOpen} onOpenChange={setModelOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="답변 모델 선택"
+                  disabled={modelDisabled}
+                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-[#C89B4A]/80 transition-all hover:bg-white/40 hover:text-[#A67720] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E3A83E] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Search className="h-5 w-5" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                sideOffset={10}
+                className="w-56 gap-0 border-[#F9DB94] bg-[#FDF3D0] p-1 ring-[#F9DB94]/40"
+              >
+                <div className="px-2.5 py-1.5 text-[11px] font-semibold tracking-wide text-[#8A6A1F]/70 uppercase">
+                  답변 모델
+                </div>
+                {HARURU_MODELS.map((m) => {
+                  const active = m.id === model;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        onModelChange(m.id);
+                        setModelOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs text-[#8A6A1F] hover:bg-[#FAE8B8]",
+                        active && "bg-[#FAE8B8] font-medium"
+                      )}
+                    >
+                      <span>{m.label}</span>
+                      {active && <Check className="h-3.5 w-3.5 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </PopoverContent>
+            </Popover>
+
             <input
               type="text"
               value={value}
@@ -87,23 +142,26 @@ export function ThermometerSearchBar({
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               placeholder={placeholder}
-              className="ml-3 flex-1 bg-transparent text-[15px] text-gray-800 placeholder:text-[#BA8A30]/70 focus:outline-none"
+              className="ml-2 flex-1 bg-transparent text-[15px] text-gray-800 placeholder:text-[#BA8A30]/70 focus:outline-none"
               aria-label="검색어 입력"
             />
           </div>
 
-          {/* 검색 버튼 (전구 위에 투명 오버레이) */}
+          {/* 전구(제출 버튼) — cursor-pointer + 호버 시 수은 약간 밝게 */}
           <button
             type="submit"
             aria-label="검색"
-            className="absolute rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E3A83E]"
+            className="group/bulb absolute cursor-pointer rounded-full transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E3A83E]"
             style={{ left: "87.5%", top: 0, width: "12.5%", height: "100%" }}
-          />
+          >
+            <span className="absolute inset-2 rounded-full bg-[#F2BE5C]/0 transition-colors group-hover/bulb:bg-[#F2BE5C]/15" />
+          </button>
         </div>
 
-        {/* 눈금 (20°C ~ 40°C, 전체 너비) */}
+        {/* 눈금 + 20°C 옆 슬롯(최근 대화 버튼) */}
         <div className="mt-2.5 flex items-center gap-3 px-4 text-[11px] font-medium">
           <span className="shrink-0 text-[#C89B4A]">20°C</span>
+          {toolbarSlot}
           <div className="relative flex h-3.5 flex-1 items-end" aria-hidden>
             {ticks.map((_, i) => {
               const t = i / (ticks.length - 1);

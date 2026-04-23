@@ -202,3 +202,10 @@ export async function fetchRecentSessions(limit = 10): Promise<HaruruRecentSessi
     .limit(limit);
   return (data ?? []) as HaruruRecentSession[];
 }
+
+/** 세션 삭제 — agent_turns는 FK on delete cascade로 자동 삭제됨 */
+export async function deleteRecentSession(sessionId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("agent_sessions").delete().eq("session_id", sessionId);
+  if (error) throw error;
+}
