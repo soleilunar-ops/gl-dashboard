@@ -66,8 +66,10 @@ export function WeeklyBriefModal() {
         <div className="wr-modal">
           <div className="wr-modal-head">
             <div>
-              <div className="wr-header-badge">
-                <span aria-hidden>📋</span>
+              <div
+                className="wr-header-badge"
+                style={{ background: "transparent", color: "#BBBF4E", padding: 0 }}
+              >
                 <span>주간 리포트</span>
               </div>
               {data && (
@@ -114,7 +116,7 @@ export function WeeklyBriefModal() {
                 {/* 인사이트 섹션 먼저 */}
                 <section id="section-insight" className="wr-section">
                   <header className="wr-section-head">
-                    <h3 className="wr-section-title">🔍 이번 주 종합 인사이트</h3>
+                    <h3 className="wr-section-title">이번 주 종합 인사이트</h3>
                     <button
                       type="button"
                       className={`wr-section-tts ${

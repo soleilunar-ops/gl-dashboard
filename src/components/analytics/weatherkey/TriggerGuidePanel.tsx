@@ -117,8 +117,8 @@ export default function TriggerGuidePanel({ season }: Props) {
   }
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 p-5">
+    <Card className="py-0">
+      <CardContent className="flex flex-col gap-2 px-5 py-3">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -135,7 +135,7 @@ export default function TriggerGuidePanel({ season }: Props) {
         {open ? (
           <>
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-[#FFFBEB]">
                 <TableRow>
                   <TableHead className="w-[160px]">이름</TableHead>
                   <TableHead>조건</TableHead>
@@ -192,7 +192,7 @@ export default function TriggerGuidePanel({ season }: Props) {
               </TableBody>
             </Table>
 
-            <div className="text-muted-foreground mt-1 rounded border border-dashed px-3 py-1.5 text-xs leading-relaxed">
+            <div className="text-muted-foreground mt-1 px-3 py-1.5 text-xs leading-relaxed">
               급증 감지 : 전날 대비 판매 배수 변화가 큰 날. 날씨 : 특정 날씨일 때 나타나는 판매 배수
             </div>
           </>

@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
     // 6. prompt_hash로 중복 생성 방지 (v키로 프롬프트 버전 캐시 버스팅)
     const promptHash = await sha256(
       JSON.stringify({
-        v: "v13-3sections",
+        v: "v14-korean-ordinals",
         weekStart,
         weekEnd,
         template,

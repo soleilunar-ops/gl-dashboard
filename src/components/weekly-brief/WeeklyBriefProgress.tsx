@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 
 const STEPS = [
-  { label: "생성 조건 확인", duration: 800, icon: "🔍" },
-  { label: "SQL 집계 (주문)", duration: 1500, icon: "📊" },
-  { label: "SQL 집계 (재고·물류)", duration: 2500, icon: "📦" },
-  { label: "SQL 집계 (외부 신호)", duration: 1500, icon: "🌡" },
-  { label: "보고서 작성 중", duration: 14000, icon: "✍" },
-  { label: "저장 · RAG 적재", duration: 2000, icon: "💾" },
+  { label: "생성 조건 확인", duration: 800 },
+  { label: "SQL 집계 (주문)", duration: 1500 },
+  { label: "SQL 집계 (재고·물류)", duration: 2500 },
+  { label: "SQL 집계 (외부 신호)", duration: 1500 },
+  { label: "보고서 작성 중", duration: 14000 },
+  { label: "저장 · RAG 적재", duration: 2000 },
 ];
 
 export function WeeklyBriefProgress() {
@@ -31,9 +31,6 @@ export function WeeklyBriefProgress() {
   return (
     <div className="wr-progress">
       <div className="wr-progress-head">
-        <span className="wr-progress-icon" aria-hidden>
-          {step.icon}
-        </span>
         <span>{step.label}</span>
       </div>
       <div className="wr-progress-track">

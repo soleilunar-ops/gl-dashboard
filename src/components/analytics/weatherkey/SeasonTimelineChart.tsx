@@ -138,6 +138,19 @@ export default function SeasonTimelineChart({ season }: Props) {
     }
   }, [peakWindow]);
 
+  // 중기예보 경계: 대시보드 기준 날짜 + 1일 이후부터 예보로 간주.
+  // 대시보드 당일(판매 실측 마감 전)과 그 다음 날(실측 데이터 존재 가능)까지는 실측으로 취급.
+  const forecastCutoff = useMemo(() => {
+    const envDate = process.env.NEXT_PUBLIC_DASHBOARD_DATE;
+    const base = envDate ?? new Date().toISOString().slice(0, 10);
+    const d = new Date(`${base}T00:00:00`);
+    d.setDate(d.getDate() + 1); // 대시보드 다음 날까지 실측
+    d.setHours(23, 59, 59, 999);
+    return d.getTime();
+  }, []);
+
+  const FORECAST_COLOR = "#F2BE5C"; // 실측 최저기온 선과 동일한 노랑 — 시각 통일
+
   const chartData = useMemo(() => {
     const barData = points.map((d) => ({ x: d.date.getTime(), y: d.sales }));
     const lineData = points.map((d) => ({ x: d.date.getTime(), y: d.temp }));
@@ -166,13 +179,28 @@ export default function SeasonTimelineChart({ season }: Props) {
           order: 1,
           pointRadius: 0,
           pointHoverRadius: 5,
-          pointBackgroundColor: CHART_TOKENS.lineTemp,
+          pointBackgroundColor: (ctx: { dataIndex: number }) =>
+            points[ctx.dataIndex]?.date.getTime() > forecastCutoff
+              ? FORECAST_COLOR
+              : CHART_TOKENS.lineTemp,
           borderWidth: 2,
           tension: 0.25,
+          // 중기예보 구간(cutoff 이후)은 빨간 실선으로 분리. 실측 데이터로 교체되면 자동으로 기본 색으로 복귀.
+          segment: {
+            borderColor: (ctx: { p0DataIndex: number; p1DataIndex: number }) => {
+              const p1 = points[ctx.p1DataIndex];
+              if (p1 && p1.date.getTime() > forecastCutoff) return FORECAST_COLOR;
+              return CHART_TOKENS.lineTemp;
+            },
+            borderDash: (ctx: { p0DataIndex: number; p1DataIndex: number }) => {
+              const p1 = points[ctx.p1DataIndex];
+              return p1 && p1.date.getTime() > forecastCutoff ? [6, 4] : undefined;
+            },
+          },
         },
       ],
     } as unknown as ChartData<"bar">;
-  }, [points]);
+  }, [points, forecastCutoff]);
 
   const chartOptions = useMemo<ChartOptions<"bar">>(() => {
     const annotations: Record<string, AnnotationOptions> = {
@@ -209,6 +237,27 @@ export default function SeasonTimelineChart({ season }: Props) {
         drawTime: "beforeDatasetsDraw",
       };
     }
+
+    // 중기예보 경계 수직선
+    annotations["forecastBoundary"] = {
+      type: "line",
+      xMin: forecastCutoff,
+      xMax: forecastCutoff,
+      xScaleID: "x",
+      borderColor: FORECAST_COLOR,
+      borderWidth: 1.5,
+      borderDash: [4, 4],
+      label: {
+        display: true,
+        content: "중기예보 시작",
+        position: "start",
+        backgroundColor: FORECAST_COLOR,
+        color: "#ffffff",
+        font: { size: 10, weight: 600 },
+        padding: { top: 2, bottom: 2, left: 6, right: 6 },
+        borderRadius: 3,
+      },
+    };
 
     events.forEach((e, i) => {
       annotations[`event-${i}`] = {
@@ -338,7 +387,7 @@ export default function SeasonTimelineChart({ season }: Props) {
         },
       },
     };
-  }, [events, points, xRange, highlighted]);
+  }, [events, points, xRange, highlighted, forecastCutoff]);
 
   const applyRange = (range: XRange | null) => setXRange(range);
   const resetToPeak = () => setXRange(peakWindow);
@@ -437,6 +486,14 @@ export default function SeasonTimelineChart({ season }: Props) {
               {b.label}
             </span>
           ))}
+          <span className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5">
+            <span
+              aria-hidden
+              className="inline-block h-0.5 w-3"
+              style={{ backgroundColor: FORECAST_COLOR }}
+            />
+            중기예보 (실측 교체 시 자동 전환)
+          </span>
         </div>
       </CardContent>
     </Card>

@@ -11,7 +11,6 @@ export function WeeklyBriefAlerts({ alerts }: Props) {
   return (
     <div className="wr-alerts">
       <div className="wr-alerts-head">
-        <span aria-hidden>⚠</span>
         <span className="wr-alerts-label">주의사항 {alerts.length}건</span>
       </div>
       <ul className="wr-alerts-list">

@@ -18,6 +18,7 @@ import {
   Upload,
   Menu,
   Snowflake,
+  Boxes,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { navigation, type NavItem } from "./navigation.config";
@@ -46,6 +47,7 @@ const iconMap: Record<string, LucideIcon> = {
   Triangle,
   Upload,
   Snowflake,
+  Boxes,
 };
 
 interface SidebarProps {
@@ -100,12 +102,13 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
           {navigation.map((group, gi) => (
             <div key={group.title || `group-${gi}`} className="mb-4">
               {group.title && (
-                <p className="text-muted-foreground mb-1 px-2 text-sm font-medium">{group.title}</p>
+                <p className="mb-1.5 px-2 text-base font-bold tracking-tight text-gray-800">
+                  {group.title}
+                </p>
               )}
               {group.items.map((item) => {
                 const activePath = resolveActivePathInGroup(group.items, pathname);
                 const isActive = activePath !== null && item.path === activePath;
-                const Icon = iconMap[item.icon];
 
                 return (
                   <Link
@@ -119,7 +122,6 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
                     )}
                     aria-current={isActive ? "page" : undefined}
                   >
-                    {Icon ? <Icon className="mr-2 h-4 w-4 shrink-0" /> : null}
                     {item.label}
                   </Link>
                 );

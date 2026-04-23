@@ -42,7 +42,7 @@ function weatherIcon(desc: string) {
       </svg>
     );
   }
-  if (desc.includes("비") || desc.includes("구름")) {
+  if (desc.includes("비")) {
     return (
       <svg
         className="hb-weather-icon"
@@ -50,9 +50,28 @@ function weatherIcon(desc: string) {
         fill="none"
         stroke="#2563EB"
         strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
-        <path d="M17 18a5 5 0 0 0-10 0" fill="#2563EB" fillOpacity="0.1" />
-        <path d="M12 2a5 5 0 0 0-5 5" strokeLinecap="round" />
+        <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" fill="#DBEAFE" />
+        <line x1="8" y1="19" x2="8" y2="21" />
+        <line x1="12" y1="19" x2="12" y2="22" />
+        <line x1="16" y1="19" x2="16" y2="21" />
+      </svg>
+    );
+  }
+  if (desc.includes("구름")) {
+    return (
+      <svg
+        className="hb-weather-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#64748B"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M17.5 19a4.5 4.5 0 1 0-1.41-8.78 7 7 0 1 0-11.1 7.78z" fill="#E2E8F0" />
       </svg>
     );
   }
@@ -75,25 +94,39 @@ export function BriefingWeatherColumn({ data }: Props) {
   return (
     <section>
       <div className="hb-col-head">
-        <span className="hb-col-title">Weather</span>
+        <span className="hb-col-title">날씨</span>
         <span className="hb-col-meta">
           {data.location} · {data.latitude}°N
         </span>
       </div>
 
-      {/* 기온 */}
-      <div className="hb-weather-temp-row">
-        <div>
-          <div style={{ display: "flex", alignItems: "baseline" }}>
-            <span className="hb-weather-temp-num">{data.tempC}</span>
-            <span className="hb-weather-temp-unit">°</span>
-          </div>
-          <p className="hb-weather-desc">
-            {data.description} · 체감 {data.feelsLikeC}°
-          </p>
+      {/* 기온 — 숫자 좌측 중앙 + 아이콘 우측 중앙 · ° 표시는 숫자 좌상단 */}
+      <div
+        className="hb-weather-temp-row"
+        style={{ alignItems: "center", justifyContent: "space-between" }}
+      >
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <span className="hb-weather-temp-num" style={{ paddingRight: 14 }}>
+            {data.tempC}
+          </span>
+          <span
+            style={{
+              position: "absolute",
+              top: -4,
+              right: -2,
+              fontSize: 20,
+              fontWeight: 700,
+              color: "var(--hb-slate-700, #334155)",
+            }}
+          >
+            °
+          </span>
         </div>
         {weatherIcon(data.description)}
       </div>
+      <p className="hb-weather-desc" style={{ marginTop: -12, marginBottom: 24 }}>
+        {data.description} · 체감 {data.feelsLikeC}°
+      </p>
 
       {/* 강수 6칸 */}
       <div className="hb-precip-section">
@@ -120,7 +153,6 @@ export function BriefingWeatherColumn({ data }: Props) {
 
       {/* 트리거 */}
       <div className="hb-divider-dotted">
-        <div className="hb-divider-label">시즌 트리거</div>
         <div className="hb-trigger-row">
           <span className="hb-trigger-label">전일 대비 기온차</span>
           <span className="hb-trigger-value">
@@ -142,21 +174,8 @@ export function BriefingWeatherColumn({ data }: Props) {
         </div>
       </div>
 
-      {/* Insight */}
+      {/* Insight — 아이콘·라벨 제거, 본문만 유지 */}
       <div className="hb-insight hb-blue">
-        <div className="hb-insight-head">
-          <svg
-            className="hb-insight-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-          <span className="hb-insight-label">Insight</span>
-        </div>
         <p className="hb-insight-text">{data.insight.headline}</p>
         <p className="hb-insight-sub">{data.insight.sub}</p>
       </div>

@@ -29,8 +29,8 @@ export function BriefingInventoryColumn({ data }: Props) {
   return (
     <section>
       <div className="hb-col-head">
-        <span className="hb-col-title">Inventory</span>
-        <span className="hb-col-meta">TOP 3 · 지엘 / 쿠팡</span>
+        <span className="hb-col-title">재고</span>
+        <span className="hb-col-meta">TOP 3 · GL / 쿠팡</span>
       </div>
 
       {/* Top3 게이지 */}
@@ -40,15 +40,7 @@ export function BriefingInventoryColumn({ data }: Props) {
           return (
             <div key={item.name} className="hb-gauge-item">
               <div className="hb-gauge-head">
-                <div>
-                  <span className="hb-gauge-name">{item.name}</span>
-                  <span className="hb-gauge-spec">{item.spec}</span>
-                  {item.approximate && (
-                    <span className="hb-gauge-spec" title="매핑 불일치 · 근사치">
-                      ≈
-                    </span>
-                  )}
-                </div>
+                <span className="hb-gauge-name">{item.name}</span>
                 <span className={`hb-pill ${pill}`}>{item.status}</span>
               </div>
               <div className="hb-gauge-line">
@@ -78,9 +70,9 @@ export function BriefingInventoryColumn({ data }: Props) {
         })}
       </div>
 
-      {/* 물류 플로우 */}
+      {/* 물류 흐름 */}
       <div className="hb-divider-dotted">
-        <div className="hb-divider-label">물류 플로우</div>
+        <div className="hb-divider-label">물류 흐름</div>
 
         {data.inTransit && (
           <div className="hb-flow-block">
@@ -107,17 +99,27 @@ export function BriefingInventoryColumn({ data }: Props) {
                 );
               })}
             </div>
-            <div className="hb-flow-card">
-              <div className="hb-flow-card-head">
-                <div className="hb-flow-card-title">
-                  진행 중 BL · {data.inTransit.contractNumber}
-                </div>
-                <div className="hb-flow-card-date">ETA {data.inTransit.pajuEta}</div>
+            <div className="hb-flow-card" style={{ background: "#FEF7E0", padding: "14px 12px" }}>
+              <div
+                className="hb-flow-card-head"
+                style={{ alignItems: "center", marginTop: 4, marginBottom: 6 }}
+              >
+                <div className="hb-flow-card-title">BL : {data.inTransit.contractNumber}</div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: 9999,
+                    background: "#F2BE5C",
+                    color: "#5C3F00",
+                  }}
+                >
+                  진행중
+                </span>
               </div>
-              <div className="hb-flow-card-body">
-                <span>{data.inTransit.from} → 파주</span>
-                <span className="hb-flow-divider">·</span>
-                <span>{data.inTransit.quantity.toLocaleString()}개</span>
+              <div className="hb-flow-card-date" style={{ textAlign: "right" }}>
+                ETA {data.inTransit.pajuEta}
               </div>
             </div>
           </div>
@@ -161,25 +163,10 @@ export function BriefingInventoryColumn({ data }: Props) {
         )}
       </div>
 
-      {/* Insight */}
-      <div className="hb-insight hb-orange">
-        <div className="hb-insight-head">
-          <svg
-            className="hb-insight-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path
-              d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span className="hb-insight-label">Insight</span>
-        </div>
-        <p className="hb-insight-text">{data.insight.headline}</p>
-        <p className="hb-insight-sub">{data.insight.sub}</p>
+      {/* Insight — 아이콘·라벨 제거, 상품명 + 재고 잔여 표시 (#F2BE5C 기반) */}
+      <div className="hb-insight" style={{ background: "#FEF7E0" }}>
+        <p className="hb-insight-text">{data.top3[0]?.name ?? data.insight.headline}</p>
+        <p className="hb-insight-sub">재고 {data.top3[0]?.coupangStock ?? 0}개 잔여.</p>
       </div>
     </section>
   );

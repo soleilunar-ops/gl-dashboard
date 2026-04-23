@@ -238,7 +238,7 @@ function KpiStrip({ k }: { k: BriefJson["kpis"] }) {
     { label: "총 매출", value: k.total_gmv_label },
     {
       label: "최고 판매일",
-      value: k.peak_units.toLocaleString("ko-KR"),
+      value: `${k.peak_units.toLocaleString("ko-KR")}개`,
       sublabel: k.peak_date_mmdd,
     },
     { label: "기온-판매 연관도", value: k.r_log.toFixed(3) },
@@ -246,11 +246,10 @@ function KpiStrip({ k }: { k: BriefJson["kpis"] }) {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {cards.map((c, i) => (
-        <div key={i} className="bg-muted/20 rounded-md border px-3 py-2.5 text-center">
+        <div key={i} className="bg-muted/20 rounded-md border px-3 py-3 text-center">
           <div className="text-muted-foreground text-[11px]">{c.label}</div>
-          {c.sublabel ? (
-            <div className="text-muted-foreground mt-0.5 text-xs">{c.sublabel}</div>
-          ) : null}
+          {/* sublabel 슬롯은 항상 렌더 — 카드 높이를 모두 동일하게 맞추기 위해 빈 값도  로 채움 */}
+          <div className="text-muted-foreground mt-0.5 text-xs">{c.sublabel ?? " "}</div>
           <div className="mt-0.5 text-lg font-semibold tabular-nums">{c.value}</div>
         </div>
       ))}

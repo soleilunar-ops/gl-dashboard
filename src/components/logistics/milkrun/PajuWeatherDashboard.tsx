@@ -127,12 +127,6 @@ export default function PajuWeatherDashboard() {
     }));
   }, [holidayPayload, fallbackHolidayPeriods]);
 
-  const holidayVerifier = holidayPayload?.verifier ?? null;
-  const holidayVerifierMessage =
-    holidayVerifier === "nager+claude-web-search"
-      ? "AI 검증 적용됨: 연휴·대체근무일·발주 마감 권장일이 Claude 웹 검증 결과로 보강되었습니다."
-      : "AI 검증 미적용: 국무원 일정 기준 내장 데이터를 표시합니다.";
-
   const loadForecast = useCallback(async () => {
     setForecastLoading(true);
     setErrForecast(null);
@@ -202,11 +196,6 @@ export default function PajuWeatherDashboard() {
                 ? "파주 일별 예보"
                 : `파주 일별 예보 (${forecast?.horizonDays ?? "—"}일)`}
             </CardTitle>
-            {forecast?.generatedAt && (
-              <p className="text-muted-foreground text-xs">
-                {format(parseISO(forecast.generatedAt), "yyyy-MM-dd HH:mm", { locale: ko })} 기준
-              </p>
-            )}
           </CardHeader>
           <CardContent className="space-y-3">
             {errForecast && <p className="text-destructive text-sm">{errForecast}</p>}
@@ -330,26 +319,24 @@ export default function PajuWeatherDashboard() {
               </p>
             )}
             {holidayError && <p className="text-destructive text-xs">{holidayError}</p>}
-            <ul className="space-y-3 pr-1">
-              {holidayPeriods.length === 0 ? (
-                <li className="text-muted-foreground">
-                  표시할 연휴가 없습니다. 해당 연도 내장 일정이 있으면 여기에 나옵니다.
-                </li>
-              ) : (
-                holidayPeriods.map((p) => (
+            {holidayPeriods.length === 0 ? (
+              <p className="text-muted-foreground">
+                표시할 연휴가 없습니다. 해당 연도 내장 일정이 있으면 여기에 나옵니다.
+              </p>
+            ) : (
+              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {holidayPeriods.map((p) => (
                   <li
                     key={`${p.labelKo}-${p.startDate}-${p.endDate}`}
-                    className="border-b border-dashed pb-3 last:border-0"
+                    className="flex flex-col items-center rounded-md border px-3 py-3 text-center"
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex items-center justify-center gap-2">
                       <span className="font-medium">{p.labelKo}</span>
-                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-                        <Badge variant="secondary" className="font-mono text-xs">
-                          {periodCountdown(p.startDate, p.endDate)}
-                        </Badge>
-                      </div>
+                      <Badge variant="secondary" className="font-mono text-xs">
+                        {periodCountdown(p.startDate, p.endDate)}
+                      </Badge>
                     </div>
-                    <p className="text-muted-foreground mt-1 text-xs [font-variant-numeric:tabular-nums]">
+                    <p className="text-muted-foreground mt-1.5 text-xs [font-variant-numeric:tabular-nums]">
                       {p.startDate} ~ {p.endDate} · {p.dayCount}일
                       {p.substituteWorkdays.length > 0 ? (
                         <span
@@ -367,27 +354,12 @@ export default function PajuWeatherDashboard() {
                     )}
                     {p.note && <p className="text-muted-foreground mt-1 text-xs">{p.note}</p>}
                   </li>
-                ))
-              )}
-            </ul>
-            <p
-              className={cn(
-                "text-xs",
-                holidayVerifier === "nager+claude-web-search"
-                  ? "text-emerald-700"
-                  : "text-muted-foreground"
-              )}
-            >
-              {holidayVerifierMessage}
-            </p>
+                ))}
+              </ul>
+            )}
             {!holidayLoading && !holidayPayload && (
               <p className="text-[11px] text-amber-600">
                 현재는 AI 검증 데이터가 없어 내장 데이터로 표시 중입니다.
-              </p>
-            )}
-            {holidayPayload?.verifier && (
-              <p className="text-muted-foreground text-[11px]">
-                검증 모드: {holidayPayload.verifier}
               </p>
             )}
             {holidayPayload?.verifyError && (

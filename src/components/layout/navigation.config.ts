@@ -19,6 +19,10 @@ export const navigation: NavGroup[] = [
     items: [{ label: "대시보드", path: "/dashboard", icon: "LayoutDashboard" }],
   },
   { title: "주문", items: navOrders },
-  { title: "분석", items: navWeatherkey },
   { title: "물류", items: navLogistics },
+  { title: "분석", items: navWeatherkey },
+  {
+    title: "",
+    items: [{ label: "엑셀 업로드", path: "/upload", icon: "Upload" }],
+  },
 ];

@@ -13,7 +13,7 @@ export default function LogisticsPage() {
     <div className="p-6">
       <div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">물류 현황</h1>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">재고 현황</h1>
         </div>
       </div>
 

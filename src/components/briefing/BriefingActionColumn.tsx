@@ -15,8 +15,14 @@ function tagClass(tag: "긴급" | "오늘" | "이번주") {
     case "오늘":
       return "hb-amber";
     case "이번주":
-      return "hb-slate";
+      // 이번 주 → 노랑 (재고 pill과 동일 디자인/색상)
+      return "hb-amber";
   }
+}
+
+// 화면에 표시할 태그 라벨 — "이번주" 사이 공백 추가
+function tagLabel(tag: "긴급" | "오늘" | "이번주"): string {
+  return tag === "이번주" ? "이번 주" : tag;
 }
 
 export function BriefingActionColumn({ data }: Props) {
@@ -27,8 +33,8 @@ export function BriefingActionColumn({ data }: Props) {
   return (
     <section>
       <div className="hb-col-head">
-        <span className="hb-col-title">Action</span>
-        <span className="hb-col-meta">{data.tasks.length}건 · 금주 액션</span>
+        <span className="hb-col-title">이번 주 할 일</span>
+        <span className="hb-col-meta">{data.tasks.length}건</span>
       </div>
 
       {/* 체크리스트 */}
@@ -45,7 +51,7 @@ export function BriefingActionColumn({ data }: Props) {
               <div className="hb-task-title">{t.title}</div>
               <div className="hb-task-desc">{t.description}</div>
             </div>
-            <span className={`hb-tag ${tagClass(t.tag)}`}>{t.tag}</span>
+            <span className={`hb-tag ${tagClass(t.tag)}`}>{tagLabel(t.tag)}</span>
           </label>
         ))}
       </div>
@@ -80,20 +86,8 @@ export function BriefingActionColumn({ data }: Props) {
         </div>
       </div>
 
-      {/* Insight */}
+      {/* Insight — 아이콘·라벨 제거, 본문만 유지 */}
       <div className="hb-insight hb-green">
-        <div className="hb-insight-head">
-          <svg
-            className="hb-insight-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M3 3v18h18M7 12l4-4 4 4 5-5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="hb-insight-label">Insight</span>
-        </div>
         <p className="hb-insight-text">{data.insight.headline}</p>
         <p className="hb-insight-sub">{data.insight.sub}</p>
       </div>

@@ -9,15 +9,15 @@
 // E:   CTA 내부에서 Progress 표시 (CTA 컴포넌트가 분기)
 
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useWeeklyBriefGate } from "@/lib/dashboard/weekly-brief/useWeeklyBriefGate";
 import { useWeeklyBriefList } from "@/lib/dashboard/weekly-brief/useWeeklyBriefList";
 import { useAudioPlayer } from "@/contexts/AudioPlayerContext";
 import { WeeklyBriefHeadline } from "./WeeklyBriefHeadline";
 import { WeeklyBriefAlerts } from "./WeeklyBriefAlerts";
-import { WeeklyBriefSectionChips } from "./WeeklyBriefSectionChips";
-import { WeeklyBriefFooter } from "./WeeklyBriefFooter";
 import { WeeklyBriefGenerateCTA } from "./WeeklyBriefGenerateCTA";
 import { WeeklyBriefHistory } from "./WeeklyBriefHistory";
+import { WeeklyBriefHistoryModal } from "./WeeklyBriefHistoryModal";
 import "./weekly-brief.css";
 
 function currentWeekStart(): string {
@@ -37,6 +37,7 @@ function isThisWeek(iso: string): boolean {
 export function WeeklyBriefCard() {
   const { data: gate, isLoading: gateLoading, refetch: refetchGate } = useWeeklyBriefGate();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const { data: reports } = useWeeklyBriefList(5, refreshKey);
   const audio = useAudioPlayer();
 
@@ -49,6 +50,15 @@ export function WeeklyBriefCard() {
   const onGenerateSuccess = () => {
     setRefreshKey((k) => k + 1);
     refetchGate();
+    // 생성 완료 토스트 — 올리브 그린 테마 (#BBBF4E 계열)
+    toast.success("생성 완료!", {
+      style: {
+        background: "#BBBF4E",
+        color: "#ffffff",
+        border: "1px solid #A3A73E",
+        fontWeight: 600,
+      },
+    });
   };
 
   // 상태 분기
@@ -59,29 +69,61 @@ export function WeeklyBriefCard() {
       <article className="wr-card">
         {hasReport ? (
           <>
-            {/* 상태 A / D */}
-            <header className="wr-card-header">
-              <div className="wr-header-main">
-                <div className="wr-header-badge">
-                  <span aria-hidden>📋</span>
-                  <span>주간 리포트</span>
-                </div>
-                <h2 className="wr-header-title">
-                  {thisWeekReport.parsed.metadata.week_start} ~{" "}
-                  {thisWeekReport.parsed.metadata.week_end}
-                </h2>
-                <p className="wr-header-meta">
-                  생성 {new Date(thisWeekReport.generated_at).toLocaleString("ko-KR")} ·{" "}
-                  {thisWeekReport.season}
-                </p>
+            {/* 상태 A / D — 제목·날짜 가운데 좁은 간격, 버튼은 아래 우측 작게 */}
+            <header
+              className="wr-card-header"
+              style={{
+                flexDirection: "column",
+                alignItems: "stretch",
+                gap: 8,
+                borderBottom: "none",
+              }}
+            >
+              <div
+                className="wr-header-badge"
+                style={{
+                  justifyContent: "center",
+                  fontSize: 26,
+                  fontWeight: 700,
+                  background: "transparent",
+                  color: "#BBBF4E",
+                  padding: 0,
+                  letterSpacing: "-0.01em",
+                  margin: 0,
+                }}
+              >
+                <span>주간 리포트</span>
               </div>
-              <div className="wr-header-actions">
-                <a href={`/dashboard?brief=${thisWeekReport.id}`} className="wr-btn">
-                  📄 전체 보기
+              <h2
+                className="wr-header-title"
+                style={{ fontSize: 26, margin: 0, textAlign: "center" }}
+              >
+                {thisWeekReport.parsed.metadata.week_start} ~{" "}
+                {thisWeekReport.parsed.metadata.week_end}
+              </h2>
+              <div
+                className="wr-header-actions wr-header-actions-sm"
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 6,
+                  flexWrap: "wrap",
+                }}
+              >
+                <a href={`/dashboard?brief=${thisWeekReport.id}`} className="wr-btn wr-btn-sm">
+                  전체 보기
                 </a>
                 <button
                   type="button"
-                  className={`wr-btn ${
+                  className="wr-btn wr-btn-sm"
+                  onClick={() => setHistoryOpen(true)}
+                  aria-label="저장된 리포트 전체 보기"
+                >
+                  지난 리포트
+                </button>
+                <button
+                  type="button"
+                  className={`wr-btn wr-btn-sm ${
                     audio.reportId === thisWeekReport.id &&
                     audio.section === "insight" &&
                     audio.isPlaying
@@ -109,23 +151,39 @@ export function WeeklyBriefCard() {
                   {audio.isLoading &&
                   audio.reportId === thisWeekReport.id &&
                   audio.section === "insight"
-                    ? "⏳ 생성 중..."
+                    ? "생성 중..."
                     : audio.reportId === thisWeekReport.id &&
                         audio.section === "insight" &&
                         audio.isPlaying
-                      ? "⏸ 일시정지"
-                      : "🔊 인사이트"}
+                      ? "일시정지"
+                      : "리포트 음성 보고"}
                 </button>
               </div>
             </header>
 
-            <WeeklyBriefHeadline headline={thisWeekReport.parsed.insight.headline} />
-            <WeeklyBriefAlerts alerts={thisWeekReport.parsed.insight.alerts} />
-            <WeeklyBriefSectionChips
-              reportId={thisWeekReport.id}
-              sections={thisWeekReport.parsed.sections}
-            />
-            <WeeklyBriefFooter gate={gate} reportId={thisWeekReport.id} />
+            <div className="wr-two-col">
+              <WeeklyBriefHeadline headline={thisWeekReport.parsed.insight.headline} />
+              <WeeklyBriefAlerts alerts={thisWeekReport.parsed.insight.alerts} />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                padding: "0 28px 12px",
+              }}
+            >
+              <a
+                href={`/dashboard?brief=${thisWeekReport.id}&ask=1`}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--wr-primary-text)",
+                  textDecoration: "none",
+                }}
+              >
+                이 리포트에 대해 질문하기 →
+              </a>
+            </div>
             <WeeklyBriefGenerateCTA
               gate={gate}
               gateLoading={gateLoading}
@@ -135,16 +193,44 @@ export function WeeklyBriefCard() {
         ) : (
           <>
             {/* 상태 B / C / E */}
-            <header className="wr-card-header">
-              <div className="wr-header-main">
-                <div className="wr-header-badge">
-                  <span aria-hidden>📋</span>
+            <header
+              className="wr-card-header"
+              style={{ flexDirection: "column", alignItems: "stretch", gap: 12 }}
+            >
+              <div className="wr-header-main" style={{ textAlign: "center" }}>
+                <div
+                  className="wr-header-badge"
+                  style={{
+                    justifyContent: "center",
+                    fontSize: 26,
+                    fontWeight: 700,
+                    background: "transparent",
+                    color: "#BBBF4E",
+                    padding: 0,
+                    letterSpacing: "-0.01em",
+                  }}
+                >
                   <span>주간 리포트</span>
                 </div>
-                <h2 className="wr-header-title">이번 주 리포트를 생성해 보세요</h2>
-                <p className="wr-header-meta">
-                  최근 7일 데이터 집계 + Claude Sonnet 4.6 · 약 15~25초 소요
-                </p>
+                <h2
+                  className="wr-header-title"
+                  style={{ fontSize: 26, textAlign: "center", marginTop: 6 }}
+                >
+                  이번 주 리포트를 생성해 보세요
+                </h2>
+              </div>
+              <div
+                className="wr-header-actions"
+                style={{ justifyContent: "flex-end", alignSelf: "flex-end" }}
+              >
+                <button
+                  type="button"
+                  className="wr-btn"
+                  onClick={() => setHistoryOpen(true)}
+                  aria-label="저장된 리포트 전체 보기"
+                >
+                  지난 리포트
+                </button>
               </div>
             </header>
 
@@ -158,6 +244,11 @@ export function WeeklyBriefCard() {
           </>
         )}
       </article>
+      <WeeklyBriefHistoryModal
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        currentReportId={thisWeekReport?.id}
+      />
     </div>
   );
 }

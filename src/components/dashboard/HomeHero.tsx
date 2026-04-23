@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { History } from "lucide-react";
 import { HaruruCharacter } from "./HaruruCharacter";
 import { TimeGreeting } from "./TimeGreeting";
@@ -22,6 +22,14 @@ export function HomeHero() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [recentOpen, setRecentOpen] = useState(false);
   const hasConversation = turns.length > 0;
+
+  useEffect(() => {
+    const pending = typeof window !== "undefined" && localStorage.getItem("haruru_pending_q");
+    if (!pending) return;
+    localStorage.removeItem("haruru_pending_q");
+    ask(pending, model).then(() => setRefreshKey((k) => k + 1));
+    // 초기 마운트 전용 단발 호출 — ask/model 변경 시 재실행할 필요 없음
+  }, [ask, model]);
 
   return (
     <div

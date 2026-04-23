@@ -3,7 +3,6 @@
 // 08 v0.3 — 메인 레이아웃: Topbar → Briefing → Narrative → WeeklyBrief
 import { Suspense } from "react";
 import { DashboardTopbar } from "./DashboardTopbar";
-import { NarrativeBridge } from "./NarrativeBridge";
 import { BriefingCard } from "@/components/briefing/BriefingCard";
 import { WeeklyBriefCard } from "@/components/weekly-brief/WeeklyBriefCard";
 import { WeeklyBriefModal } from "@/components/weekly-brief/WeeklyBriefModal";
@@ -17,8 +16,6 @@ export function DashboardMain() {
         <section className="dashboard-section">
           <BriefingCard />
         </section>
-
-        <NarrativeBridge />
 
         <section className="dashboard-section">
           <WeeklyBriefCard />

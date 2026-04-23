@@ -1,7 +1,8 @@
 "use client";
 
-// 08 v0.3 — 하루루 브리핑 카드 쉘. 3열 body + CTA.
-import { useDemoData } from "@/lib/demo";
+// 08 v0.4 — 하루루 브리핑 카드. DB에서 실시간 데이터 조회.
+// useBriefingData 훅이 날씨·재고·액션을 병합해서 SeasonProfile 형태로 반환.
+import { useBriefingData } from "@/components/dashboard/_hooks/useBriefingData";
 import { BriefingHeader } from "./BriefingHeader";
 import { BriefingWeatherColumn } from "./BriefingWeatherColumn";
 import { BriefingInventoryColumn } from "./BriefingInventoryColumn";
@@ -9,7 +10,26 @@ import { BriefingActionColumn } from "./BriefingActionColumn";
 import "./briefing.css";
 
 export function BriefingCard() {
-  const { profile } = useDemoData();
+  const { profile, loading, error } = useBriefingData();
+
+  if (loading) {
+    return (
+      <div className="hb-root">
+        <article className="hb-card" style={{ padding: 32, textAlign: "center", opacity: 0.5 }}>
+          브리핑 데이터를 불러오는 중...
+        </article>
+      </div>
+    );
+  }
+  if (error || !profile) {
+    return (
+      <div className="hb-root">
+        <article className="hb-card" style={{ padding: 32, textAlign: "center", color: "#B91C1C" }}>
+          브리핑 데이터를 불러오지 못했습니다. {error}
+        </article>
+      </div>
+    );
+  }
 
   return (
     <div className="hb-root">
@@ -20,15 +40,6 @@ export function BriefingCard() {
           <BriefingWeatherColumn data={profile.weather} />
           <BriefingInventoryColumn data={profile.inventory} />
           <BriefingActionColumn data={profile.action} />
-        </div>
-
-        <div className="hb-cta-wrap">
-          <button type="button" className="hb-cta-button">
-            상세 보기 및 발주 관리
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-            </svg>
-          </button>
         </div>
       </article>
     </div>
