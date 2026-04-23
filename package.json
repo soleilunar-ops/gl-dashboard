@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "parse:milkrun-centers": "npx tsx scripts/parse-milkrun-centers.ts",
+    "crawl:ecount": "npx tsx scripts/crawl-ecount-daily.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -59,6 +60,7 @@
     "secretlint": "^11.6.0",
     "supabase": "^2.89.1",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   },
   "lint-staged": {

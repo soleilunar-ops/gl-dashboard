@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 
 import { EcountMappingError, type ParsedLedgerRow } from "./types";
@@ -37,9 +38,10 @@ export type PersistResult = {
 export async function persistOrdersToSupabase(
   parsed: ParsedLedgerRow[],
   itemCode: string,
-  opts: { dryRun: boolean }
+  opts: { dryRun: boolean; client?: SupabaseClient }
 ): Promise<PersistResult> {
-  const supabase = await createClient();
+  // 배치 스크립트(service-role)가 client를 주입하면 그대로 사용, Next API 경로에서는 기본 server client 생성
+  const supabase = opts.client ?? (await createClient());
 
   const { data: mappingRow, error: mappingErr } = await supabase
     .from("item_erp_mapping")
