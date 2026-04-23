@@ -1,0 +1,127 @@
+/* 08 v0.3 — /dashboard 메인 화면 스타일.
+ * 글로벌 Sidebar/Header 는 (dashboard) 그룹 layout 이 제공하므로 여기서는 본문만. */
+
+.dashboard-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: #f7f5f0;
+}
+
+.dashboard-topbar {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 32px 32px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.dashboard-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dashboard-fire {
+  font-size: 28px;
+  filter: drop-shadow(0 2px 4px rgba(249, 115, 22, 0.3));
+}
+.dashboard-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+.dashboard-subtitle {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.dashboard-topbar-actions {
+  display: flex;
+  gap: 8px;
+}
+.dashboard-topbar-btn {
+  font-size: 12px;
+  color: #64748b;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.dashboard-topbar-btn:hover {
+  color: #0f172a;
+  background: #ffffff;
+}
+
+.dashboard-section {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 32px 24px;
+}
+
+.narrative-bridge {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 4px 32px 20px;
+}
+.narrative-bridge-inner {
+  border-left: 3px solid #e5e7eb;
+  padding: 6px 14px;
+  color: #64748b;
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.5;
+  font-family:
+    "Pretendard Variable",
+    Pretendard,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+}
+
+/* ───── 반응형 ───── */
+@media (max-width: 1023px) {
+  .dashboard-topbar,
+  .dashboard-section,
+  .narrative-bridge {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+  .dashboard-topbar {
+    padding-top: 24px;
+    padding-bottom: 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  .dashboard-topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 20px 16px 12px;
+    gap: 12px;
+  }
+  .dashboard-topbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .dashboard-topbar-btn {
+    min-height: 40px;
+  }
+  .dashboard-section {
+    padding: 0 16px 20px;
+  }
+  .narrative-bridge {
+    padding: 0 16px 16px;
+  }
+  .narrative-bridge-inner {
+    font-size: 12px;
+    border-left-width: 2px;
+  }
+}

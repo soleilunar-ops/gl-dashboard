@@ -1,15 +1,30 @@
 "use client";
 
+import { useState } from "react";
 import { HaruruCharacter } from "./HaruruCharacter";
 import { TimeGreeting } from "./TimeGreeting";
 import { ThermometerSearchBar } from "./ThermometerSearchBar";
 import { FavoriteShortcuts } from "./FavoriteShortcuts";
+import { HaruruConversation } from "@/components/haruru/HaruruConversation";
+import { useHaruruAgent } from "@/components/haruru/useHaruruAgent";
+import { ModelPicker, useModelPicker } from "@/components/haruru/ModelPicker";
+import { RecentSessions } from "@/components/haruru/RecentSessions";
 
-/** 구글 홈처럼 가운데 정렬: 캐릭터 → 온도계 검색창 → 즐겨찾기 바로가기 */
+/** 구글 홈처럼 가운데 정렬: 캐릭터 → 인사말 → 온도계 검색(하루루) → 대화 누적 → 최근 세션 → 즐겨찾기 */
 export function HomeHero() {
+  const { turns, streaming, ask, sendFeedback, reset, loadSession } = useHaruruAgent();
+  const { model, setModel } = useModelPicker();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const hasConversation = turns.length > 0;
+
   return (
-    <div className="relative flex min-h-[calc(100vh-3.5rem)] w-full flex-col items-center justify-center overflow-hidden px-6 py-10">
-      {/* 살짝 깔리는 배경 글로우 */}
+    <div
+      className={
+        hasConversation
+          ? "relative flex min-h-[calc(100vh-3.5rem)] w-full flex-col items-center overflow-y-auto px-6 py-10"
+          : "relative flex min-h-[calc(100vh-3.5rem)] w-full flex-col items-center justify-center overflow-hidden px-6 py-10"
+      }
+    >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-1/4 mx-auto h-72 w-[42rem] max-w-full rounded-full bg-gradient-to-b from-[#FAE8B8]/50 via-[#FDF3D0]/40 to-transparent blur-3xl"
@@ -18,7 +33,27 @@ export function HomeHero() {
       <div className="relative flex w-full max-w-2xl flex-col items-center gap-7">
         <HaruruCharacter />
         <TimeGreeting />
-        <ThermometerSearchBar />
+        <ThermometerSearchBar
+          onSearch={(q) => {
+            if (!streaming && q) {
+              ask(q, model).then(() => setRefreshKey((k) => k + 1));
+            }
+          }}
+        />
+        <ModelPicker value={model} onChange={setModel} disabled={streaming} />
+
+        {hasConversation && <HaruruConversation turns={turns} onFeedback={sendFeedback} />}
+
+        <RecentSessions
+          currentTurnsCount={turns.length}
+          onLoad={loadSession}
+          onNew={() => {
+            reset();
+            setRefreshKey((k) => k + 1);
+          }}
+          refreshKey={refreshKey}
+        />
+
         <div className="mt-6">
           <FavoriteShortcuts />
         </div>

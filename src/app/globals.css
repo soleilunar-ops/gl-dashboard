@@ -162,7 +162,6 @@
   --chart-4: oklch(0.58 0.12 113);
   --chart-5: oklch(0.66 0.13 60);
   --radius: 0.625rem;
-<<<<<<< HEAD
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -170,7 +169,7 @@
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: #bbbf4e;
 
   /* ─── Hotpack Season — 팔레트 A (쿨 블루, 대비 강화) ─── */
   --hotpack-temp-1: #ffe8d0;
@@ -216,7 +215,6 @@
   --sidebar-accent-foreground: oklch(0.24 0.04 60);
   --sidebar-border: oklch(0.9 0.015 85);
   --sidebar-ring: #bbbf4e;
-8d253dc (나경 메인페이지 수정)
 }
 
 .dark {
@@ -254,7 +252,6 @@
   --sidebar-accent: oklch(0.32 0.05 85);
   --sidebar-accent-foreground: oklch(0.96 0.03 85);
   --sidebar-border: oklch(1 0 0 / 10%);
-HEAD
   --sidebar-ring: oklch(0.556 0 0);
 
   /* ─── Hotpack Season — 다크 모드 (쿨 블루 반전) ─── */
@@ -287,9 +284,6 @@ HEAD
 
   --hotpack-source-short: rgba(91, 149, 199, 0.12);
   --hotpack-source-mid: rgba(91, 149, 199, 0.06);
-=======
-  --sidebar-ring: #bbbf4e;
-8d253dc (나경 메인페이지 수정)
 }
 
 @layer base {
