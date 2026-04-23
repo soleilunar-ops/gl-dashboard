@@ -1,0 +1,78 @@
+name: Ecount Python Daily Crawl
+
+on:
+  schedule:
+    # 매일 03:00 KST = UTC 18:00 (전일)
+    - cron: "0 18 * * *"
+  workflow_dispatch: # 수동 재실행용
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    name: Ecount 3법인 Python 크롤링
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ECOUNT_GL_COM_CODE: ${{ secrets.ECOUNT_GL_COM_CODE }}
+      ECOUNT_GL_USER_ID: ${{ secrets.ECOUNT_GL_USER_ID }}
+      ECOUNT_GL_USER_PW: ${{ secrets.ECOUNT_GL_USER_PW }}
+      ECOUNT_GLPHARM_COM_CODE: ${{ secrets.ECOUNT_GLPHARM_COM_CODE }}
+      ECOUNT_GLPHARM_USER_ID: ${{ secrets.ECOUNT_GLPHARM_USER_ID }}
+      ECOUNT_GLPHARM_USER_PW: ${{ secrets.ECOUNT_GLPHARM_USER_PW }}
+      ECOUNT_HNB_COM_CODE: ${{ secrets.ECOUNT_HNB_COM_CODE }}
+      ECOUNT_HNB_USER_ID: ${{ secrets.ECOUNT_HNB_USER_ID }}
+      ECOUNT_HNB_USER_PW: ${{ secrets.ECOUNT_HNB_USER_PW }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: scripts/requirements-ecount.txt
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements-ecount.txt
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Resolve KST crawl date range
+        id: dates
+        run: |
+          YESTERDAY=$(TZ=Asia/Seoul date -d '1 day ago' '+%Y-%m-%d')
+          TODAY=$(TZ=Asia/Seoul date '+%Y-%m-%d')
+          echo "YESTERDAY=$YESTERDAY" >> $GITHUB_OUTPUT
+          echo "TODAY=$TODAY" >> $GITHUB_OUTPUT
+          echo "[ecount-python] 크롤 범위: $YESTERDAY ~ $TODAY"
+
+      # 한 법인 실패해도 나머지는 계속 진행 (continue-on-error)
+      - name: "Crawl: GL (생산입고 + 구매 + 판매)"
+        run: |
+          python scripts/ecount_multi_pipeline.py \
+            --company gl \
+            --from ${{ steps.dates.outputs.YESTERDAY }} \
+            --to ${{ steps.dates.outputs.TODAY }}
+        continue-on-error: true
+
+      - name: "Crawl: GL Pharm (구매 + 판매)"
+        run: |
+          python scripts/ecount_multi_pipeline.py \
+            --company glpharm \
+            --from ${{ steps.dates.outputs.YESTERDAY }} \
+            --to ${{ steps.dates.outputs.TODAY }}
+        continue-on-error: true
+
+      - name: "Crawl: HNB (구매 + 판매)"
+        run: |
+          python scripts/ecount_multi_pipeline.py \
+            --company hnb \
+            --from ${{ steps.dates.outputs.YESTERDAY }} \
+            --to ${{ steps.dates.outputs.TODAY }}
+        continue-on-error: true
