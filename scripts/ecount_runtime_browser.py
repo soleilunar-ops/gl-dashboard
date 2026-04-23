@@ -714,7 +714,7 @@ async def crawl(
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/124.0.0.0 Safari/537.36"
         )
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=os.getenv("ECOUNT_HEADLESS", "true").lower() != "false")
         context = await browser.new_context(
             user_agent=user_agent,
             locale="ko-KR",
@@ -1005,7 +1005,9 @@ async def recreate_login_context(
     변경 이유: 로그인 재시도마다 새 브라우저/컨텍스트/페이지를 강제 생성해
     닫힌 페이지 컨텍스트를 확실히 복구합니다.
     """
-    browser = await playwright_instance.chromium.launch(headless=False)
+    browser = await playwright_instance.chromium.launch(
+        headless=os.getenv("ECOUNT_HEADLESS", "true").lower() != "false"
+    )
     context = await browser.new_context(
         user_agent=str(context_kwargs["user_agent"]),
         locale="ko-KR",
