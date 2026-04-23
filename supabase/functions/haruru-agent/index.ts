@@ -16,11 +16,27 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
   assembleSystemPrompt,
   getConfigMap,
+  HYDE_PROMPT,
   INTENT_PROMPT,
   SQL_PLANNER_PROMPT,
   VERIFIER_RETRY_PROMPT,
 } from "./prompts.ts";
-import { callClaudeJson, callClaudeStream, embedQuery } from "./llm.ts";
+import {
+  callClaude,
+  callClaudeJson,
+  callClaudeStream,
+  callOpenAIStream,
+  embedQuery,
+} from "./llm.ts";
+
+// 답변용 화이트리스트 — 사용자 answer_model 파라미터는 이 목록만 허용
+const ALLOWED_ANSWER_MODELS = new Set([
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-6",
+  "claude-opus-4-7",
+  "gpt-4o",
+  "gpt-4o-mini",
+]);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -79,6 +95,35 @@ function planRouter(
 // ------------------------------------------------------------
 // data coverage — data_sync_log 최신 요약
 // ------------------------------------------------------------
+/** season_config 기반으로 오늘 기준 활성 시즌 안내 문자열 생성. 런타임 조회라 2025 고정 X. */
+async function getSeasonInfo(sb: any, today: string): Promise<string> {
+  const { data: seasons } = await sb
+    .from("season_config")
+    .select("season, start_date, end_date, is_closed")
+    .order("start_date", { ascending: false })
+    .limit(10);
+  if (!seasons || seasons.length === 0) return "시즌 정보 없음 (season_config 비어있음)";
+
+  // 1) 오늘이 범위 내이고 is_closed=false인 시즌 우선
+  const active = seasons.find(
+    (s: any) => !s.is_closed && s.start_date <= today && today <= s.end_date
+  );
+  if (active) {
+    return `현재 활성 시즌: ${active.season}시즌 (${active.start_date} ~ ${active.end_date})`;
+  }
+  // 2) 가장 최근 종료된 시즌
+  const lastClosed = seasons.find((s: any) => s.is_closed);
+  if (lastClosed) {
+    return `현재 비수기. 가장 최근 시즌: ${lastClosed.season}시즌 (${lastClosed.start_date} ~ ${lastClosed.end_date})`;
+  }
+  // 3) fallback — 오늘 날짜가 아직 미개시 시즌이면 그 이전 시즌 중 가장 최근
+  const pastOrOngoing = seasons.find((s: any) => s.start_date <= today);
+  if (pastOrOngoing) {
+    return `참고 시즌: ${pastOrOngoing.season}시즌 (${pastOrOngoing.start_date} ~ ${pastOrOngoing.end_date})`;
+  }
+  return "시즌 정보 모호 — season_config 확인 필요";
+}
+
 async function getDataCoverage(sb: any): Promise<string> {
   const { data } = await sb
     .from("data_sync_log")
@@ -178,30 +223,21 @@ function buildContext(
 // ------------------------------------------------------------
 function verify(
   answer: string,
-  sqlRows: Record<string, unknown>[],
-  ragChunks: RagChunk[]
+  _sqlRows: Record<string, unknown>[],
+  _ragChunks: RagChunk[]
 ): { ok: boolean; issues: string[] } {
-  const numPattern = /([+-]?[\d,]+(?:\.\d+)?)\s*(원|%|개|℃|°C|일|건|배)?/g;
-  const found: string[] = [];
-  let m;
-  while ((m = numPattern.exec(answer)) !== null) found.push(m[0]);
-
-  const haystack = [
-    ...sqlRows.map((r) => JSON.stringify(r)),
-    ...ragChunks.map((c) => JSON.stringify(c.metrics ?? c.content)),
-  ]
-    .join(" ")
-    .replace(/,/g, "");
-
-  const missing = found.filter((n) => {
-    const digits = n.replace(/,/g, "").match(/[\d.]+/)?.[0];
-    return digits ? !haystack.includes(digits) : false;
-  });
-
+  // 엄격한 숫자 매칭은 false positive가 너무 많음 (계산치·비율·성장률 등)
+  // 대신 실전 품질 기준: (1) 답변 길이 (2) 인용 태그 유무
   const hasRefTag = /\[ref:(sql|rag)\.[^\]]+\]/.test(answer);
   const issues: string[] = [];
-  if (missing.length > 0) issues.push(`컨텍스트에 없는 숫자: ${missing.join(", ")}`);
-  if (found.length > 0 && !hasRefTag) issues.push("숫자 인용 태그 누락");
+  if (answer.trim().length < 80) {
+    issues.push("답변이 너무 짧음 — 4단계 구조로 풍부하게 재작성");
+  }
+  // 3자리 이상 숫자가 3개 넘는데 ref 태그 0개면 hallucination 의심
+  const bigDigits = (answer.match(/\d{3,}/g) ?? []).length;
+  if (bigDigits >= 3 && !hasRefTag) {
+    issues.push("수치 다수인데 인용 태그 0개 — 출처 미상");
+  }
   return { ok: issues.length === 0, issues };
 }
 
@@ -229,7 +265,13 @@ Deno.serve(async (req) => {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   const openaiKey = Deno.env.get("OPENAI_API_KEY");
 
-  let body: { question?: string; session_id?: string; user_id?: string };
+  let body: {
+    question?: string;
+    session_id?: string;
+    user_id?: string;
+    answer_model?: string;
+    previous_turns?: Array<{ role: "user" | "assistant"; content: string }>;
+  };
   try {
     body = await req.json();
   } catch {
@@ -276,16 +318,39 @@ Deno.serve(async (req) => {
       try {
         const intentModel = cfg.get("default_intent_model") ?? "claude-haiku-4-5-20251001";
         const sqlModel = cfg.get("default_sql_planner_model") ?? "claude-haiku-4-5-20251001";
-        const answerModel = cfg.get("default_answer_model") ?? "claude-sonnet-4-6";
+        const defaultAnswerModel = cfg.get("default_answer_model") ?? "claude-sonnet-4-6";
+        const requestedAnswer = (body as any).answer_model as string | undefined;
+        const answerModel =
+          requestedAnswer && ALLOWED_ANSWER_MODELS.has(requestedAnswer)
+            ? requestedAnswer
+            : defaultAnswerModel;
+        const isOpenAIAnswer = answerModel.startsWith("gpt-");
         const topK = parseInt(cfg.get("rag_top_k") ?? "6");
         const minSim = parseFloat(cfg.get("rag_min_sim") ?? "0.70");
 
-        // 1) intent_classifier
+        // 이전 대화 맥락 — 최근 10쌍(20턴)까지 유지, 교대 패턴 보정
+        const rawPrev = Array.isArray(body.previous_turns) ? body.previous_turns : [];
+        const previousTurns = rawPrev
+          .filter(
+            (t) =>
+              t && (t.role === "user" || t.role === "assistant") && typeof t.content === "string"
+          )
+          .slice(-20)
+          .map((t) => ({
+            role: t.role,
+            content: t.content.length > 600 ? t.content.slice(0, 600) + "…" : t.content,
+          }));
+        const contextBlock =
+          previousTurns.length > 0
+            ? `[이전 대화 맥락]\n${previousTurns.map((t) => `${t.role === "user" ? "Q" : "A"}: ${t.content}`).join("\n\n")}\n\n[현재 질문]\n`
+            : "";
+
+        // 1) intent_classifier — 이전 맥락 포함해서 분류
         const intentRes = await callClaudeJson<IntentClassification>({
           apiKey: anthropicKey,
           model: intentModel,
           system: INTENT_PROMPT,
-          userContent: question,
+          userContent: contextBlock + question,
         });
 
         // off_scope / meta는 고정 응답 반환
@@ -297,6 +362,7 @@ Deno.serve(async (req) => {
               intent: "off_scope",
               axis: "none",
               final_answer: msg,
+              session_id: body.session_id,
             })
           );
           await persist(sb, body, {
@@ -332,6 +398,7 @@ Deno.serve(async (req) => {
               intent: "meta",
               axis: "none",
               final_answer: msg,
+              session_id: body.session_id,
             })
           );
           await persist(sb, body, {
@@ -353,25 +420,64 @@ Deno.serve(async (req) => {
         // 2) plan_router
         const plan = planRouter(question, intentRes.category);
 
-        // 3) sql_node
+        // 3) sql_node — A: 맥락 축소(최근 1쌍만) + B: JSON 실패 시 1회 재시도
         let sqlPlan: SqlPlan | null = null;
         let sqlRows: Record<string, unknown>[] = [];
         if (plan.answer_type.includes("sql")) {
           const coverage = await getDataCoverage(sb);
-          try {
-            sqlPlan = await callClaudeJson<SqlPlan>({
-              apiKey: anthropicKey,
-              model: sqlModel,
-              system:
-                SQL_PLANNER_PROMPT(new Date().toISOString().split("T")[0]) +
-                `\n\n데이터 범위: ${coverage}`,
-              userContent: `axis=${intentRes.axis}\n질문: ${question}`,
-            });
+          const todayStr = new Date().toISOString().split("T")[0];
+          const seasonInfo = await getSeasonInfo(sb, todayStr);
+          // SQL Planner엔 이전 맥락 주입 X — 실패/모순 응답이 섞여 Haiku가 혼란하는 문제 방지.
+          // 맥락 의존("이번달도 해봐")은 answer_generator의 prevMsgs가 처리.
+          const sqlContextBlock = "";
+
+          for (let attempt = 0; attempt < 2 && !sqlPlan; attempt++) {
+            try {
+              const strictSuffix =
+                attempt > 0
+                  ? "\n\n⚠️ 반드시 순수 JSON 하나만 출력. 설명·코드펜스·인사말 절대 금지."
+                  : "";
+              sqlPlan = await callClaudeJson<SqlPlan>({
+                apiKey: anthropicKey,
+                model: sqlModel,
+                system:
+                  SQL_PLANNER_PROMPT(todayStr, seasonInfo) +
+                  `\n\n데이터 범위: ${coverage}` +
+                  strictSuffix,
+                userContent: `axis=${intentRes.axis}\n${sqlContextBlock}${question}`,
+              });
+            } catch (e) {
+              console.error(`sql_node attempt ${attempt} fail: ${(e as Error).message}`);
+            }
+          }
+          let sqlExecError: string | null = null;
+          if (sqlPlan) {
             const r = await runSql(sb, sqlPlan.sql);
             sqlRows = r.rows;
-            if (r.error) console.error(`sql_node error: ${r.error}`);
-          } catch (e) {
-            console.error(`sql_node fail: ${(e as Error).message}`);
+            sqlExecError = r.error;
+            if (r.error) console.error(`sql_node run error: ${r.error}`);
+          }
+          // 실행 에러가 있으면 에러 메시지를 피드백으로 주고 1회 재작성
+          if (sqlPlan && sqlExecError && sqlRows.length === 0) {
+            try {
+              const fixedPlan = await callClaudeJson<SqlPlan>({
+                apiKey: anthropicKey,
+                model: sqlModel,
+                system:
+                  SQL_PLANNER_PROMPT(todayStr, seasonInfo) +
+                  `\n\n데이터 범위: ${coverage}\n\n⚠ 이전 SQL 실행 시 에러 발생. 스키마 컬럼명/값을 정확히 확인해서 수정하세요. 순수 JSON 하나만.`,
+                userContent: `[이전 SQL 에러]\n${sqlExecError}\n\n[이전 SQL]\n${sqlPlan.sql}\n\n[원 질문]\naxis=${intentRes.axis}\n${sqlContextBlock}${question}`,
+              });
+              const r2 = await runSql(sb, fixedPlan.sql);
+              if (!r2.error && r2.rows.length > 0) {
+                sqlPlan = fixedPlan;
+                sqlRows = r2.rows;
+              } else if (r2.error) {
+                console.error(`sql_node fix retry error: ${r2.error}`);
+              }
+            } catch (e) {
+              console.error(`sql_node fix retry fail: ${(e as Error).message}`);
+            }
           }
         }
 
@@ -379,7 +485,22 @@ Deno.serve(async (req) => {
         let ragChunks: RagChunk[] = [];
         if (plan.answer_type.includes("rag") && openaiKey) {
           try {
-            const emb = await embedQuery(question, openaiKey);
+            // HyDE: 질문을 '가상의 답변 문서' 형태로 Haiku가 확장 → 카드 임베딩과 벡터 거리 단축
+            let hyde = "";
+            try {
+              hyde = await callClaude({
+                apiKey: anthropicKey,
+                model: intentModel,
+                system: HYDE_PROMPT,
+                messages: [{ role: "user", content: question }],
+                max_tokens: 180,
+                temperature: 0.1,
+              });
+            } catch (e) {
+              console.error(`hyde fail: ${(e as Error).message}`);
+            }
+            const searchText = hyde ? `${question}\n\n${hyde.trim()}` : question;
+            const emb = await embedQuery(searchText, openaiKey);
             ragChunks = await searchRag(sb, {
               embedding: emb,
               tables: plan.rag_tables,
@@ -404,8 +525,23 @@ Deno.serve(async (req) => {
         let lastIssues: string[] = [];
         const MAX_RETRY = 1;
 
+        // 이전 대화 msgs 교대 패턴 보정 (마지막이 user 또는 assistant 모두 OK, 끝에 새 user 붙음)
+        const prevMsgs: Array<{ role: "user" | "assistant"; content: string }> = [];
+        for (const t of previousTurns) {
+          const last = prevMsgs[prevMsgs.length - 1];
+          if (last && last.role === t.role) {
+            // 같은 role 연속 방지 — 합치기
+            last.content += "\n\n" + t.content;
+          } else {
+            prevMsgs.push({ role: t.role, content: t.content });
+          }
+        }
+        // 맨 앞이 assistant면 제거 (Anthropic 요구)
+        if (prevMsgs.length > 0 && prevMsgs[0].role === "assistant") prevMsgs.shift();
+
         while (retries <= MAX_RETRY) {
           const msgs = [
+            ...prevMsgs,
             { role: "user" as const, content: question },
             {
               role: "assistant" as const,
@@ -420,16 +556,30 @@ Deno.serve(async (req) => {
           ];
 
           draftAnswer = "";
-          await callClaudeStream({
-            apiKey: anthropicKey,
-            model: answerModel,
-            system: systemPrompt,
-            messages: msgs,
-            onDelta: (t) => {
-              draftAnswer += t;
-              if (retries === 0) controller.enqueue(sseEvent("delta", { text: t }));
-            },
-          });
+          if (isOpenAIAnswer) {
+            if (!openaiKey) throw new Error("OPENAI_API_KEY 미설정 — GPT 모델 사용 불가");
+            await callOpenAIStream({
+              apiKey: openaiKey,
+              model: answerModel,
+              system: systemPrompt,
+              messages: msgs,
+              onDelta: (t) => {
+                draftAnswer += t;
+                if (retries === 0) controller.enqueue(sseEvent("delta", { text: t }));
+              },
+            });
+          } else {
+            await callClaudeStream({
+              apiKey: anthropicKey,
+              model: answerModel,
+              system: systemPrompt,
+              messages: msgs,
+              onDelta: (t) => {
+                draftAnswer += t;
+                if (retries === 0) controller.enqueue(sseEvent("delta", { text: t }));
+              },
+            });
+          }
 
           const verification = verify(draftAnswer, sqlRows, ragChunks);
           if (verification.ok) {
@@ -468,6 +618,7 @@ Deno.serve(async (req) => {
             axis: intentRes.axis,
             answer_type: plan.answer_type,
             turn_id: turn?.id ?? null,
+            session_id: turn?.sessionId ?? body.session_id,
             citations: {
               sql: sqlRows.length,
               rag: ragChunks.map((c) => `${c.source_table}.${c.id}`),
@@ -512,19 +663,22 @@ async function persist(
     model: string;
     latencyMs: number;
   }
-): Promise<{ id: number } | null> {
+): Promise<{ id: number; sessionId: string } | null> {
   let sessionId = body.session_id;
+  const isNewSession = !sessionId;
   if (!sessionId) {
     const { data: sess } = await sb
       .from("agent_sessions")
       .insert({
         user_id: body.user_id ?? null,
+        title: turn.question.slice(0, 60),
       })
       .select("session_id")
       .single();
     sessionId = sess?.session_id;
   }
   if (!sessionId) return null;
+  body.session_id = sessionId;
 
   const { data: maxTurn } = await sb
     .from("agent_turns")
@@ -573,5 +727,5 @@ async function persist(
     })
     .eq("session_id", sessionId);
 
-  return assistant ? { id: assistant.id as number } : null;
+  return assistant ? { id: assistant.id as number, sessionId } : null;
 }

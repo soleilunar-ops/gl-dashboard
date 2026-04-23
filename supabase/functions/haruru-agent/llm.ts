@@ -75,6 +75,58 @@ export async function embedQuery(text: string, apiKey: string): Promise<number[]
   return json.data[0].embedding;
 }
 
+export async function callOpenAIStream(opts: {
+  apiKey: string;
+  model: string;
+  system: string;
+  messages: ClaudeMessage[];
+  onDelta: (delta: string) => void;
+  max_tokens?: number;
+}): Promise<string> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${opts.apiKey}` },
+    body: JSON.stringify({
+      model: opts.model,
+      max_tokens: opts.max_tokens ?? 2000,
+      temperature: 0.2,
+      stream: true,
+      messages: [{ role: "system", content: opts.system }, ...opts.messages],
+    }),
+  });
+  if (!res.ok || !res.body) {
+    const t = !res.ok ? await res.text() : "no body";
+    throw new Error(`OpenAI stream ${res.status}: ${t.slice(0, 400)}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6).trim();
+      if (!payload || payload === "[DONE]") continue;
+      try {
+        const ev = JSON.parse(payload);
+        const delta = ev.choices?.[0]?.delta?.content ?? "";
+        if (delta) {
+          fullText += delta;
+          opts.onDelta(delta);
+        }
+      } catch {
+        // skip
+      }
+    }
+  }
+  return fullText;
+}
+
 export async function callClaudeStream(opts: {
   apiKey: string;
   model: string;

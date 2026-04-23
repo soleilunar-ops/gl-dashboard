@@ -22,6 +22,7 @@ export interface HaruruTurn {
 const HARURU_ENDPOINT =
   process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(".supabase.co", ".functions.supabase.co") +
   "/haruru-agent";
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 let nextId = 1;
 const genId = () => `t${nextId++}`;
@@ -34,9 +35,24 @@ export function useHaruruAgent() {
   const abortRef = useRef<AbortController | null>(null);
 
   const ask = useCallback(
-    async (question: string): Promise<void> => {
+    async (question: string, answerModel?: string): Promise<void> => {
       const q = question.trim();
       if (!q || streaming) return;
+
+      // 이전 대화 맥락 — user 질문은 보존, assistant 답변은 요약 플레이스홀더로 마스킹.
+      // 이유: Sonnet이 이전 답변 형태(길이·구조)를 chain-of-style로 모방해 품질이 회귀하는 현상 방지.
+      const previousTurns = turns
+        .filter((t) => !t.streaming && !t.error && t.content)
+        .slice(-20)
+        .map((t) => ({
+          role: t.role,
+          content:
+            t.role === "assistant"
+              ? "(이전 답변 제공됨 — 형식·길이는 무시하고 현재 질문에 독립적으로 답변)"
+              : t.content.length > 600
+                ? t.content.slice(0, 600) + "…"
+                : t.content,
+        }));
 
       setError(null);
       const userTurn: HaruruTurn = { id: genId(), role: "user", content: q };
@@ -70,9 +86,12 @@ export function useHaruruAgent() {
       await askHaruru({
         endpoint: HARURU_ENDPOINT,
         accessToken,
+        apiKey: SUPABASE_ANON_KEY,
         question: q,
         sessionId: sessionIdRef.current,
         userId: session.user?.id,
+        answerModel,
+        previousTurns,
         signal: abortRef.current.signal,
         onEvent: (ev: HaruruStreamEvent) => {
           if (ev.type === "delta") {
@@ -84,6 +103,9 @@ export function useHaruruAgent() {
               prev.map((t) => (t.id === asstTurn.id ? { ...t, content: ev.text } : t))
             );
           } else if (ev.type === "done") {
+            if (ev.payload.session_id) {
+              sessionIdRef.current = ev.payload.session_id;
+            }
             setTurns((prev) =>
               prev.map((t) =>
                 t.id === asstTurn.id
@@ -111,7 +133,7 @@ export function useHaruruAgent() {
       setStreaming(false);
       abortRef.current = null;
     },
-    [streaming]
+    [streaming, turns]
   );
 
   const stop = useCallback(() => {
@@ -140,5 +162,43 @@ export function useHaruruAgent() {
     sessionIdRef.current = undefined;
   }, []);
 
-  return { turns, streaming, error, ask, stop, sendFeedback, reset };
+  const loadSession = useCallback(async (sessionId: string) => {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("agent_turns")
+      .select("id, role, content, turn_index, feedback")
+      .eq("session_id", sessionId)
+      .order("turn_index", { ascending: true });
+    if (error || !data) return;
+    sessionIdRef.current = sessionId;
+    setTurns(
+      data.map((r) => ({
+        id: genId(),
+        role: r.role as "user" | "assistant",
+        content: r.content ?? "",
+        turnDbId: r.role === "assistant" ? (r.id as number) : undefined,
+        feedback: (r.feedback as "up" | "down" | null | undefined) ?? null,
+        streaming: false,
+      }))
+    );
+  }, []);
+
+  return { turns, streaming, error, ask, stop, sendFeedback, reset, loadSession };
+}
+
+export interface HaruruRecentSession {
+  session_id: string;
+  title: string | null;
+  last_active_at: string;
+  turn_count: number;
+}
+
+export async function fetchRecentSessions(limit = 10): Promise<HaruruRecentSession[]> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("agent_sessions")
+    .select("session_id, title, last_active_at, turn_count")
+    .order("last_active_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as HaruruRecentSession[];
 }

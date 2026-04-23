@@ -19,6 +19,7 @@ export interface HaruruDonePayload {
   axis: "erp" | "coupang" | "both" | "external" | "none";
   answer_type?: string;
   turn_id?: number | null;
+  session_id?: string | null;
   final_answer?: string;
   citations?: {
     sql: number;
@@ -26,12 +27,20 @@ export interface HaruruDonePayload {
   };
 }
 
+export interface HaruruPrevTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface HaruruAskOpts {
   endpoint: string;
   accessToken: string;
+  apiKey: string;
   question: string;
   sessionId?: string;
   userId?: string;
+  answerModel?: string;
+  previousTurns?: HaruruPrevTurn[]; // 맥락 유지용 이전 대화 최대 10쌍
   signal?: AbortSignal;
   onEvent: (ev: HaruruStreamEvent) => void;
 }
@@ -42,12 +51,15 @@ export async function askHaruru(opts: HaruruAskOpts): Promise<void> {
     signal: opts.signal,
     headers: {
       "content-type": "application/json",
+      apikey: opts.apiKey,
       authorization: `Bearer ${opts.accessToken}`,
     },
     body: JSON.stringify({
       question: opts.question,
       session_id: opts.sessionId,
       user_id: opts.userId,
+      answer_model: opts.answerModel,
+      previous_turns: opts.previousTurns,
     }),
   });
 

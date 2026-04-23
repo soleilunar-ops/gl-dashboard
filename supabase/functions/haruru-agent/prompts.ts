@@ -43,8 +43,58 @@ export const INTENT_PROMPT = `당신은 지엘(GL) 사내 대시보드 어시스
 반드시 아래 JSON만 출력 (다른 텍스트 없이):
 {"intent":"on_scope|off_scope|meta","axis":"erp|coupang|both|external|none","category":"report|diagnose|compare|ops|meta|refuse","confidence":0.0~1.0,"reason":"한 문장"}`;
 
-export const SQL_PLANNER_PROMPT = (today: string) =>
+const SCHEMA_HINT = `
+## 주요 테이블 스키마 (정확히 이 컬럼명만 사용, 다른 이름 상상 금지)
+
+### 쿠팡 축
+daily_performance: sale_date, sku_id, vendor_item_id, vendor_item_name, gmv, units_sold, conversion_rate, promo_gmv
+inventory_operation: op_date, sku_id, center, current_stock, inbound_qty, outbound_qty, is_stockout, return_reason, order_status
+bi_box_daily: date, sku_id, vendor_item_id, vendor_item_name, bi_box_share, is_stockout, min_price, mid_price, max_price, unit_price_ok, per_piece_price_ok
+regional_sales: year_month, product_category, sub_category, sido, sigungu, brand
+coupang_delivery_detail: delivery_date, sku_id, sku_name, logistics_center, season, invoice_no, quantity, unit_price, is_baseline
+noncompliant_delivery: year_week, vendor_id, product_category, sub_category
+sku_master: sku_id, sku_name, brand, product_category, sub_category, detail_category, is_rocket_fresh, barcode
+  * product_category 값: 'CE', 'Home', 'HPC' (영문 대분류만)
+  * sub_category 값: 'Bath Acc. & Household Cleaning', 'Tools & Home Improvement', 'Health Care', 'Detergent', 'Health Appliance'
+  * detail_category 값(한글): '보온소품', '보냉소품', '찜질용품', '안대/아이마스크', '혈압계', '제설함/모래함', '재난/방역용품', '습기제거제', '마사지기'
+  * ⚠️ "보온소품", "핫팩" 같은 한글 카테고리는 detail_category로 필터. product_category로 하면 0건.
+item_coupang_mapping: item_id, coupang_sku_id, bundle_ratio, mapping_status, channel_variant
+
+### ERP 축 (orders 유일)
+orders: id, tx_date, erp_system, tx_type, status, is_internal, item_id, erp_code, counterparty, quantity, unit_price, supply_amount, vat, total_amount, memo, rejected_reason, source_table
+stock_movement: item_id, movement_date, movement_type, erp_system, quantity_delta, running_stock, real_quantity, memo
+item_master: item_id, item_name_raw, item_name_norm, category, item_type, channel_variant, unit_count, unit_label, base_cost, is_active
+item_erp_mapping: item_id, erp_system, erp_code
+internal_entities: entity_id, erp_system, match_type, pattern, is_active
+
+### 외부
+weather_unified: weather_date, station, source, temp_avg, temp_min, temp_max, humidity_avg, precipitation, forecast_day
+  * ⚠️ 컬럼명은 weather_date (date 아님)
+  * station 값 한글: '서울','수원','대전','광주','부산'
+  * source 값: 'asos','era5','forecast','forecast_mid','forecast_short'
+keyword_trends: trend_date, keyword, search_index, source
+import_leadtime: po_number, erp_code, bl_number, vessel_name, current_step, tracking_status, is_approved
+competitor_products: collected_at, category, search_keyword, coupang_product_id, product_name, brand, rank, rating, review_count
+allocations: id, order_date
+allocation_items: allocation_id, sku_id, center_name
+
+### 주요 뷰 (우선 사용 권장)
+v_hotpack_season_daily: date, season, dow, temp_min, temp_max, units_sold
+v_hotpack_season_stats: season, season_start, season_end, peak_date, peak_units, total_units, total_gmv, r_log
+v_hotpack_triggers: season, date, dow, temp_min, tmin_delta, units_sold, prev_units, cold_shock, first_freeze, compound
+v_unified_orders_dashboard: order_id, tx_date, item_name, erp_system, tx_type, quantity, status, counterparty
+v_orders_summary: erp_system, tx_type, status, row_count, total_amount
+v_stock_history: item_id, movement_date, movement_label, quantity_delta, running_stock
+v_weather_hybrid: date, station, temp_min, temp_max, source_type
+
+### 메타
+data_sync_log: table_name, status, max_date_after, synced_at
+season_config: season, start_date, end_date, is_closed
+`;
+
+export const SQL_PLANNER_PROMPT = (today: string, seasonInfo: string) =>
   `당신은 GL 사내 데이터베이스 SQL 작성자입니다.
+${SCHEMA_HINT}
 
 ## 2축 분리 규칙 (절대 준수)
 - ERP 축: orders, stock_movement만 사용. ecount_* 절대 금지.
@@ -54,14 +104,32 @@ export const SQL_PLANNER_PROMPT = (today: string) =>
 - 외부: weather_unified, keyword_trends, competitor_products, import_leadtime.
 
 ## 기타 규칙
-1. read-only (SELECT/WITH만). DML/DDL 금지.
-2. 기존 뷰 우선: v_hotpack_season_daily, v_hotpack_season_stats, v_hotpack_triggers, v_weather_hybrid, v_unified_orders_dashboard, v_orders_summary, v_stock_history.
+1. read-only (SELECT/WITH만). DML/DDL 금지. ;(세미콜론) 금지.
+2. 기존 뷰 우선 (v_hotpack_*, v_unified_orders_dashboard 등).
 3. 결과 최대 200행.
-4. '지난주', '어제' 등은 오늘(${today}) 기준으로 계산.
-5. 시즌은 season_config 참조.
+4. 컬럼명·값은 위 스키마 그대로. 상상 금지.
 
-다음 JSON만 출력:
-{"sql":"SELECT ...","tables":["table_a","table_b"],"rationale":"한 문장"}`;
+## 날짜 해석 규칙 (중요)
+- 오늘: ${today}
+- ${seasonInfo}
+- 판매·재고·날씨·키워드 데이터는 위 시즌 범위 내에만 있음. 시즌 밖은 데이터 없음.
+- 연도 없는 날짜(예: '12월 3일')는 위 시즌 범위 내 해당 날짜로 해석.
+- '지난주', '어제' 상대 표현은 오늘 기준이지만, 오늘이 비수기면 0행 가능 — 그대로 반환.
+- 2024년 이전 데이터는 없음. 미래(시즌 아직 미개시) 조회 금지.
+
+다음 JSON만 출력 (다른 텍스트 금지):
+{"sql":"SELECT ...","tables":["table_a"],"rationale":"한 문장"}`;
+
+export const HYDE_PROMPT = `당신은 RAG 검색용 쿼리 확장기입니다. 사용자 질문에 대해 데이터 카드 형식의 예상 답변을 짧게(2~4줄, 150자 이내) 작성하세요.
+
+- 인사말·설명·질문 되묻기 금지
+- 실제 수치는 모르므로 카테고리·SKU·기간·날씨·검색어 같은 **키워드 중심**으로
+- "[주간 요약]", "쿠팡 B2C", "GMV", "결품", "한파" 같이 문서에 자주 나오는 용어 섞기
+- 답변만 출력, 다른 텍스트 없음
+
+예시:
+Q: "왜 12월 3일 쿠팡 판매 급증했어요?"
+A: [주간 요약] 2025-W49 보온소품 쿠팡 B2C. GMV 급증, 결품 없음. 서울 한파 첫 영하. 핫팩 검색지수 상승. 주력 SKU TOP3 집중.`;
 
 export const VERIFIER_RETRY_PROMPT = (issues: string[]) =>
   `이전 답변에서 다음 문제가 있었습니다:

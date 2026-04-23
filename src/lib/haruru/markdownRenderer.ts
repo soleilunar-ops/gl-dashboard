@@ -9,6 +9,7 @@ export type HaruruSegment =
   | { kind: "ref"; source: "sql" | "rag"; ref: string };
 
 const REF_PATTERN = /\[ref:(sql|rag)\.([^\]]+)\]/g;
+const REF_PLACEHOLDER_PREFIX = "§§REF§§";
 
 export function splitAnswerSegments(answer: string): HaruruSegment[] {
   const segments: HaruruSegment[] = [];
@@ -33,9 +34,33 @@ export function splitAnswerSegments(answer: string): HaruruSegment[] {
 }
 
 /**
- * 🔗 근거 블록(── 뒤의 "근거:" 부분)을 본문과 분리.
- * 근거 블록은 메시지 하단에 접기/펼치기 UI로 표시하기 위함.
+ * ReactMarkdown이 본문을 렌더하도록 [ref:...] 패턴을 특수 placeholder로 치환.
+ * 렌더러 쪽에서 `splitByRefPlaceholders`로 다시 분리해 <RefTag>와 text로 매핑.
  */
+export function encodeRefPlaceholders(answer: string): string {
+  return answer.replace(REF_PATTERN, (_full, source, ref) => {
+    return `${REF_PLACEHOLDER_PREFIX}${source}:${ref}§§END§§`;
+  });
+}
+
+export function splitByRefPlaceholders(
+  text: string
+): Array<{ kind: "text"; value: string } | { kind: "ref"; source: "sql" | "rag"; ref: string }> {
+  const pattern = new RegExp(`${REF_PLACEHOLDER_PREFIX}(sql|rag):([^§]+)§§END§§`, "g");
+  const out: Array<
+    { kind: "text"; value: string } | { kind: "ref"; source: "sql" | "rag"; ref: string }
+  > = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(text)) !== null) {
+    if (m.index > last) out.push({ kind: "text", value: text.slice(last, m.index) });
+    out.push({ kind: "ref", source: m[1] as "sql" | "rag", ref: m[2] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push({ kind: "text", value: text.slice(last) });
+  return out;
+}
+
 export interface SplitAnswer {
   body: string;
   citations: string | null;

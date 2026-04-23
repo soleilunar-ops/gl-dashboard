@@ -3,12 +3,17 @@
 import { HaruruCharacter } from "./HaruruCharacter";
 import { ThermometerSearchBar } from "./ThermometerSearchBar";
 import { FavoriteShortcuts } from "./FavoriteShortcuts";
+import { useState } from "react";
 import { HaruruConversation } from "@/components/haruru/HaruruConversation";
 import { useHaruruAgent } from "@/components/haruru/useHaruruAgent";
+import { ModelPicker, useModelPicker } from "@/components/haruru/ModelPicker";
+import { RecentSessions } from "@/components/haruru/RecentSessions";
 
 /** 구글 홈처럼 가운데 정렬: 캐릭터 → 온도계 검색창(하루루) → 대화 누적 → 즐겨찾기 */
 export function HomeHero() {
-  const { turns, streaming, ask, sendFeedback } = useHaruruAgent();
+  const { turns, streaming, ask, sendFeedback, reset, loadSession } = useHaruruAgent();
+  const { model, setModel } = useModelPicker();
+  const [refreshKey, setRefreshKey] = useState(0);
   const hasConversation = turns.length > 0;
 
   return (
@@ -28,11 +33,24 @@ export function HomeHero() {
         <HaruruCharacter />
         <ThermometerSearchBar
           onSearch={(q) => {
-            if (!streaming && q) ask(q);
+            if (!streaming && q) {
+              ask(q, model).then(() => setRefreshKey((k) => k + 1));
+            }
           }}
         />
+        <ModelPicker value={model} onChange={setModel} disabled={streaming} />
 
         {hasConversation && <HaruruConversation turns={turns} onFeedback={sendFeedback} />}
+
+        <RecentSessions
+          currentTurnsCount={turns.length}
+          onLoad={loadSession}
+          onNew={() => {
+            reset();
+            setRefreshKey((k) => k + 1);
+          }}
+          refreshKey={refreshKey}
+        />
 
         <div className="mt-6">
           <FavoriteShortcuts />
