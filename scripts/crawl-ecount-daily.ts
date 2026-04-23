@@ -4,8 +4,8 @@
  * 실행: npm run crawl:ecount  (로컬) — 또는 GitHub Actions .github/workflows/ecount-daily-crawl.yml
  *
  * 흐름
- *  1. item_erp_mapping + item_master(is_active) 조회 → erp_system별 ERP 코드 목록
- *  2. 법인별 (gl / glpharm / hnb) 로그인 1회 → 해당 시스템에 매핑된 코드 순회
+ *  1. item_erp_mapping + item_master(is_active) 조회 → erp_system별 erp_code 고유 목록
+ *  2. 법인별 (gl / glpharm / hnb) 로그인 1회 → 코드 순회
  *  3. 어제~오늘 재고수불부 엑셀 다운로드 → parse → orders UPSERT
  *  4. data_sync_log에 결과 1줄 기록
  *
@@ -26,6 +26,11 @@ import { persistOrdersToSupabase } from "@/lib/ecount/ecountPersist";
 
 type ErpSystem = "gl" | "glpharm" | "hnb";
 const SYSTEMS: readonly ErpSystem[] = ["gl", "glpharm", "hnb"];
+
+// 한 코드당 최대 대기 시간 — Ecount UI에서 멈출 경우 전체 흐름 차단 방지
+const TIMEOUT_PER_CODE_MS = 60_000;
+// 로그인 단계 최대 대기 시간
+const TIMEOUT_LOGIN_MS = 90_000;
 
 function envOrThrow(key: string): string {
   const v = process.env[key];
@@ -51,6 +56,16 @@ function credsFor(system: ErpSystem) {
   const pw = envOrNull(`ECOUNT_${upper}_USER_PW`);
   if (!com || !user || !pw) return null;
   return { company: com, userId: user, password: pw };
+}
+
+// 오래 걸리는 비동기 작업에 타임아웃 — 한 코드가 멈춰도 다음으로 진행
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} 타임아웃 ${Math.floor(ms / 1000)}s`)), ms)
+    ),
+  ]);
 }
 
 type MappingRow = {
@@ -79,12 +94,25 @@ async function main() {
   if (qErr) throw new Error(`item_erp_mapping 조회 실패: ${qErr.message}`);
 
   const mappings = (rows ?? []) as unknown as MappingRow[];
-  const bySystem: Record<ErpSystem, MappingRow[]> = { gl: [], glpharm: [], hnb: [] };
+
+  // erp_system별로 erp_code 중복 제거 — 같은 코드가 여러 item_id에 매핑될 수 있음
+  const bySystem: Record<ErpSystem, string[]> = { gl: [], glpharm: [], hnb: [] };
+  const seen: Record<ErpSystem, Set<string>> = {
+    gl: new Set(),
+    glpharm: new Set(),
+    hnb: new Set(),
+  };
   for (const m of mappings) {
-    if (SYSTEMS.includes(m.erp_system as ErpSystem)) {
-      bySystem[m.erp_system as ErpSystem].push(m);
-    }
+    const sys = m.erp_system as ErpSystem;
+    if (!SYSTEMS.includes(sys)) continue;
+    if (seen[sys].has(m.erp_code)) continue;
+    seen[sys].add(m.erp_code);
+    bySystem[sys].push(m.erp_code);
   }
+
+  console.log(
+    `[ecount-daily] 고유 코드: gl=${bySystem.gl.length}, glpharm=${bySystem.glpharm.length}, hnb=${bySystem.hnb.length} (총 ${bySystem.gl.length + bySystem.glpharm.length + bySystem.hnb.length}건)`
+  );
 
   const summary = {
     total_codes: 0,
@@ -106,42 +134,77 @@ async function main() {
       continue;
     }
 
-    console.log(`[${system}] ${codes.length}개 코드 크롤 시작`);
+    const systemStart = Date.now();
+    console.log(`\n[${system}] 브라우저 시작, 로그인 대기`);
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ acceptDownloads: true });
     const page = await context.newPage();
 
-    try {
-      const activePage = await loginToEcount(page, context, cred);
+    let systemOk = 0;
+    let systemFailed = 0;
 
-      for (const { erp_code } of codes) {
+    try {
+      const activePage = await withTimeout(
+        loginToEcount(page, context, cred),
+        TIMEOUT_LOGIN_MS,
+        `loginToEcount(${system})`
+      );
+      console.log(`[${system}] 로그인 성공 (${Math.round((Date.now() - systemStart) / 1000)}s)`);
+      console.log(`[${system}] ${codes.length}개 코드 순회 시작`);
+
+      for (let i = 0; i < codes.length; i++) {
+        const erp_code = codes[i];
+        const codeStart = Date.now();
         summary.total_codes += 1;
+
         try {
-          const { ledgerFrame, ledgerScopes } = await openLedgerAndFillFilters(activePage, {
-            itemCode: erp_code,
-            dateFrom,
-            dateTo,
-          });
-          const parsed = await downloadAndParseLedger(activePage, ledgerFrame, ledgerScopes);
+          const { ledgerFrame, ledgerScopes } = await withTimeout(
+            openLedgerAndFillFilters(activePage, { itemCode: erp_code, dateFrom, dateTo }),
+            TIMEOUT_PER_CODE_MS,
+            `openLedgerAndFillFilters(${erp_code})`
+          );
+          const parsed = await withTimeout(
+            downloadAndParseLedger(activePage, ledgerFrame, ledgerScopes),
+            TIMEOUT_PER_CODE_MS,
+            `downloadAndParseLedger(${erp_code})`
+          );
           const result = await persistOrdersToSupabase(parsed, erp_code, {
             dryRun: false,
             client: supabase,
           });
+
           summary.saved_rows += result.saved_count;
           summary.ok += 1;
+          systemOk += 1;
+
+          const ms = Date.now() - codeStart;
+          console.log(
+            `[${system}] [${i + 1}/${codes.length}] ${erp_code} OK · ${result.saved_count}건 · ${ms}ms`
+          );
         } catch (e) {
           summary.failed += 1;
+          systemFailed += 1;
           const msg = e instanceof Error ? e.message : String(e);
           summary.errors.push({ system, code: erp_code, message: msg.slice(0, 300) });
-          console.error(`[${system}] ${erp_code} 실패: ${msg.slice(0, 200)}`);
+          const ms = Date.now() - codeStart;
+          console.error(
+            `[${system}] [${i + 1}/${codes.length}] ${erp_code} 실패 · ${ms}ms · ${msg.slice(0, 180)}`
+          );
         }
       }
+    } catch (e) {
+      // 로그인 타임아웃 등 시스템 단위 치명적 오류
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[${system}] 시스템 치명적 오류 — 나머지 코드 스킵: ${msg}`);
+      summary.errors.push({ system, code: "<LOGIN>", message: msg.slice(0, 300) });
     } finally {
       await browser.close();
+      const totalS = Math.round((Date.now() - systemStart) / 1000);
+      console.log(`[${system}] 종료: ok=${systemOk} failed=${systemFailed} · 소요 ${totalS}s`);
     }
   }
 
-  console.log("[ecount-daily] 요약:", JSON.stringify(summary, null, 2));
+  console.log("\n[ecount-daily] 최종 요약:", JSON.stringify(summary, null, 2));
 
   await supabase.from("data_sync_log").insert({
     table_name: "orders",
