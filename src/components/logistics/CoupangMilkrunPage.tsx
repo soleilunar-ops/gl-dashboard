@@ -9,14 +9,11 @@ export default function CoupangMilkrunPage() {
   return (
     <div className="space-y-6 p-6">
       <header>
-        <h1 className="text-xl font-medium">쿠팡 밀크런 관리</h1>
-        <p className="text-muted-foreground text-sm">
-          센터별 비용 시뮬레이션과 저장된 배정 기간별 조회를 제공합니다.
-        </p>
+        <h1 className="text-3xl font-bold tracking-tight md:text-4xl">쿠팡 밀크런 관리</h1>
       </header>
 
       <Tabs defaultValue="calculator" className="w-full">
-        <TabsList className="flex w-full flex-wrap justify-start gap-1">
+        <TabsList>
           <TabsTrigger value="calculator">비용 계산기</TabsTrigger>
           <TabsTrigger value="history">기간별 조회</TabsTrigger>
         </TabsList>

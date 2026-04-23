@@ -167,11 +167,6 @@ export default function MilkrunCalculatorTab() {
 
   return (
     <div className="space-y-6">
-      <p className="text-muted-foreground text-sm">
-        BASIC 단가는 부가세 별도(VAT 별도)입니다. 티켓팅날 열린 센터만 선택한 뒤 센터별 파렛트 수를
-        입력하세요.
-      </p>
-
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-3 rounded-lg border p-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -189,7 +184,10 @@ export default function MilkrunCalculatorTab() {
             >
               {favoritesOnly ? "전체 보기" : "즐겨찾기만"}
             </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={selectAllFiltered}>
+          </div>
+          {/* 필터 전체 선택 / 해제 / 선택 n곳 — 한 줄 아래에 배치 */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={selectAllFiltered}>
               필터 전체 선택
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={clearFiltered}>
@@ -235,7 +233,7 @@ export default function MilkrunCalculatorTab() {
         </div>
 
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" onClick={() => setSaveOpen(true)} disabled={rows.length === 0}>
               이 배정 저장
             </Button>

@@ -2,7 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Menu } from "lucide-react";
+import {
+  ShoppingCart,
+  TrendingUp,
+  MessageSquare,
+  Calculator,
+  Package,
+  Megaphone,
+  LogOut,
+  LayoutDashboard,
+  CloudSun,
+  Ship,
+  Truck,
+  Triangle,
+  Upload,
+  Menu,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { navigation, type NavItem } from "./navigation.config";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { cn } from "@/lib/utils";
@@ -13,6 +29,22 @@ function resolveActivePathInGroup(items: NavItem[], pathname: string): string | 
   if (matches.length === 0) return null;
   return matches.reduce((a, b) => (b.path.length > a.path.length ? b : a)).path;
 }
+
+// 아이콘 이름 → 컴포넌트 매핑
+const iconMap: Record<string, LucideIcon> = {
+  ShoppingCart,
+  TrendingUp,
+  MessageSquare,
+  Calculator,
+  Package,
+  Megaphone,
+  LayoutDashboard,
+  CloudSun,
+  Ship,
+  Truck,
+  Triangle,
+  Upload,
+};
 
 interface SidebarProps {
   open?: boolean;
@@ -61,6 +93,7 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
               {group.items.map((item) => {
                 const activePath = resolveActivePathInGroup(group.items, pathname);
                 const isActive = activePath !== null && item.path === activePath;
+                const Icon = iconMap[item.icon];
 
                 return (
                   <Link
@@ -74,6 +107,7 @@ export default function Sidebar({ open = true, onToggle }: SidebarProps) {
                     )}
                     aria-current={isActive ? "page" : undefined}
                   >
+                    {Icon ? <Icon className="mr-2 h-4 w-4 shrink-0" /> : null}
                     {item.label}
                   </Link>
                 );

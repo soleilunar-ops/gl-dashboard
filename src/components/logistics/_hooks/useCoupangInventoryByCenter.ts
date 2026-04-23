@@ -316,18 +316,17 @@ export function useCoupangInventoryByCenter() {
 
   const summaryText = useMemo(() => {
     if (!latestOpDate) return null;
-    const filterLabel = centerFilter === COUPANG_CENTER_ALL ? "전체 센터" : `센터 ${centerFilter}`;
     const stockout = rows.filter((r) => r.is_stockout).length;
     const low = rows.filter((r) => r.current_stock > 0 && r.current_stock < 30).length;
     const mapped = rows.filter((r) => r.item_id !== null).length;
-    const parts = [
-      `기준일 ${latestOpDate} · ${filterLabel} · ${rows.length.toLocaleString()}행`,
+    // 간격만 두고 점(·) 구분자 제거
+    return [
+      `기준일 ${latestOpDate}`,
       `지엘 품목 매핑 ${mapped.toLocaleString()}건`,
-      stockout > 0 ? `품절 표시 행 ${stockout}건` : null,
-      low > 0 ? `재고 30미만(참고) ${low}건` : null,
-    ].filter(Boolean);
-    return parts.join(" · ");
-  }, [latestOpDate, centerFilter, rows]);
+      `품절 표시 ${stockout.toLocaleString()}건`,
+      `재고 ${low.toLocaleString()}건`,
+    ].join("   ");
+  }, [latestOpDate, rows]);
 
   return {
     rows,

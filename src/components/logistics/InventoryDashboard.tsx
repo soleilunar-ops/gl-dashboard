@@ -161,9 +161,7 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
         page={safePage}
         totalPages={totalPages}
         totalCount={filteredItems.length}
-        pageSize={PAGE_SIZE}
-        onPrevPage={() => setPage((prev) => Math.max(1, prev - 1))}
-        onNextPage={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+        onPageChange={(next) => setPage(Math.max(1, Math.min(totalPages, next)))}
       />
     </div>
   );

@@ -103,9 +103,10 @@ export function getStoredExpected(row: LeadTimeRow, dbStep: LeadtimeDbStep): str
 }
 
 export function stepCardClass(row: LeadTimeRow, dbStep: LeadtimeDbStep): string {
+  // 모든 단계 카드 — #F2BE5C 계열의 매우 매우 연한 배경으로 통일
   const done = !!getActualValue(row, dbStep);
   const cur = isStepCurrent(row, dbStep);
-  if (done) return "border-green-200 bg-green-50";
-  if (cur) return "border-blue-200 bg-blue-50";
-  return "bg-muted/30 border-transparent";
+  if (done) return "border-[#F2BE5C]/25 bg-[#F2BE5C]/[0.07]";
+  if (cur) return "border-[#F2BE5C]/20 bg-[#F2BE5C]/[0.05]";
+  return "border-[#F2BE5C]/15 bg-[#F2BE5C]/[0.03]";
 }

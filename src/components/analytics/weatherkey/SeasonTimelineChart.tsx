@@ -97,16 +97,6 @@ function derivePresets(points: DataPoint[]): RangePreset[] {
   ];
 }
 
-function formatInt(n: number | null | undefined): string {
-  return n != null ? n.toLocaleString("ko-KR") : "–";
-}
-
-function formatMmdd(iso: string | null | undefined): string {
-  if (!iso) return "–";
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-}
-
 /**
  * 메인 시계열 — 판매 bar + 기온 line.
  * 팔레트 A. yTemp는 **역순(reverse=true)** 으로 설정 → 기온이 낮을수록 위로,
@@ -199,7 +189,7 @@ export default function SeasonTimelineChart({ season }: Props) {
           content: "0℃",
           position: "end",
           font: { size: 10 },
-          color: CHART_TOKENS.zeroLine,
+          color: CHART_TOKENS.axisTempText,
           backgroundColor: "transparent",
         },
       },
@@ -337,11 +327,11 @@ export default function SeasonTimelineChart({ season }: Props) {
           title: {
             display: true,
             text: "최저기온 (℃, 역순)",
-            color: CHART_TOKENS.lineTemp,
+            color: CHART_TOKENS.axisTempText,
             font: { size: 11 },
           },
           ticks: {
-            color: CHART_TOKENS.lineTemp,
+            color: CHART_TOKENS.axisTempText,
             font: { size: 11 },
             callback: (v) => `${v}°`,
           },
@@ -382,40 +372,31 @@ export default function SeasonTimelineChart({ season }: Props) {
     );
   }
 
-  const s = stats.current;
-  const insightParts: string[] = [];
-  if (s?.peak_date && s.peak_units != null) {
-    insightParts.push(`최고 판매일 ${formatMmdd(s.peak_date)} · ${formatInt(s.peak_units)}개`);
-  }
-  if (s?.r_log != null) {
-    const strength = Math.abs(s.r_log) >= 0.8 ? "강한" : Math.abs(s.r_log) >= 0.5 ? "중간" : "약한";
-    insightParts.push(`기온-판매 연관도 ${strength} (${s.r_log.toFixed(2)})`);
-  }
-  if (s?.first_freeze) {
-    insightParts.push(`첫 영하일 ${formatMmdd(s.first_freeze)}`);
-  }
-  const headerInsight = insightParts.join(" · ");
+  const isRangeEqual = (a: XRange | null, b: XRange | null) => {
+    if (a === null && b === null) return true;
+    if (!a || !b) return false;
+    return a.min === b.min && a.max === b.max;
+  };
 
   return (
     <Card className="h-[560px]">
       <CardContent className="flex h-full flex-col gap-2 p-4">
-        {headerInsight && (
-          <div className="text-muted-foreground text-[11px] tabular-nums">{headerInsight}</div>
-        )}
-
         {presets.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {presets.map((p) => (
-              <Button
-                key={p.label}
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => applyRange(p.range)}
-              >
-                {p.label}
-              </Button>
-            ))}
+            {presets.map((p) => {
+              const active = isRangeEqual(p.range, xRange);
+              return (
+                <Button
+                  key={p.label}
+                  variant={active ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => applyRange(p.range)}
+                >
+                  {p.label}
+                </Button>
+              );
+            })}
             <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={resetToPeak}>
               초기화
             </Button>
@@ -432,10 +413,6 @@ export default function SeasonTimelineChart({ season }: Props) {
           </div>
         )}
 
-        <p className="text-muted-foreground text-[10px]">
-          휠 확대 · 드래그 영역 선택 · Shift+드래그 이동 · 기온 축은 역순(추울수록 위)
-        </p>
-
         <div className="relative min-h-[240px] flex-1">
           <Chart
             ref={chartRef}
@@ -446,7 +423,7 @@ export default function SeasonTimelineChart({ season }: Props) {
           />
         </div>
 
-        <div className="text-muted-foreground flex flex-wrap gap-1 text-[10px]">
+        <div className="text-muted-foreground mt-2 flex flex-wrap justify-center gap-1 pb-1 text-[10px]">
           {TEMP_BANDS.map((b) => (
             <span
               key={b.label}

@@ -99,7 +99,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "LLM API 키가 없습니다. ANTHROPIC_API_KEY(또는 final_key) · OPENAI_API_KEY(또는 final_api_key) 중 하나를 .env.local에 넣고, 키=값 형식(콜론 금지)인지 확인한 뒤 dev 서버를 재시작하세요.",
+          "LLM API 키가 없습니다. final_key(Claude) · final_api_key(OpenAI) 중 하나를 .env.local에 넣고, 키=값 형식(콜론 금지)인지 확인한 뒤 dev 서버를 재시작하세요.",
       },
       { status: 503 }
     );
@@ -142,8 +142,7 @@ export async function POST(request: Request) {
     } else {
       return NextResponse.json(
         {
-          error:
-            "LLM API 키가 없습니다. ANTHROPIC_API_KEY/final_key · OPENAI_API_KEY/final_api_key 를 확인하세요.",
+          error: "LLM API 키가 없습니다. final_key(Claude) · final_api_key(OpenAI)를 확인하세요.",
         },
         { status: 503 }
       );

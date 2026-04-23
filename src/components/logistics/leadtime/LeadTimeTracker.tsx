@@ -9,6 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -19,7 +26,6 @@ import {
 import {
   DB_STEPS,
   currentStageLabel,
-  currentStagePillClass,
   getActualValue,
   getMaxDelay,
   getStatus,
@@ -61,6 +67,19 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
   const [draftExpected, setDraftExpected] = useState<Partial<Record<LeadtimeDbStep, string>>>({});
   const [blInput, setBlInput] = useState("");
   const [blMessage, setBlMessage] = useState<"ok" | "fail" | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "정상" | "주의" | "완료">("all");
+
+  // 발주번호 오름차순 정렬 + 상태 필터 적용
+  const tableRows = useMemo(() => {
+    const sorted = [...data].sort((a, b) => {
+      const an = Number(String(a.po_number).replace(/[^0-9]/g, ""));
+      const bn = Number(String(b.po_number).replace(/[^0-9]/g, ""));
+      if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
+      return String(a.po_number).localeCompare(String(b.po_number), "ko");
+    });
+    if (statusFilter === "all") return sorted;
+    return sorted.filter((r) => getStatus(r) === statusFilter);
+  }, [data, statusFilter]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newPo, setNewPo] = useState("");
@@ -136,10 +155,6 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
     const ok = await saveBL(selected.id, blInput.trim());
     setBlMessage(ok ? "ok" : "fail");
   }, [blInput, saveBL, selected]);
-
-  const detailStatusBadge = selected ? (
-    <Badge variant="outline">{currentStageLabel(selected.current_step)}</Badge>
-  ) : null;
 
   const handleNewOrderSubmit = useCallback(async () => {
     await addOrder({
@@ -220,118 +235,55 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
 
   return (
     <div className={sectionShell}>
-      <div
-        className={cn(
-          "mb-6 flex flex-wrap items-start gap-4",
-          showBlockTitle || error ? "justify-between" : "justify-end"
-        )}
-      >
-        <div className="min-w-0 flex-1">
-          {showBlockTitle ? (
-            <>
-              <h2 className="text-lg font-medium">수입 리드타임</h2>
-              <p className="text-muted-foreground text-sm">
-                ERP 발주 미연동 건은 수기로 등록하고, BL로 상하이 출항~파주 입고까지 추적합니다.
-              </p>
-            </>
-          ) : null}
-          {error ? <p className="text-destructive mt-1 text-xs">에러: {error}</p> : null}
+      {showBlockTitle ? (
+        <div className="mb-4">
+          <h2 className="text-lg font-medium">수입 리드타임</h2>
+          <p className="text-muted-foreground text-sm">
+            ERP 발주 미연동 건은 수기로 등록하고, BL로 상하이 출항~파주 입고까지 추적합니다.
+          </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-            + 건 추가
+      ) : null}
+      {error ? <p className="text-destructive mb-2 text-xs">에러: {error}</p> : null}
+
+      {/* 발주건 목록 상단: [+ 건 추가] (왼쪽) · [상태] · [엑셀 추출] (오른쪽) — 한 줄 */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+          + 건 추가
+        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Select
+            value={statusFilter}
+            onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
+          >
+            <SelectTrigger className="h-8 w-[120px] text-sm font-normal">
+              <SelectValue placeholder="상태" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체 상태</SelectItem>
+              <SelectItem value="정상">정상</SelectItem>
+              <SelectItem value="주의">주의</SelectItem>
+              <SelectItem value="완료">완료</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-sm font-normal"
+            disabled={data.length === 0}
+            onClick={() => downloadLeadTimeListExcel(tableRows)}
+          >
+            엑셀 추출
           </Button>
         </div>
       </div>
 
-      {selected && (
-        <Card className="mb-8">
-          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 border-b pb-4">
-            <div>
-              <p className="text-[15px] font-medium">
-                {selected.product_name} — {selected.po_number}
-              </p>
-              <p className="text-muted-foreground text-xs">
-                BL 기준: 상하이 출항 → 인천 입항 → 파주 창고 (유니패스·공공데이터포털 외항반출입)
-              </p>
-            </div>
-            <div className="flex items-center gap-2">{detailStatusBadge}</div>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:overflow-x-auto">
-              {DB_STEPS.map(({ db, label }, idx) => (
-                <LeadTimeStageCard
-                  key={label}
-                  row={selected}
-                  db={db}
-                  label={label}
-                  isLast={idx === DB_STEPS.length - 1}
-                  draftDate={draftDates[db] ?? ""}
-                  draftExpected={draftExpected[db] ?? ""}
-                  onDraftDateChange={(v) => setDraftDates((d) => ({ ...d, [db]: v }))}
-                  onDraftExpectedChange={(v) => setDraftExpected((d) => ({ ...d, [db]: v }))}
-                  blInput={blInput}
-                  onBlInputChange={setBlInput}
-                  blLookupLoading={blLookupLoading}
-                  blMessage={blMessage}
-                  onBlLookup={() => void handleBlLookup()}
-                />
-              ))}
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-t">
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                if (!selected) return;
-                if (
-                  !window.confirm(
-                    `「${selected.po_number}」건을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`
-                  )
-                ) {
-                  return;
-                }
-                void deleteOrder(selected.id);
-              }}
-            >
-              삭제
-            </Button>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={() => void handleSaveDates()}>
-                저장
-              </Button>
-              <Button
-                type="button"
-                onClick={() => selected && void approveOrder(selected.id)}
-                disabled={selected?.is_approved}
-              >
-                확인 완료 → 승인
-              </Button>
-            </div>
-          </CardFooter>
-        </Card>
-      )}
-
-      <div className="mb-3 flex justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={data.length === 0}
-          onClick={() => downloadLeadTimeListExcel(data)}
-        >
-          엑셀 추출
-        </Button>
-      </div>
-
-      <div className="overflow-x-auto">
+      <div className="mb-10 overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="whitespace-nowrap">발주번호</TableHead>
-              <TableHead className="min-w-[140px]">품목/품목코드</TableHead>
+              <TableHead className="min-w-[260px]">품목/품목코드</TableHead>
               <TableHead className="whitespace-nowrap">발주일</TableHead>
               <TableHead className="min-w-[100px]">BL 번호</TableHead>
               <TableHead className="whitespace-nowrap">현재 단계</TableHead>
@@ -343,7 +295,7 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((row) => {
+            {tableRows.map((row) => {
               const { max: maxD, hasAny: hasDelay } = getMaxDelay(row);
               const st = getStatus(row);
               const orderDate = row.step1_actual ?? "—";
@@ -361,7 +313,7 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
                     {row.po_number}
                   </TableCell>
                   <TableCell>
-                    <div className="max-w-[200px]">
+                    <div className="max-w-[320px]">
                       <span className="font-medium">{row.product_name}</span>
                       {erp ? (
                         <span className="text-muted-foreground mt-0.5 block text-xs">{erp}</span>
@@ -378,16 +330,7 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "inline-flex rounded-full px-2 py-0.5 text-xs",
-                        currentStagePillClass(row.current_step)
-                      )}
-                    >
-                      {currentStageLabel(row.current_step)}
-                    </span>
-                  </TableCell>
+                  <TableCell className="text-sm">{currentStageLabel(row.current_step)}</TableCell>
                   <TableCell className="[font-variant-numeric:tabular-nums]">
                     {row.step5_expected ?? <span className="text-muted-foreground">—</span>}
                   </TableCell>
@@ -446,6 +389,68 @@ export default function LeadTimeTracker({ variant = "section" }: LeadTimeTracker
           </TableBody>
         </Table>
       </div>
+
+      {/* 발주건 상세 카드 — 발주번호 + 품목명 중앙 정렬, 경계선 제거 */}
+      {selected && (
+        <Card className="mb-8">
+          <CardHeader>
+            <p className="text-center text-base font-semibold">
+              {selected.po_number}. {selected.product_name}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:overflow-x-auto">
+              {DB_STEPS.map(({ db, label }, idx) => (
+                <LeadTimeStageCard
+                  key={label}
+                  row={selected}
+                  db={db}
+                  label={label}
+                  isLast={idx === DB_STEPS.length - 1}
+                  draftDate={draftDates[db] ?? ""}
+                  draftExpected={draftExpected[db] ?? ""}
+                  onDraftDateChange={(v) => setDraftDates((d) => ({ ...d, [db]: v }))}
+                  onDraftExpectedChange={(v) => setDraftExpected((d) => ({ ...d, [db]: v }))}
+                  blInput={blInput}
+                  onBlInputChange={setBlInput}
+                  blLookupLoading={blLookupLoading}
+                  blMessage={blMessage}
+                  onBlLookup={() => void handleBlLookup()}
+                />
+              ))}
+            </div>
+          </CardContent>
+          <CardFooter className="flex flex-wrap justify-end gap-2 border-t-0 bg-transparent pt-0 pb-4">
+            <Button type="button" variant="outline" onClick={() => void handleSaveDates()}>
+              저장
+            </Button>
+            <Button
+              type="button"
+              onClick={() => selected && void approveOrder(selected.id)}
+              disabled={selected?.is_approved}
+            >
+              승인
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (!selected) return;
+                if (
+                  !window.confirm(
+                    `「${selected.po_number}」건을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`
+                  )
+                ) {
+                  return;
+                }
+                void deleteOrder(selected.id);
+              }}
+            >
+              삭제
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
 
       <NewLeadTimeDialog
         open={dialogOpen}

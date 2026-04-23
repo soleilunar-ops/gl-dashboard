@@ -4,8 +4,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { format, parseISO, startOfMonth } from "date-fns";
 import { toast } from "sonner";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Badge } from "@/components/ui/badge";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
@@ -187,13 +194,6 @@ export default function MilkrunHistoryTab() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-muted/40 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-        <Badge variant="outline">Supabase 저장 배정</Badge>
-        <span className="text-muted-foreground hidden sm:inline">
-          데이터는 public.allocations / allocation_items에서 불러옵니다.
-        </span>
-      </div>
-
       {noDb && (
         <Card className="border-amber-500/40">
           <CardContent className="text-muted-foreground pt-6 text-sm">
@@ -245,6 +245,7 @@ export default function MilkrunHistoryTab() {
         <Button
           type="button"
           variant="outline"
+          className="ml-auto"
           onClick={() => void downloadPeriodCsv()}
           disabled={noDb || records.length === 0 || csvLoading}
         >
@@ -255,27 +256,35 @@ export default function MilkrunHistoryTab() {
       {!noDb && summary && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
-            <CardContent className="pt-6 text-sm">저장 건수</CardContent>
-            <CardContent className="text-2xl font-semibold [font-variant-numeric:tabular-nums]">
-              {formatInt(summary.count)}
+            <CardContent className="px-3 py-3 text-center">
+              <p className="text-foreground text-sm font-bold tracking-tight">저장 건수</p>
+              <p className="mt-1 text-xl font-semibold [font-variant-numeric:tabular-nums]">
+                {formatInt(summary.count)}
+              </p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="pt-6 text-sm">총 파렛트</CardContent>
-            <CardContent className="text-2xl font-semibold [font-variant-numeric:tabular-nums]">
-              {formatInt(summary.totalPallets)}
-            </CardContent>
-          </Card>
-          <Card className="border-primary/30 lg:col-span-1">
-            <CardContent className="pt-6 text-sm">총 비용 (VAT 별도)</CardContent>
-            <CardContent className="text-primary text-3xl font-bold [font-variant-numeric:tabular-nums]">
-              {formatInt(summary.totalCost)}원
+            <CardContent className="px-3 py-3 text-center">
+              <p className="text-foreground text-sm font-bold tracking-tight">총 파렛트</p>
+              <p className="mt-1 text-xl font-semibold [font-variant-numeric:tabular-nums]">
+                {formatInt(summary.totalPallets)}
+              </p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="pt-6 text-sm">평균 건당 비용</CardContent>
-            <CardContent className="text-2xl font-semibold [font-variant-numeric:tabular-nums]">
-              {formatInt(summary.avgCostPerRecord)}원
+            <CardContent className="px-3 py-3 text-center">
+              <p className="text-foreground text-sm font-bold tracking-tight">총 비용 (VAT 별도)</p>
+              <p className="mt-1 text-xl font-semibold [font-variant-numeric:tabular-nums]">
+                {formatInt(summary.totalCost)}원
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="px-3 py-3 text-center">
+              <p className="text-foreground text-sm font-bold tracking-tight">평균 건당 비용</p>
+              <p className="mt-1 text-xl font-semibold [font-variant-numeric:tabular-nums]">
+                {formatInt(summary.avgCostPerRecord)}원
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -283,29 +292,59 @@ export default function MilkrunHistoryTab() {
 
       {!noDb && (
         <Card>
-          <CardContent className="pt-6">
-            <p className="text-muted-foreground mb-2 text-sm">일별 비용 추이</p>
+          <CardContent className="p-6">
+            <p className="text-foreground mb-4 text-base font-semibold">일별 비용 추이</p>
             <div className="h-[280px] w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={daily}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatInt(Number(v))} />
+                <AreaChart data={daily} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+                  <defs>
+                    <linearGradient id="grad-milkrun-cost" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#A90000" stopOpacity={0.4} />
+                      <stop offset="1" stopColor="#A90000" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="2 4" stroke="#E5E7EB" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11, fill: "#475569" }}
+                    tickLine={false}
+                    axisLine={{ stroke: "#E5E7EB" }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "#475569" }}
+                    tickFormatter={(v) => formatInt(Number(v))}
+                    tickLine={false}
+                    axisLine={false}
+                  />
                   <Tooltip
+                    cursor={{ stroke: "#A90000", strokeDasharray: "3 3", strokeOpacity: 0.4 }}
                     content={({ active, payload, label }) => {
                       if (!active || !payload?.[0]) return null;
                       const row = payload[0].payload as MilkrunDailyRow;
                       return (
-                        <div className="bg-background rounded-md border px-2 py-1.5 text-xs shadow-sm">
-                          <div className="font-medium">{String(label)}</div>
-                          <div>{`비용 ${formatInt(row.cost)}원`}</div>
+                        <div className="bg-popover rounded-md border px-3 py-2 text-xs shadow-lg">
+                          <div className="font-bold text-gray-900">{String(label)}</div>
+                          <div className="mt-1">{`비용 ${formatInt(row.cost)}원`}</div>
                           <div>{`파렛트 ${formatInt(row.pallets)}개`}</div>
                         </div>
                       );
                     }}
                   />
-                  <Bar dataKey="cost" name="비용" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Area
+                    type="monotone"
+                    dataKey="cost"
+                    name="비용"
+                    stroke="#A90000"
+                    strokeWidth={2.5}
+                    fill="url(#grad-milkrun-cost)"
+                    activeDot={{
+                      r: 5,
+                      fill: "#A90000",
+                      stroke: "#fff",
+                      strokeWidth: 2,
+                    }}
+                  />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
@@ -316,14 +355,23 @@ export default function MilkrunHistoryTab() {
         <div className="rounded-lg border">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>출고일</TableHead>
-                <TableHead className="text-right">센터 수</TableHead>
-                <TableHead className="text-right">파렛트</TableHead>
-                <TableHead className="text-right">총 비용</TableHead>
-                <TableHead>메모</TableHead>
-                <TableHead />
-                <TableHead />
+              {/* 헤더 행 — #F2BE5C 계열 아주 연한 배경으로 강조 */}
+              <TableRow className="bg-[#F2BE5C]/10 hover:bg-[#F2BE5C]/10">
+                <TableHead className="text-foreground font-semibold">출고일</TableHead>
+                <TableHead className="text-foreground w-[80px] text-left font-semibold">
+                  센터 수
+                </TableHead>
+                <TableHead className="text-foreground w-[80px] text-left font-semibold">
+                  파렛트
+                </TableHead>
+                <TableHead className="text-foreground text-left font-semibold">총 비용</TableHead>
+                <TableHead className="text-foreground font-semibold">메모</TableHead>
+                <TableHead className="text-foreground w-[72px] text-center font-semibold">
+                  상세
+                </TableHead>
+                <TableHead className="text-foreground w-[72px] text-center font-semibold">
+                  삭제
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -332,27 +380,29 @@ export default function MilkrunHistoryTab() {
                   <TableCell className="[font-variant-numeric:tabular-nums]">
                     {r.orderDate}
                   </TableCell>
-                  <TableCell className="text-right">{formatInt(r.centerCount)}</TableCell>
-                  <TableCell className="text-right">{formatInt(r.totalPallets)}</TableCell>
-                  <TableCell className="text-right font-medium">{`${formatInt(r.totalCost)}원`}</TableCell>
+                  <TableCell className="w-[80px] text-left">{formatInt(r.centerCount)}</TableCell>
+                  <TableCell className="w-[80px] text-left">{formatInt(r.totalPallets)}</TableCell>
+                  <TableCell className="text-left font-medium">{`${formatInt(r.totalCost)}원`}</TableCell>
                   <TableCell className="text-muted-foreground max-w-[200px] truncate">
                     {r.memo?.trim() ? r.memo : "—"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="w-[72px] p-1 text-center">
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
+                      className="h-7 px-2 text-xs"
                       onClick={() => void openDetail(r.id)}
                     >
                       상세
                     </Button>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="w-[72px] p-1 text-center">
                     <Button
                       type="button"
                       size="sm"
-                      variant="ghost"
+                      variant="outline"
+                      className="h-7 border-red-500/40 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
                       onClick={() => setDeleteTarget(r)}
                     >
                       삭제

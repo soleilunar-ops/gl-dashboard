@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ChannelMarginChart from "./ChannelMarginChart";
 import ChannelTable from "./ChannelTable";
 import CurrentPriceCard from "./CurrentPriceCard";
@@ -91,56 +92,56 @@ export default function CostMain() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">마진 산출</h1>
-        <p className="text-muted-foreground text-sm">
-          상품·계약·채널 조건을 입력해 권장가와 실제 마진을 산출합니다.
-        </p>
-      </div>
+    <Tabs defaultValue="margin" className="gap-6">
+      <TabsList>
+        <TabsTrigger value="margin">마진 산출</TabsTrigger>
+        <TabsTrigger value="channels">채널별 마진</TabsTrigger>
+      </TabsList>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <InputPanel
-          products={products}
-          productsLoading={productsLoading}
-          productsError={productsError}
-          onRetryProducts={refetch}
-          selectedProduct={selectedProduct}
-          onSelectProduct={handleSelectProduct}
-          input={input}
-          setInput={setInput}
-          exchange={rate}
-          refreshExchange={() => void refresh()}
-          channels={channels.rates}
-        />
+      <TabsContent value="margin" className="space-y-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <InputPanel
+            products={products}
+            productsLoading={productsLoading}
+            productsError={productsError}
+            onRetryProducts={refetch}
+            selectedProduct={selectedProduct}
+            onSelectProduct={handleSelectProduct}
+            input={input}
+            setInput={setInput}
+            exchange={rate}
+            refreshExchange={() => void refresh()}
+            channels={channels.rates}
+          />
 
-        <div className="space-y-6">
-          <CurrentPriceCard
-            result={mainResult}
-            referencePriceVAT={input.referencePriceVAT > 0 ? input.referencePriceVAT : undefined}
-          />
-          <StrategyCards
-            base={marginInput}
-            targets={strategyTargets}
-            onTargetChange={handleStrategyChange}
-          />
+          <div className="space-y-6">
+            <CurrentPriceCard
+              result={mainResult}
+              referencePriceVAT={input.referencePriceVAT > 0 ? input.referencePriceVAT : undefined}
+            />
+            <StrategyCards
+              base={marginInput}
+              targets={strategyTargets}
+              onTargetChange={handleStrategyChange}
+            />
+          </div>
         </div>
-      </div>
+      </TabsContent>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <TabsContent value="channels" className="space-y-6">
         <ChannelMarginChart rates={channels.rates} baseInput={marginInput} />
-      </div>
 
-      <ChannelTable
-        rates={channels.rates}
-        baseInput={marginInput}
-        channelFileName={channels.fileName}
-        channelIsCustom={channels.isCustom}
-        channelError={channels.error}
-        onUploadChannelFile={channels.upload}
-        onResetChannels={channels.reset}
-        onDownloadChannelTemplate={channels.downloadTemplate}
-      />
-    </div>
+        <ChannelTable
+          rates={channels.rates}
+          baseInput={marginInput}
+          channelFileName={channels.fileName}
+          channelIsCustom={channels.isCustom}
+          channelError={channels.error}
+          onUploadChannelFile={channels.upload}
+          onResetChannels={channels.reset}
+          onDownloadChannelTemplate={channels.downloadTemplate}
+        />
+      </TabsContent>
+    </Tabs>
   );
 }

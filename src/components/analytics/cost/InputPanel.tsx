@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -70,7 +69,6 @@ export default function InputPanel({
   refreshExchange,
   channels,
 }: Props) {
-  const [fixedOpen, setFixedOpen] = useState(false);
   const [exCurrentManual, setExCurrentManual] = useState(false);
 
   const handleField = <K extends keyof InputState>(key: K, value: InputState[K]) => {
@@ -99,12 +97,9 @@ export default function InputPanel({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>입력 조건</CardTitle>
-      </CardHeader>
       <CardContent className="space-y-6">
-        <section>
-          <h3 className="mb-3 text-sm font-semibold">① 상품 선택</h3>
+        <section className="space-y-4">
+          <h3 className="text-lg font-bold tracking-tight">상품 선택</h3>
           <ProductCombobox
             products={products}
             selected={selectedProduct}
@@ -115,9 +110,9 @@ export default function InputPanel({
           />
         </section>
 
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold">② 시장 조건</h3>
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold tracking-tight">시장 조건</h3>
             <ExchangeRateBadge rate={exchange} refresh={refreshExchange} />
           </div>
 
@@ -233,35 +228,26 @@ export default function InputPanel({
           </div>
         </section>
 
-        <section>
-          <button
-            type="button"
-            onClick={() => setFixedOpen((v) => !v)}
-            className="mb-3 flex w-full items-center justify-between text-sm font-semibold"
-          >
-            <span>③ 고정 조건</span>
-            {fixedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </button>
-          {fixedOpen && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>파레트 재작업비 (원)</Label>
-                <Input
-                  type="number"
-                  value={input.palletReworkFee || ""}
-                  onChange={(e) => handleField("palletReworkFee", parseNumInput(e.target.value))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>기타 비용 (원/개)</Label>
-                <Input
-                  type="number"
-                  value={input.otherCostPerUnit || ""}
-                  onChange={(e) => handleField("otherCostPerUnit", parseNumInput(e.target.value))}
-                />
-              </div>
+        <section className="space-y-4">
+          <h3 className="text-lg font-bold tracking-tight">고정 조건</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>파레트 재작업비 (원)</Label>
+              <Input
+                type="number"
+                value={input.palletReworkFee || ""}
+                onChange={(e) => handleField("palletReworkFee", parseNumInput(e.target.value))}
+              />
             </div>
-          )}
+            <div className="space-y-2">
+              <Label>기타 비용 (원/개)</Label>
+              <Input
+                type="number"
+                value={input.otherCostPerUnit || ""}
+                onChange={(e) => handleField("otherCostPerUnit", parseNumInput(e.target.value))}
+              />
+            </div>
+          </div>
         </section>
       </CardContent>
     </Card>

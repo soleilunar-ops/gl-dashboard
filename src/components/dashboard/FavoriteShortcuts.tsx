@@ -137,9 +137,7 @@ export function FavoriteShortcuts() {
                       "cursor-not-allowed opacity-50 hover:border-transparent hover:bg-transparent"
                   )}
                 >
-                  <NavIcon name={item.icon} className="h-4 w-4 shrink-0" />
                   <span className="flex-1">{item.label}</span>
-                  <span className="text-muted-foreground truncate text-xs">{item.path}</span>
                   {active && <Check className="h-4 w-4 shrink-0 text-[#C78D26]" />}
                 </button>
               );

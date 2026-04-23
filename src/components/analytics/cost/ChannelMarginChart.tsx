@@ -33,6 +33,12 @@ type ChartRow = {
   alert: boolean;
 };
 
+/** 차트 색상 — #A90000 수수료(진한 레드), #BBBF4E 마진(올리브), #CBD5E1 기타(그레이) */
+const COLOR_FEE = "#A90000";
+const COLOR_MARGIN = "#BBBF4E";
+const COLOR_MARGIN_ALERT = "#EF4444";
+const COLOR_REST = "#CBD5E1";
+
 /** 채널별 100% 누적 막대 차트 — 변경 이유: 수수료율/마진율을 업로드 데이터 기준으로 함께 비교 */
 export default function ChannelMarginChart({ rates, baseInput }: Props) {
   const data: ChartRow[] = useMemo(() => {
@@ -58,18 +64,55 @@ export default function ChannelMarginChart({ rates, baseInput }: Props) {
   return (
     <ChartContainer title="채널별 마진율">
       <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={data} margin={{ top: 8, right: 20, left: 20, bottom: 32 }}>
-          <CartesianGrid strokeDasharray="3 3" />
+        <BarChart
+          data={data}
+          margin={{ top: 12, right: 28, left: 12, bottom: 8 }}
+          barCategoryGap="35%"
+        >
+          <defs>
+            <linearGradient id="grad-fee" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={COLOR_FEE} stopOpacity={0.95} />
+              <stop offset="1" stopColor={COLOR_FEE} stopOpacity={0.75} />
+            </linearGradient>
+            <linearGradient id="grad-margin" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={COLOR_MARGIN} stopOpacity={0.95} />
+              <stop offset="1" stopColor={COLOR_MARGIN} stopOpacity={0.75} />
+            </linearGradient>
+            <linearGradient id="grad-margin-alert" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={COLOR_MARGIN_ALERT} stopOpacity={0.95} />
+              <stop offset="1" stopColor={COLOR_MARGIN_ALERT} stopOpacity={0.75} />
+            </linearGradient>
+            <linearGradient id="grad-rest" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={COLOR_REST} stopOpacity={0.9} />
+              <stop offset="1" stopColor={COLOR_REST} stopOpacity={0.65} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="2 4" stroke="#E5E7EB" vertical={false} />
           <XAxis
             dataKey="channel"
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 12, fill: "#475569" }}
             interval={0}
-            angle={-20}
-            textAnchor="end"
-            height={56}
+            height={36}
+            tickLine={false}
+            axisLine={{ stroke: "#E5E7EB" }}
           />
-          <YAxis type="number" domain={[0, 100]} unit="%" tick={{ fontSize: 12 }} />
+          <YAxis
+            type="number"
+            domain={[0, 100]}
+            unit="%"
+            tick={{ fontSize: 12, fill: "#475569" }}
+            tickLine={false}
+            axisLine={false}
+          />
           <Tooltip
+            cursor={{ fill: "rgba(0,0,0,0.03)" }}
+            contentStyle={{
+              borderRadius: 8,
+              border: "1px solid #E5E7EB",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+              fontSize: 12,
+            }}
+            labelStyle={{ fontWeight: 700, color: "#111827", marginBottom: 4 }}
             formatter={(value, name, payload) => {
               if (name === "수수료율") {
                 return [`${Number(value).toFixed(1)}%`, "수수료율"];
@@ -77,28 +120,66 @@ export default function ChannelMarginChart({ rates, baseInput }: Props) {
               if (name === "마진율") {
                 return [`${Number(payload?.payload?.rawMarginPct ?? value).toFixed(1)}%`, "마진율"];
               }
-              return [`${Number(value).toFixed(1)}%`, "기타비중"];
+              return [`${Number(value).toFixed(1)}%`, "기타 비중"];
             }}
           />
-          <Legend />
+          <Legend
+            wrapperStyle={{ paddingTop: 8, fontSize: 12 }}
+            content={() => (
+              <div className="mt-2 flex flex-wrap justify-center gap-5 text-xs text-gray-700">
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm"
+                    style={{ backgroundColor: COLOR_MARGIN }}
+                  />
+                  마진율
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm"
+                    style={{ backgroundColor: COLOR_FEE }}
+                  />
+                  수수료율
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm"
+                    style={{ backgroundColor: COLOR_REST }}
+                  />
+                  기타 비중
+                </span>
+              </div>
+            )}
+          />
           <Bar
             dataKey="feePct"
             stackId="ratio"
             name="수수료율"
-            fill="#3b82f6"
-            radius={[4, 4, 0, 0]}
+            fill="url(#grad-fee)"
+            maxBarSize={44}
+            radius={[0, 0, 4, 4]}
           />
-          <Bar dataKey="marginPct" stackId="ratio" name="마진율" radius={[4, 4, 0, 0]}>
+          <Bar
+            dataKey="marginPct"
+            stackId="ratio"
+            name="마진율"
+            maxBarSize={44}
+            radius={[0, 0, 0, 0]}
+          >
             {data.map((row, idx) => (
-              <Cell key={`cell-${idx}`} fill={row.alert ? "#ef4444" : "#10b981"} />
+              <Cell
+                key={`cell-${idx}`}
+                fill={row.alert ? "url(#grad-margin-alert)" : "url(#grad-margin)"}
+              />
             ))}
           </Bar>
           <Bar
             dataKey="restPct"
             stackId="ratio"
-            name="기타비중"
-            fill="#cbd5e1"
-            radius={[0, 0, 4, 4]}
+            name="기타 비중"
+            fill="url(#grad-rest)"
+            maxBarSize={44}
+            radius={[4, 4, 0, 0]}
           />
         </BarChart>
       </ResponsiveContainer>
