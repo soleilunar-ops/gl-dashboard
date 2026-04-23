@@ -47,8 +47,8 @@ jobs:
           BRANCH="${{ github.head_ref }}"
           echo "브랜치: $BRANCH"
 
-          # PM 브랜치는 검사 생략
-          if echo "$BRANCH" | grep -qE "^team/지호$"; then
+          # PM 브랜치는 검사 생략 (team/지호 또는 pm/* 접두사)
+          if echo "$BRANCH" | grep -qE "^(team/지호|pm/)"; then
             echo "✅ PM 브랜치 — 경계 검사 생략"
             exit 0
           fi
