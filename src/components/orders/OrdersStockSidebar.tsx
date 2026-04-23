@@ -34,6 +34,7 @@ type CurrentStockRow = Pick<
   | "base_date"
   | "last_movement_date"
   | "last_movement_type"
+  | "manufacture_year"
 >;
 
 interface Props {
@@ -142,7 +143,12 @@ function fulfillmentPercent(part: number, whole: number): number | null {
 async function postOverlay(
   orderId: number,
   patch: Record<string, string | number | undefined>
-): Promise<{ ok: boolean; autoApproved?: boolean }> {
+): Promise<{
+  ok: boolean;
+  autoApproved?: boolean;
+  rematched?: { from: number; to: number; year: string } | null;
+  rematchWarning?: string | null;
+}> {
   try {
     const res = await fetch("/api/orders/update-dashboard-overlay", {
       method: "POST",
@@ -150,8 +156,17 @@ async function postOverlay(
       body: JSON.stringify({ orderId, ...patch }),
     });
     if (!res.ok) return { ok: false };
-    const body = (await res.json()) as { autoApproved?: boolean };
-    return { ok: true, autoApproved: Boolean(body.autoApproved) };
+    const body = (await res.json()) as {
+      autoApproved?: boolean;
+      rematched?: { from: number; to: number; year: string } | null;
+      rematchWarning?: string | null;
+    };
+    return {
+      ok: true,
+      autoApproved: Boolean(body.autoApproved),
+      rematched: body.rematched ?? null,
+      rematchWarning: body.rematchWarning ?? null,
+    };
   } catch {
     return { ok: false };
   }
@@ -185,11 +200,27 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }
     return [y, y - 1, y - 2];
   }, [now]);
 
+  // 연도 편집 — 드롭다운은 draft 만 바꾸고, "저장" 버튼 눌러야 반영.
   const [mfgY, setMfgY] = useState<number>(() => overlay.mfy ?? now.getFullYear());
+  const [savedMfgY, setSavedMfgY] = useState<number>(() => overlay.mfy ?? now.getFullYear());
+  const [yearConfirmOpen, setYearConfirmOpen] = useState(false);
+  const [yearPreview, setYearPreview] = useState<null | {
+    fromYear: number;
+    toYear: number;
+    fromItemName: string;
+    fromStock: number | null;
+    toItemName: string;
+    toStock: number | null;
+    effectiveQty: number;
+    targetMissing: boolean;
+    targetMultiple: boolean;
+  }>(null);
 
   useEffect(() => {
     const o = parseDashboardMemo(orderRow?.memo ?? null);
-    setMfgY(o.mfy ?? now.getFullYear());
+    const y = o.mfy ?? now.getFullYear();
+    setMfgY(y);
+    setSavedMfgY(y);
   }, [orderRow?.order_id, orderRow?.memo, now]);
 
   /** 실입고·실송금 입력 초기 동기화(이행률·저장과 공유) */
@@ -206,17 +237,90 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }
   }, [orderRow?.order_id, orderRow?.memo]);
 
   const persistMfgYear = useCallback(
-    (nextY: number) => {
-      setMfgY(nextY);
+    async (nextY: number) => {
       const orderId = orderRow?.order_id;
       if (orderId === null || orderId === undefined) return;
-      void (async () => {
-        const result = await postOverlay(orderId, { mfgYear: nextY });
-        if (result.ok) onOrderUpdated();
-      })();
+      const result = await postOverlay(orderId, { mfgYear: nextY });
+      if (!result.ok) return;
+      if (result.rematched) {
+        toast.success(
+          `${result.rematched.year} 제조 SKU로 매칭되었습니다. 재고 현황도 갱신되었습니다.`
+        );
+      } else if (result.rematchWarning) {
+        toast.warning(result.rematchWarning);
+      }
+      setSavedMfgY(nextY);
+      onOrderUpdated();
     },
     [orderRow?.order_id, onOrderUpdated]
   );
+
+  /** "연도 저장" 클릭 — pending 이면 바로 저장, approved 면 미리보기 모달 */
+  const handleSaveMfgYear = useCallback(async () => {
+    if (mfgY === savedMfgY) return;
+    const status = orderRow?.status ?? null;
+    const currentItemId = orderRow?.item_id ?? null;
+    // 승인되지 않은 상태는 재고 영향 없음 → 바로 저장
+    if (status !== "approved" || !currentItemId) {
+      await persistMfgYear(mfgY);
+      return;
+    }
+    // 승인 상태: 모달로 미리보기 확정 절차
+    const fromYearStr = `${String(savedMfgY).slice(-2)}년`;
+    const toYearStr = `${String(mfgY).slice(-2)}년`;
+    const { data: fromItem } = await supabase
+      .from("item_master")
+      .select("item_name_raw,item_name_norm,category,unit_count,unit_label")
+      .eq("item_id", currentItemId)
+      .maybeSingle();
+    if (!fromItem || !fromItem.item_name_norm || !fromItem.category) return;
+    const { data: fromStockRow } = await supabase
+      .from("v_current_stock")
+      .select("current_stock")
+      .eq("item_id", currentItemId)
+      .maybeSingle();
+    let q = supabase
+      .from("item_master")
+      .select("item_id,item_name_raw,current_stock:base_stock_qty")
+      .eq("item_name_norm", fromItem.item_name_norm)
+      .eq("category", fromItem.category)
+      .eq("manufacture_year", toYearStr)
+      .eq("is_active", true);
+    if (fromItem.unit_count !== null) q = q.eq("unit_count", fromItem.unit_count);
+    if (fromItem.unit_label !== null) q = q.eq("unit_label", fromItem.unit_label);
+    const { data: candidates } = await q;
+    const targetMissing = !candidates || candidates.length === 0;
+    const targetMultiple = (candidates?.length ?? 0) > 1;
+    let toStock: number | null = null;
+    let toName = "";
+    if (candidates && candidates.length === 1) {
+      toName = candidates[0].item_name_raw ?? "";
+      const { data: toStockRow } = await supabase
+        .from("v_current_stock")
+        .select("current_stock")
+        .eq("item_id", candidates[0].item_id)
+        .maybeSingle();
+      toStock = toStockRow?.current_stock ?? null;
+    }
+    const memoOverlay = parseDashboardMemo(orderRow?.memo ?? null);
+    const effectiveQty =
+      memoOverlay.rq !== undefined && memoOverlay.rq > 0
+        ? memoOverlay.rq
+        : (orderRow?.quantity ?? 0);
+
+    setYearPreview({
+      fromYear: savedMfgY,
+      toYear: mfgY,
+      fromItemName: fromItem.item_name_raw ?? "",
+      fromStock: fromStockRow?.current_stock ?? null,
+      toItemName: toName,
+      toStock,
+      effectiveQty,
+      targetMissing,
+      targetMultiple,
+    });
+    setYearConfirmOpen(true);
+  }, [mfgY, savedMfgY, orderRow, supabase, persistMfgYear]);
 
   useEffect(() => {
     if (itemId === null) {
@@ -230,7 +334,7 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }
       const { data, error: err } = await supabase
         .from("v_current_stock")
         .select(
-          "item_id, seq_no, item_name_raw, item_name_norm, category, current_stock, base_stock_qty, base_date, last_movement_date, last_movement_type"
+          "item_id, seq_no, item_name_raw, item_name_norm, category, current_stock, base_stock_qty, base_date, last_movement_date, last_movement_type, manufacture_year"
         )
         .eq("item_id", itemId)
         .maybeSingle();
@@ -323,6 +427,12 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }
     return remain > 0 ? remain : 0;
   }, [orderRow, receivedCumulativeLive]);
 
+  // 연도 구분이 실제로 의미 있는 품목만 제조년도 UI 노출 (24·25·26년)
+  const showManufactureYear = useMemo(() => {
+    const y = row?.manufacture_year;
+    return y === "24년" || y === "25년" || y === "26년";
+  }, [row?.manufacture_year]);
+
   // 다이얼로그 열림 여부 — 행을 선택했을 때만 열림
   const open = orderRow !== null;
 
@@ -388,12 +498,19 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }
             </section>
 
             {/* 제조년도 · 수량 · 합계 — 명시적 그리드 행으로 행간 정렬 통일
-                행 1: 라벨(+배지)  /  행 2: 서브정보  /  행 3: 입력 2열  /  행 4: 이행률 */}
-            <section className="border-border grid grid-cols-1 gap-x-6 gap-y-2 border-t pt-4 md:grid-cols-3">
+                행 1: 라벨(+배지)  /  행 2: 서브정보  /  행 3: 입력 2열  /  행 4: 이행률
+                제조년도 컬럼은 연도 구분(24·25·26년) 있는 품목에만 표시 */}
+            <section
+              className={`border-border grid grid-cols-1 gap-x-6 gap-y-2 border-t pt-4 ${
+                showManufactureYear ? "md:grid-cols-3" : "md:grid-cols-2"
+              }`}
+            >
               {/* Row 1 — 라벨 */}
-              <div className="flex h-6 items-center">
-                <Label className="text-sm font-semibold">제조년도</Label>
-              </div>
+              {showManufactureYear && (
+                <div className="flex h-6 items-center">
+                  <Label className="text-sm font-semibold">제조년도</Label>
+                </div>
+              )}
               <div className="flex h-6 items-center justify-between">
                 <Label className="text-sm font-semibold">수량</Label>
                 <Badge
@@ -410,9 +527,11 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }
               </div>
 
               {/* Row 2 — 서브 정보(수량만 실데이터, 나머지는 높이 맞춤용 빈 슬롯) */}
-              <div aria-hidden className="text-xs">
-                &nbsp;
-              </div>
+              {showManufactureYear && (
+                <div aria-hidden className="text-xs">
+                  &nbsp;
+                </div>
+              )}
               <p className="text-muted-foreground text-xs tabular-nums">
                 실입고(누적){" "}
                 <span className="text-foreground font-medium">
@@ -426,19 +545,34 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }
                 &nbsp;
               </div>
 
-              {/* Row 3 — 입력(제조년도: Select 단일 / 수량·합계: 입력 2열) */}
-              <Select value={String(mfgY)} onValueChange={(v) => persistMfgYear(Number(v))}>
-                <SelectTrigger className="h-9 w-full text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {yearOptions.map((y) => (
-                    <SelectItem key={y} value={String(y)}>
-                      {yearShortLabel(y)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Row 3 — 제조년도: Select + 저장 버튼 (드롭다운 즉시 저장 안 함) */}
+              {showManufactureYear && (
+                <div className="flex items-center gap-1">
+                  <Select value={String(mfgY)} onValueChange={(v) => setMfgY(Number(v))}>
+                    <SelectTrigger className="h-9 flex-1 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {yearOptions.map((y) => (
+                        <SelectItem key={y} value={String(y)}>
+                          {yearShortLabel(y)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mfgY !== savedMfgY ? "default" : "outline"}
+                    className="h-9 px-2.5 text-xs"
+                    disabled={mfgY === savedMfgY}
+                    onClick={() => void handleSaveMfgYear()}
+                    aria-label="제조년도 저장"
+                  >
+                    저장
+                  </Button>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <Input
                   type="text"
@@ -524,9 +658,11 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }
               </div>
 
               {/* Row 4 — 이행률(제조년도 열은 빈 슬롯) */}
-              <div aria-hidden className="min-h-[36px]">
-                &nbsp;
-              </div>
+              {showManufactureYear && (
+                <div aria-hidden className="min-h-[36px]">
+                  &nbsp;
+                </div>
+              )}
               <div className="space-y-1">
                 <div className="text-muted-foreground flex justify-between text-[11px]">
                   <span>수량 이행률</span>
@@ -648,6 +784,93 @@ export function OrdersStockSidebar({ itemId, orderRow, onOrderUpdated, onClose }
           <p className="text-muted-foreground text-sm">테이블에서 거래 행을 눌러 주세요.</p>
         )}
       </DialogContent>
+
+      {/* 연도 변경 확인 모달 (승인 건만 진입) */}
+      <Dialog open={yearConfirmOpen} onOpenChange={setYearConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>제조년도 변경 확인</DialogTitle>
+          </DialogHeader>
+          {yearPreview && (
+            <div className="space-y-3 text-sm">
+              {yearPreview.targetMissing ? (
+                <div className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                  <b>{String(yearPreview.toYear).slice(-2)}년</b> 제조의 동일 SKU가 없습니다.
+                  <br />이 상태로 저장하면 item 매칭은 유지되고 연도만 메모로 기록됩니다.
+                </div>
+              ) : yearPreview.targetMultiple ? (
+                <div className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                  <b>{String(yearPreview.toYear).slice(-2)}년</b> 제조의 동일 SKU가 여러 개
+                  있습니다. 수동 선택이 필요합니다.
+                </div>
+              ) : (
+                <>
+                  <p className="text-gray-700">
+                    승인된 주문입니다. 변경 시 <b>재고가 즉시 이동</b>합니다.
+                  </p>
+                  <div className="divide-y rounded border">
+                    <div className="flex items-center justify-between px-3 py-2">
+                      <span className="text-gray-600">
+                        {yearPreview.fromItemName}{" "}
+                        <span className="ml-1 rounded bg-gray-100 px-1.5 text-xs text-gray-500">
+                          {String(yearPreview.fromYear).slice(-2)}년
+                        </span>
+                      </span>
+                      <span className="tabular-nums">
+                        {formatNum(yearPreview.fromStock ?? 0)} →{" "}
+                        <b className="text-red-600">
+                          {formatNum((yearPreview.fromStock ?? 0) - yearPreview.effectiveQty)}
+                        </b>
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2">
+                      <span className="text-gray-600">
+                        {yearPreview.toItemName}{" "}
+                        <span className="ml-1 rounded bg-gray-100 px-1.5 text-xs text-gray-500">
+                          {String(yearPreview.toYear).slice(-2)}년
+                        </span>
+                      </span>
+                      <span className="tabular-nums">
+                        {formatNum(yearPreview.toStock ?? 0)} →{" "}
+                        <b className="text-emerald-600">
+                          {formatNum((yearPreview.toStock ?? 0) + yearPreview.effectiveQty)}
+                        </b>
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    이동 수량: <b>{formatNum(yearPreview.effectiveQty)}</b>개 · 실입고 수량 기준
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+          <div className="mt-3 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setYearConfirmOpen(false);
+                setMfgY(savedMfgY); // draft 원복
+              }}
+            >
+              취소
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={yearPreview?.targetMultiple}
+              onClick={async () => {
+                setYearConfirmOpen(false);
+                await persistMfgYear(mfgY);
+              }}
+            >
+              이동 확인
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

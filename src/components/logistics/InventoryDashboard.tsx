@@ -55,13 +55,12 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
 
   const loadTodayMovement = useCallback(async () => {
     const today = formatLocalYmd(new Date());
-    // HANDOVER v6 매핑: transactions → orders, qty → quantity, IN/OUT → tx_type 기준
-    // 외부 거래만(is_internal=false), 당일 거래만 집계
+    // 재고현황 차트와 동일 로직 — stock_movement 기반 (승인된 + 실입고 수량 반영)
     const { data, error: qErr } = await supabaseToday
-      .from("orders")
-      .select("tx_type, quantity")
-      .eq("tx_date", today)
-      .eq("is_internal", false);
+      .from("stock_movement")
+      .select("quantity_delta, movement_type")
+      .eq("movement_date", today)
+      .eq("source_table", "orders");
 
     if (qErr) {
       console.error("당일 입출고 집계 실패:", qErr.message);
@@ -73,15 +72,9 @@ export default function InventoryDashboard({ onItemClick }: InventoryDashboardPr
     let incoming = 0;
     let outgoing = 0;
     for (const row of data ?? []) {
-      if (
-        row.tx_type === "purchase" ||
-        row.tx_type === "return_sale" ||
-        row.tx_type === "production_in"
-      ) {
-        incoming += row.quantity;
-      } else if (row.tx_type === "sale" || row.tx_type === "return_purchase") {
-        outgoing += row.quantity;
-      }
+      const delta = row.quantity_delta ?? 0;
+      if (delta > 0) incoming += delta;
+      else if (delta < 0) outgoing += -delta;
     }
     setTodayIncoming(incoming);
     setTodayOutgoing(outgoing);

@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { toast } from "sonner";
-
-import { Button } from "@/components/ui/button";
+// 마진 산출 입력 패널 (지호 v0.5) — 9개 필수 필드만 노출.
+// 상품·단가·환율·원가·판매가·판매채널·목표 마진율·파레트재작업비·기타비용
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,17 +13,14 @@ import type { ChannelRate } from "./_hooks/useChannelRates";
 import type { Product } from "./_hooks/useProducts";
 
 export type InputState = {
-  exPI: number;
-  exCurrent: number;
-  qTotal: number;
-  qShip: number;
-  cnyUnitPrice: number;
-  unitsPerPallet: number;
-  targetMargin: number;
-  referencePriceVAT: number;
-  palletReworkFee: number;
-  otherCostPerUnit: number;
-  selectedChannel: string;
+  cnyUnitPrice: number; // 단가 (CNY, 참조)
+  exchangeRate: number; // 환율 (KRW/CNY)
+  unitCost: number; // 원가 (KRW per unit)
+  sellingPriceVAT: number; // 판매가 (VAT 포함)
+  selectedChannel: string; // 판매채널
+  targetMargin: number; // 목표 마진율
+  palletReworkFee: number; // 파레트재작업비 (KRW/개)
+  otherCostPerUnit: number; // 기타비용 (광고·포장, KRW/개)
 };
 
 type Props = {
@@ -45,17 +40,36 @@ type Props = {
   channels: ChannelRate[];
 };
 
-/** 숫자 입력 파싱 — 변경 이유: NaN 방어, 빈값은 0으로 클램프 */
 function parseNumInput(v: string): number {
   if (v === "") return 0;
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-/**
- * 입력 패널 — 변경 이유: 상품/시장 조건/고정 조건 통합
- * state는 상위(CostMain)에서 관리, props로 내려받아 제어.
- */
+/** 모든 입력 필드의 공통 골격 — 라벨 20px · 인풋 40px · 힌트 16px (오와 열 정렬용) */
+function Field({
+  label,
+  hint,
+  headerRight,
+  children,
+}: {
+  label: string;
+  hint?: React.ReactNode;
+  headerRight?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex h-5 items-center justify-between">
+        <Label className="text-sm font-medium">{label}</Label>
+        {headerRight ?? null}
+      </div>
+      {children}
+      <div className="text-muted-foreground flex h-4 items-center text-[11px]">{hint ?? null}</div>
+    </div>
+  );
+}
+
 export default function InputPanel({
   products,
   productsLoading,
@@ -69,37 +83,22 @@ export default function InputPanel({
   refreshExchange,
   channels,
 }: Props) {
-  const [exCurrentManual, setExCurrentManual] = useState(false);
-
   const handleField = <K extends keyof InputState>(key: K, value: InputState[K]) => {
     setInput({ ...input, [key]: value });
   };
 
-  const handleQShipChange = (raw: string) => {
-    const v = parseNumInput(raw);
-    if (v > input.qTotal) {
-      toast.error(
-        `선적 수량은 총 계약 수량(${input.qTotal.toLocaleString("ko-KR")})을 넘을 수 없습니다.`
-      );
-      handleField("qShip", input.qTotal);
-      return;
-    }
-    handleField("qShip", v);
-  };
-
-  const handleCopyPI = () => {
-    if (exchange.cnyKrw === null) {
-      toast.error("현재 환율이 아직 로드되지 않았습니다.");
-      return;
-    }
-    handleField("exPI", exchange.cnyKrw);
+  // 단가 or 환율 변경 시 원가 자동 계산 (사용자가 수동 입력했으면 그대로 둠)
+  const computeCostFromCny = () => {
+    const computed = Math.round(input.cnyUnitPrice * input.exchangeRate);
+    if (computed > 0) handleField("unitCost", computed);
   };
 
   return (
     <Card>
-      <CardContent className="space-y-6">
-        <section className="space-y-4">
-          <h3 className="text-lg font-bold tracking-tight">상품 선택</h3>
+      <CardContent className="space-y-6 pt-6">
+        {/* 상품 */}
+        <div className="space-y-2">
+          <Label>상품</Label>
           <ProductCombobox
             products={products}
             selected={selectedProduct}
@@ -108,147 +107,95 @@ export default function InputPanel({
             error={productsError}
             onRetry={onRetryProducts}
           />
-        </section>
+        </div>
 
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold tracking-tight">시장 조건</h3>
-            <ExchangeRateBadge rate={exchange} refresh={refreshExchange} />
-          </div>
+        <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+          <Field label="단가 (CNY)">
+            <Input
+              type="number"
+              step="0.01"
+              className="h-10"
+              value={input.cnyUnitPrice || ""}
+              onChange={(e) => handleField("cnyUnitPrice", parseNumInput(e.target.value))}
+              onBlur={computeCostFromCny}
+            />
+          </Field>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>계약(PI) 환율 (KRW/CNY)</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={input.exPI || ""}
-                  onChange={(e) => handleField("exPI", parseNumInput(e.target.value))}
-                />
-                <Button type="button" variant="outline" size="sm" onClick={handleCopyPI}>
-                  PI ← 현재
-                </Button>
-              </div>
-            </div>
+          <Field
+            label="환율 (KRW/CNY)"
+            headerRight={<ExchangeRateBadge rate={exchange} refresh={refreshExchange} />}
+          >
+            <Input
+              type="number"
+              step="0.1"
+              className="h-10"
+              value={input.exchangeRate || ""}
+              onChange={(e) => handleField("exchangeRate", parseNumInput(e.target.value))}
+              onBlur={computeCostFromCny}
+            />
+          </Field>
 
-            <div className="space-y-2">
-              <Label>현재·결제 환율 (KRW/CNY)</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={input.exCurrent || ""}
-                  readOnly={!exCurrentManual}
-                  onChange={(e) => handleField("exCurrent", parseNumInput(e.target.value))}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setExCurrentManual((v) => !v)}
-                >
-                  {exCurrentManual ? "자동" : "수동"}
-                </Button>
-              </div>
-            </div>
+          <Field label="원가 (KRW/개)" hint="단가 × 환율 자동 계산 · 수동 수정 가능">
+            <Input
+              type="number"
+              className="h-10"
+              value={input.unitCost || ""}
+              onChange={(e) => handleField("unitCost", parseNumInput(e.target.value))}
+            />
+          </Field>
 
-            <div className="space-y-2">
-              <Label>총 계약 수량</Label>
-              <Input
-                type="number"
-                value={input.qTotal || ""}
-                onChange={(e) => handleField("qTotal", parseNumInput(e.target.value))}
-              />
-            </div>
+          <Field label="판매가 (VAT 포함, 원)">
+            <Input
+              type="number"
+              className="h-10"
+              value={input.sellingPriceVAT || ""}
+              onChange={(e) => handleField("sellingPriceVAT", parseNumInput(e.target.value))}
+            />
+          </Field>
 
-            <div className="space-y-2">
-              <Label>선적·반영 수량</Label>
-              <Input
-                type="number"
-                max={input.qTotal || undefined}
-                value={input.qShip || ""}
-                onChange={(e) => handleQShipChange(e.target.value)}
-              />
-            </div>
+          <Field label="판매 채널">
+            <select
+              id="cost-channel-select"
+              value={input.selectedChannel}
+              onChange={(e) => handleField("selectedChannel", e.target.value)}
+              className="border-input bg-background flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              {channels.map((c) => (
+                <option key={c.channelName} value={c.channelName}>
+                  {c.channelName}
+                </option>
+              ))}
+            </select>
+          </Field>
 
-            <div className="space-y-2">
-              <Label>매입 단가 (CNY/개)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={input.cnyUnitPrice || ""}
-                onChange={(e) => handleField("cnyUnitPrice", parseNumInput(e.target.value))}
-              />
-            </div>
+          <Field label="목표 마진율 (%)">
+            <Input
+              type="number"
+              step="0.1"
+              className="h-10"
+              value={input.targetMargin === 0 ? "" : (input.targetMargin * 100).toFixed(1)}
+              onChange={(e) => handleField("targetMargin", parseNumInput(e.target.value) / 100)}
+            />
+          </Field>
 
-            <div className="space-y-2">
-              <Label>1파렛트 적재 수량</Label>
-              <Input
-                type="number"
-                value={input.unitsPerPallet || ""}
-                onChange={(e) => handleField("unitsPerPallet", parseNumInput(e.target.value))}
-              />
-            </div>
+          <Field label="파레트 재작업비 (원/개)">
+            <Input
+              type="number"
+              className="h-10"
+              value={input.palletReworkFee || ""}
+              onChange={(e) => handleField("palletReworkFee", parseNumInput(e.target.value))}
+            />
+          </Field>
 
-            <div className="space-y-2">
-              <Label>목표 마진율 (%)</Label>
-              <Input
-                type="number"
-                step="0.1"
-                value={input.targetMargin === 0 ? "" : (input.targetMargin * 100).toFixed(1)}
-                onChange={(e) => handleField("targetMargin", parseNumInput(e.target.value) / 100)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>역산용 노출가 VAT 포함 (원)</Label>
-              <Input
-                type="number"
-                value={input.referencePriceVAT || ""}
-                onChange={(e) => handleField("referencePriceVAT", parseNumInput(e.target.value))}
-              />
-            </div>
-
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="cost-channel-select">판매 채널</Label>
-              <select
-                id="cost-channel-select"
-                value={input.selectedChannel}
-                onChange={(e) => handleField("selectedChannel", e.target.value)}
-                className="border-input bg-background flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-              >
-                {channels.map((c) => (
-                  <option key={c.channelName} value={c.channelName}>
-                    {c.channelName}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h3 className="text-lg font-bold tracking-tight">고정 조건</h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>파레트 재작업비 (원)</Label>
-              <Input
-                type="number"
-                value={input.palletReworkFee || ""}
-                onChange={(e) => handleField("palletReworkFee", parseNumInput(e.target.value))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>기타 비용 (원/개)</Label>
-              <Input
-                type="number"
-                value={input.otherCostPerUnit || ""}
-                onChange={(e) => handleField("otherCostPerUnit", parseNumInput(e.target.value))}
-              />
-            </div>
-          </div>
-        </section>
+          <Field label="기타비용 (광고·포장, 원/개)">
+            <Input
+              type="number"
+              className="h-10"
+              value={input.otherCostPerUnit || ""}
+              onChange={(e) => handleField("otherCostPerUnit", parseNumInput(e.target.value))}
+            />
+          </Field>
+        </div>
       </CardContent>
     </Card>
   );

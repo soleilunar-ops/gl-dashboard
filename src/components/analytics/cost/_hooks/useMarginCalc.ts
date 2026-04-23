@@ -1,173 +1,152 @@
 "use client";
 
+// 마진 계산 — 단순화된 공식 (지호 v0.5)
+// 입력: 단가(CNY), 환율, 원가(KRW/개), 판매가(VAT), 채널 정산율, 목표 마진율, 파레트재작업비, 기타비용
+// 출력: 현재가 기준 실제 마진 + 목표 달성 여부 + 자연어 진단
 import { useMemo } from "react";
 
-/** 마진 계산 입력 — 변경 이유: analytics/cost 전용 단순화 스키마 */
 export type MarginInput = {
-  cnyUnitPrice: number;
-  exPI: number;
-  exCurrent: number;
-  qShip: number;
-  qTotal: number;
-  palletReworkFee: number;
-  unitsPerPallet: number;
-  otherCostPerUnit?: number;
-  channelPayoutRate: number;
-  targetMargin: number;
-  referencePriceVAT?: number;
+  cnyUnitPrice: number; // 단가 (CNY, 참조)
+  exchangeRate: number; // 환율 (KRW/CNY, 참조)
+  unitCost: number; // 원가 (KRW per unit)
+  sellingPriceVAT: number; // 판매가 (VAT 포함)
+  channelPayoutRate: number; // 판매 채널 정산율 (0~1)
+  targetMargin: number; // 목표 마진율 (0~1)
+  palletReworkFee: number; // 파레트 재작업비 (KRW per unit)
+  otherCostPerUnit: number; // 기타비용 (광고·포장 포함, KRW per unit)
 };
 
-/** 원가 분해 — UI 표시용 */
-export type MarginCostBreakdown = {
-  material: number;
-  logistics: number;
-  other: number;
-};
-
-/** 계산 결과 — 변경 이유: 현재가 진단 + 권장가 제안 공통 출력 */
 export type MarginResult = {
-  exFinal: number;
-  costTotal: number;
-  costBreakdown: MarginCostBreakdown;
-  recommendedPriceVAT: number;
+  totalCostPerUnit: number;
   netPrice: number;
   payoutAmount: number;
   unitProfit: number;
-  actualMargin: number;
-  isMarginAlert: boolean;
+  currentMargin: number; // 판매가 기준 실제 마진율
+  isTargetMet: boolean;
+  gapToTarget: number; // 목표 대비 부족/초과 (percentage point)
+  diagnosis: MarginDiagnosis;
   isInfeasible: boolean;
 
-  currentNetPrice?: number;
-  currentPayout?: number;
-  currentProfit?: number;
-  currentMargin?: number;
-  priceGapToTarget?: number;
+  // 채널별 테이블용 — 목표 마진율을 달성하기 위한 권장 판매가 및 그 시점의 지표
+  recommendedPriceVAT: number;
+  recommendedUnitProfit: number;
+  recommendedMargin: number;
+  isMarginAlert: boolean; // 목표 마진율 < 2% 거나 달성 불가
 };
 
-/** 숫자 안전화 — NaN/Infinity 방어 */
-function safeNum(n: number | undefined, fallback = 0): number {
-  if (n === undefined || n === null) return fallback;
-  if (!Number.isFinite(n)) return fallback;
-  return n;
+export type MarginDiagnosis = {
+  level: "critical" | "warning" | "good" | "excellent";
+  headline: string;
+  detail: string;
+};
+
+function safe(n: number | undefined, fb = 0): number {
+  if (n === undefined || n === null) return fb;
+  return Number.isFinite(n) ? n : fb;
 }
 
-/** infeasible 기본 결과 — exFinal과 breakdown만 채운 상태 */
-function emptyInfeasible(exFinal: number, breakdown: MarginCostBreakdown): MarginResult {
-  const costTotal = breakdown.material + breakdown.logistics + breakdown.other;
+function buildDiagnosis(
+  margin: number,
+  target: number,
+  isTargetMet: boolean,
+  isLoss: boolean
+): MarginDiagnosis {
+  if (isLoss) {
+    return {
+      level: "critical",
+      headline: "손실 상태",
+      detail: "판매가가 원가를 못 미쳐 개당 손실이 발생합니다. 판매가 인상 또는 원가 절감 필요.",
+    };
+  }
+  const gap = margin - target;
+  if (gap >= 0.05) {
+    return {
+      level: "excellent",
+      headline: "목표 대비 여유",
+      detail: `목표보다 ${Math.round(gap * 100)}%p 높습니다. 경쟁사 프로모션 대응용 여유 확보.`,
+    };
+  }
+  if (isTargetMet) {
+    return {
+      level: "good",
+      headline: "목표 마진 달성",
+      detail: "현재가 기준 목표 마진율을 충족합니다. 유지 권장.",
+    };
+  }
+  if (gap >= -0.02) {
+    return {
+      level: "warning",
+      headline: "목표 근접 · 주의",
+      detail: `목표보다 ${Math.round(Math.abs(gap) * 100)}%p 낮습니다. 광고·포장비 최적화 또는 소폭 인상 검토.`,
+    };
+  }
   return {
-    exFinal,
-    costTotal: Number.isFinite(costTotal) ? costTotal : 0,
-    costBreakdown: breakdown,
-    recommendedPriceVAT: 0,
-    netPrice: 0,
-    payoutAmount: 0,
-    unitProfit: 0,
-    actualMargin: 0,
-    isMarginAlert: false,
-    isInfeasible: true,
+    level: "critical",
+    headline: "목표 미달",
+    detail: `목표보다 ${Math.round(Math.abs(gap) * 100)}%p 부족합니다. 채널 변경·가격 인상 또는 원가 재협상 필요.`,
   };
 }
 
-/**
- * 순수 마진 계산 — 로직은 이 함수에만 존재 (analytics/cost 단일 진실 공급원)
- * 변경 이유: 사용자 스펙 단순 공식(PI 30% + Current 70% × qShip/qTotal)
- */
 export function calcMargin(raw: MarginInput): MarginResult {
-  const cnyUnitPrice = safeNum(raw.cnyUnitPrice);
-  const exPI = safeNum(raw.exPI);
-  const exCurrent = safeNum(raw.exCurrent);
-  const qTotalRaw = safeNum(raw.qTotal);
-  const palletReworkFee = safeNum(raw.palletReworkFee);
-  const unitsPerPallet = safeNum(raw.unitsPerPallet);
-  const otherCostPerUnit = safeNum(raw.otherCostPerUnit ?? 0);
-  const r = safeNum(raw.channelPayoutRate);
-  const targetMargin = safeNum(raw.targetMargin);
+  const unitCost = safe(raw.unitCost);
+  const palletReworkFee = safe(raw.palletReworkFee);
+  const otherCost = safe(raw.otherCostPerUnit);
+  const sellingVAT = safe(raw.sellingPriceVAT);
+  const r = safe(raw.channelPayoutRate);
+  const target = safe(raw.targetMargin);
 
-  const qTotal = qTotalRaw > 0 ? qTotalRaw : 0;
-  const qShip = Math.max(0, Math.min(safeNum(raw.qShip), qTotal));
-
-  const ratio = qTotal > 0 ? qShip / qTotal : 0;
-  const exFinal = exPI * 0.3 + exCurrent * 0.7 * ratio;
-
-  const material = cnyUnitPrice * exFinal;
-  const logistics =
-    unitsPerPallet > 0 ? palletReworkFee / unitsPerPallet : Number.POSITIVE_INFINITY;
-  const other = otherCostPerUnit;
-
-  const costBreakdown: MarginCostBreakdown = {
-    material,
-    logistics: Number.isFinite(logistics) ? logistics : 0,
-    other,
-  };
-
-  if (qTotal <= 0 || unitsPerPallet <= 0 || !Number.isFinite(logistics)) {
-    return emptyInfeasible(exFinal, costBreakdown);
-  }
-
-  const costTotal = material + logistics + other;
-
-  if (r <= targetMargin || r <= 0) {
-    const base = emptyInfeasible(exFinal, costBreakdown);
-    return { ...base, costTotal };
-  }
-
-  const netPrice = costTotal / (r - targetMargin);
-  const recommendedPriceVAT = netPrice * 1.1;
+  const totalCostPerUnit = unitCost + palletReworkFee + otherCost;
+  const netPrice = sellingVAT > 0 ? sellingVAT / 1.1 : 0;
   const payoutAmount = netPrice * r;
-  const unitProfit = payoutAmount - costTotal;
-  const actualMargin = netPrice > 0 ? unitProfit / netPrice : 0;
-  const isMarginAlert = actualMargin < 0.02;
+  const unitProfit = payoutAmount - totalCostPerUnit;
+  const currentMargin = netPrice > 0 ? unitProfit / netPrice : 0;
+  const isInfeasible = sellingVAT <= 0 || r <= 0;
+  const isTargetMet = !isInfeasible && currentMargin >= target;
+  const gapToTarget = currentMargin - target;
+  const diagnosis = buildDiagnosis(currentMargin, target, isTargetMet, unitProfit < 0);
 
-  let currentNetPrice: number | undefined;
-  let currentPayout: number | undefined;
-  let currentProfit: number | undefined;
-  let currentMargin: number | undefined;
-  let priceGapToTarget: number | undefined;
-
-  const refVAT = raw.referencePriceVAT;
-  if (refVAT !== undefined && Number.isFinite(refVAT) && refVAT > 0) {
-    currentNetPrice = refVAT / 1.1;
-    currentPayout = currentNetPrice * r;
-    currentProfit = currentPayout - costTotal;
-    currentMargin = currentNetPrice > 0 ? currentProfit / currentNetPrice : 0;
-    priceGapToTarget = Math.max(0, recommendedPriceVAT - refVAT);
+  // 권장가: 목표 마진율 달성에 필요한 netPrice = cost / (r - target)
+  let recommendedPriceVAT = 0;
+  let recommendedUnitProfit = 0;
+  let recommendedMargin = 0;
+  const feasibleForTarget = r > 0 && r > target && totalCostPerUnit > 0;
+  if (feasibleForTarget) {
+    const recNet = totalCostPerUnit / (r - target);
+    recommendedPriceVAT = recNet * 1.1;
+    recommendedUnitProfit = recNet * r - totalCostPerUnit;
+    recommendedMargin = recNet > 0 ? recommendedUnitProfit / recNet : 0;
   }
+  const isMarginAlert = !feasibleForTarget || target < 0.02;
 
   return {
-    exFinal,
-    costTotal,
-    costBreakdown,
-    recommendedPriceVAT,
+    totalCostPerUnit,
     netPrice,
     payoutAmount,
     unitProfit,
-    actualMargin,
-    isMarginAlert,
-    isInfeasible: false,
-    currentNetPrice,
-    currentPayout,
-    currentProfit,
     currentMargin,
-    priceGapToTarget,
+    isTargetMet,
+    gapToTarget,
+    diagnosis,
+    isInfeasible,
+    recommendedPriceVAT,
+    recommendedUnitProfit,
+    recommendedMargin,
+    isMarginAlert,
   };
 }
 
-/** 입력 스냅샷 메모이제이션 — 변경 이유: 불필요한 재계산 방지 */
 export function useMarginCalc(input: MarginInput): MarginResult {
   return useMemo(
     () => calcMargin(input),
     [
       input.cnyUnitPrice,
-      input.exPI,
-      input.exCurrent,
-      input.qShip,
-      input.qTotal,
-      input.palletReworkFee,
-      input.unitsPerPallet,
-      input.otherCostPerUnit,
+      input.exchangeRate,
+      input.unitCost,
+      input.sellingPriceVAT,
       input.channelPayoutRate,
       input.targetMargin,
-      input.referencePriceVAT,
+      input.palletReworkFee,
+      input.otherCostPerUnit,
     ]
   );
 }

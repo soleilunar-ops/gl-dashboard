@@ -44,11 +44,12 @@ export default function LogisticsUnifiedTab() {
 
   const loadToday = useCallback(async () => {
     const today = formatLocalYmd(new Date());
+    // 승인일 기준 stock_movement 기반 — 차트 · 재고현황과 동일 기준
     const { data, error } = await supabase
-      .from("orders")
-      .select("tx_type, quantity")
-      .eq("tx_date", today)
-      .eq("is_internal", false);
+      .from("stock_movement")
+      .select("quantity_delta")
+      .eq("movement_date", today)
+      .eq("source_table", "orders");
     if (error) {
       setTodayIn(0);
       setTodayOut(0);
@@ -57,9 +58,9 @@ export default function LogisticsUnifiedTab() {
     let incoming = 0;
     let outgoing = 0;
     for (const row of data ?? []) {
-      if (row.tx_type === "purchase" || row.tx_type === "return_sale") incoming += row.quantity;
-      else if (row.tx_type === "sale" || row.tx_type === "return_purchase")
-        outgoing += row.quantity;
+      const d = row.quantity_delta ?? 0;
+      if (d > 0) incoming += d;
+      else if (d < 0) outgoing += -d;
     }
     setTodayIn(incoming);
     setTodayOut(outgoing);
