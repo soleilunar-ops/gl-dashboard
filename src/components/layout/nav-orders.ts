@@ -1,4 +1,4 @@
 export const navOrders = [
-  { label: "주문 관리", path: "/orders", icon: "ShoppingCart" },
-  { label: "원가 분석", path: "/analytics/cost", icon: "Calculator" },
+  { label: "주문 관리", path: "/orders", icon: "Package", badge: "LIVE" },
+  { label: "재고 현황", path: "/logistics", icon: "Boxes" },
 ];

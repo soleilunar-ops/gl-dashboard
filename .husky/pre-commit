@@ -1,7 +1,7 @@
 echo "비밀키 검사 중..."
 FILES=$(git diff --cached --name-only --diff-filter=ACM)
 if [ -n "$FILES" ]; then
-  echo "$FILES" | xargs -d '\n' npx secretlint || {
+  echo "$FILES" | xargs -d '\n' -n 50 npx secretlint || {
     echo "비밀키가 감지되었습니다! 커밋 차단."
     echo ".env.local에 넣고 process.env.변수명으로 사용하세요."
     exit 1

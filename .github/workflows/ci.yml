@@ -47,8 +47,8 @@ jobs:
           BRANCH="${{ github.head_ref }}"
           echo "브랜치: $BRANCH"
 
-          # PM 브랜치는 검사 생략
-          if echo "$BRANCH" | grep -qE "^team/지호$"; then
+          # PM 브랜치는 검사 생략 (team/지호 또는 pm/* 접두사)
+          if echo "$BRANCH" | grep -qE "^(team/지호|pm/)"; then
             echo "✅ PM 브랜치 — 경계 검사 생략"
             exit 0
           fi
@@ -57,8 +57,6 @@ jobs:
           MEMBER=""
           if echo "$BRANCH" | grep -qE "^team/슬아$"; then
             MEMBER="슬아"
-          elif echo "$BRANCH" | grep -qE "^team/정민$"; then
-            MEMBER="정민"
           elif echo "$BRANCH" | grep -qE "^team/나경$"; then
             MEMBER="나경"
           elif echo "$BRANCH" | grep -qE "^team/진희$"; then
@@ -75,9 +73,6 @@ jobs:
           case "$MEMBER" in
             "슬아")
               ALLOWED="src/components/orders/|src/components/analytics/cost/|src/app/(dashboard)/orders/|src/app/(dashboard)/analytics/cost/|src/components/layout/nav-orders.ts"
-              ;;
-            "정민")
-              ALLOWED="src/components/analytics/forecast/|services/api/|src/app/(dashboard)/analytics/forecast/|src/components/layout/nav-forecast.ts"
               ;;
             "나경")
               ALLOWED="src/components/analytics/reviews/|src/components/analytics/promotion/|src/app/(dashboard)/analytics/reviews/|src/app/(dashboard)/analytics/promotion/|src/components/layout/nav-reviews.ts"
