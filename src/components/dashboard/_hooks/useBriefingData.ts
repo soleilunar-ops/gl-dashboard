@@ -18,14 +18,17 @@ function todayKst(): string {
 }
 
 function addDays(iso: string, n: number): string {
-  const d = new Date(iso + "T00:00:00Z");
+  const d = new Date((iso || "") + "T00:00:00Z");
+  if (isNaN(d.getTime())) return iso || todayKst();
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
 
 function dayOfWeekKo(iso: string): string {
   const days = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
-  return days[new Date(iso + "T00:00:00Z").getUTCDay()];
+  const d = new Date((iso || "") + "T00:00:00Z");
+  if (isNaN(d.getTime())) return "";
+  return days[d.getUTCDay()];
 }
 
 function formatDayLabel(iso: string): string {
@@ -522,7 +525,9 @@ export function useBriefingData(): {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const date = process.env.NEXT_PUBLIC_DASHBOARD_DATE || todayKst();
+    const envDate = process.env.NEXT_PUBLIC_DASHBOARD_DATE?.trim();
+    const isValidIso = envDate && /^\d{4}-\d{2}-\d{2}$/.test(envDate);
+    const date = isValidIso ? envDate : todayKst();
     let canceled = false;
 
     (async () => {

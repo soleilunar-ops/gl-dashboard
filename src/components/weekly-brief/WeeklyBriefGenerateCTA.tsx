@@ -12,17 +12,25 @@ interface Props {
   onSuccess?: () => void;
 }
 
-// 주어진 날짜의 ISO 월요일(주 시작) 반환
+// 주어진 날짜의 ISO 월요일(주 시작) 반환 — 유효하지 않은 입력이면 오늘 기준 월요일로 폴백
 function mondayOf(iso: string): string {
-  const d = new Date(iso + "T00:00:00Z");
+  const d = new Date((iso || "") + "T00:00:00Z");
+  if (isNaN(d.getTime())) {
+    const fallback = new Date();
+    const dow = fallback.getUTCDay() === 0 ? 7 : fallback.getUTCDay();
+    fallback.setUTCDate(fallback.getUTCDate() - (dow - 1));
+    return fallback.toISOString().slice(0, 10);
+  }
   const dow = d.getUTCDay() === 0 ? 7 : d.getUTCDay();
   d.setUTCDate(d.getUTCDate() - (dow - 1));
   return d.toISOString().slice(0, 10);
 }
 
 function defaultWeekStart(): string {
-  const envDate = process.env.NEXT_PUBLIC_DASHBOARD_DATE;
-  const today = envDate ?? new Date().toISOString().slice(0, 10);
+  const envDate = process.env.NEXT_PUBLIC_DASHBOARD_DATE?.trim();
+  // YYYY-MM-DD 형식만 허용 — 잘못된 env 값으로 인한 Invalid Date 방지
+  const isValidIso = envDate && /^\d{4}-\d{2}-\d{2}$/.test(envDate);
+  const today = isValidIso ? envDate : new Date().toISOString().slice(0, 10);
   return mondayOf(today);
 }
 
