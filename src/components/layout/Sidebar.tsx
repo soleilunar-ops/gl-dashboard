@@ -31,6 +31,7 @@ function resolveActivePathInGroup(items: NavItem[], pathname: string): string | 
 
 // 아이콘 이름 → 컴포넌트 매핑
 const iconMap: Record<string, LucideIcon> = {
+  LayoutDashboard,
   ShoppingCart,
   TrendingUp,
   MessageSquare,
@@ -60,13 +61,16 @@ export default function Sidebar() {
 
       {/* 네비게이션 */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {navigation.map((group) => (
-          <div key={group.title} className="mb-4">
-            <p className="text-muted-foreground mb-1 px-2 text-xs font-medium">{group.title}</p>
+        {navigation.map((group, gi) => (
+          <div key={group.title || `group-${gi}`} className="mb-4">
+            {group.title && (
+              <p className="text-muted-foreground mb-1 px-2 text-xs font-medium">{group.title}</p>
+            )}
             {group.items.map((item) => {
               const Icon = iconMap[item.icon];
               const activePath = resolveActivePathInGroup(group.items, pathname);
               const isActive = activePath !== null && item.path === activePath;
+              const isDashboard = item.path === "/dashboard";
 
               return (
                 <Link
@@ -75,11 +79,16 @@ export default function Sidebar() {
                   className={cn(
                     "flex items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors",
                     isActive
-                      ? "bg-accent text-accent-foreground font-medium"
+                      ? isDashboard
+                        ? "bg-orange-50 font-semibold text-orange-700"
+                        : "bg-accent text-accent-foreground font-medium"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   )}
+                  aria-current={isActive ? "page" : undefined}
                 >
-                  {Icon && <Icon className="h-4 w-4" />}
+                  {Icon && (
+                    <Icon className={cn("h-4 w-4", isActive && isDashboard && "text-orange-600")} />
+                  )}
                   {item.label}
                 </Link>
               );
