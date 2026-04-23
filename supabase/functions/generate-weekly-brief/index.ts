@@ -116,9 +116,10 @@ Deno.serve(async (req) => {
     // 5. 최근 4주 weekly_brief 요약 (RAG 아님 · 직접 조회)
     const recentBriefs = await fetchRecentBriefs(sb);
 
-    // 6. prompt_hash로 중복 생성 방지
+    // 6. prompt_hash로 중복 생성 방지 (v키로 프롬프트 버전 캐시 버스팅)
     const promptHash = await sha256(
       JSON.stringify({
+        v: "v13-3sections",
         weekStart,
         weekEnd,
         template,

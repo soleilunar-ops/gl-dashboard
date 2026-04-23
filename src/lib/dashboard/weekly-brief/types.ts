@@ -16,14 +16,9 @@ export interface WeeklyBriefInsight {
 }
 
 export interface WeeklyBriefSections {
-  orders?: string;
-  hotpack_season?: string;
-  offseason?: string;
-  inventory?: string;
-  import_leadtime?: string;
-  milkrun?: string;
-  external?: string;
-  noncompliance?: string;
+  sales_highlight?: string;
+  weather_trigger?: string;
+  transport?: string;
 }
 
 export interface WeeklyBriefBody {
