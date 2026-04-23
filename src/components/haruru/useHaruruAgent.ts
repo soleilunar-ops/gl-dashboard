@@ -202,3 +202,9 @@ export async function fetchRecentSessions(limit = 10): Promise<HaruruRecentSessi
     .limit(limit);
   return (data ?? []) as HaruruRecentSession[];
 }
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("agent_sessions").delete().eq("session_id", sessionId);
+  if (error) throw new Error(error.message);
+}

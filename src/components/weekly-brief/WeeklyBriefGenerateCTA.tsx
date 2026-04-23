@@ -1,7 +1,7 @@
 "use client";
 
-// 07 v0.2 — 하단 주황 CTA.
-// 요일 제한은 DB 함수 can_generate_weekly_brief()에서 이미 상시 allowed:true 반환.
+// 07 v0.3 — 하단 주황 CTA. 대상 주차 선택 가능.
+import { useState } from "react";
 import type { GateResult } from "@/lib/dashboard/weekly-brief/types";
 import { useGenerateWeeklyBrief } from "@/lib/dashboard/weekly-brief/useGenerateWeeklyBrief";
 import { WeeklyBriefProgress } from "./WeeklyBriefProgress";
@@ -12,10 +12,24 @@ interface Props {
   onSuccess?: () => void;
 }
 
+// 주어진 날짜의 ISO 월요일(주 시작) 반환
+function mondayOf(iso: string): string {
+  const d = new Date(iso + "T00:00:00Z");
+  const dow = d.getUTCDay() === 0 ? 7 : d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() - (dow - 1));
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultWeekStart(): string {
+  const envDate = process.env.NEXT_PUBLIC_DASHBOARD_DATE;
+  const today = envDate ?? new Date().toISOString().slice(0, 10);
+  return mondayOf(today);
+}
+
 export function WeeklyBriefGenerateCTA({ gate, gateLoading, onSuccess }: Props) {
   const generate = useGenerateWeeklyBrief({ onSuccess });
+  const [weekStart, setWeekStart] = useState<string>(defaultWeekStart());
 
-  // gate 로딩이어도 CTA 즉시 활성화 (상시 허용)
   void gateLoading;
 
   if (generate.isPending) {
@@ -38,7 +52,7 @@ export function WeeklyBriefGenerateCTA({ gate, gateLoading, onSuccess }: Props) 
           className="wr-cta-button wr-cta-primary"
           onClick={() => {
             generate.reset();
-            generate.mutate({ force: true });
+            generate.mutate({ force: true, weekStart });
           }}
         >
           다시 생성하기
@@ -49,14 +63,30 @@ export function WeeklyBriefGenerateCTA({ gate, gateLoading, onSuccess }: Props) 
 
   return (
     <div className="wr-cta-wrap">
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+        <label style={{ fontSize: 13, color: "var(--wr-muted)", fontWeight: 500 }}>
+          대상 주차 (월요일)
+        </label>
+        <input
+          type="date"
+          value={weekStart}
+          onChange={(e) => setWeekStart(mondayOf(e.target.value))}
+          style={{
+            padding: "6px 10px",
+            border: "1px solid #E5E7EB",
+            borderRadius: 8,
+            fontSize: 13,
+          }}
+        />
+      </div>
       <button
         type="button"
         className="wr-cta-button wr-cta-primary"
-        onClick={() => generate.mutate({ force: true })}
+        onClick={() => generate.mutate({ force: true, weekStart })}
         data-testid="weekly-brief-generate"
       >
         <SparkleIcon />
-        이번 주 리포트 새로 생성하기
+        {weekStart} 주차 리포트 새로 생성하기
       </button>
       <p className="wr-cta-hint">금주 {gate?.count_this_week ?? 0}회 생성 · 약 15~25초 소요</p>
     </div>

@@ -83,8 +83,12 @@ function splitIntoChunks(text: string, maxChars: number): string[] {
   return chunks.slice(0, MAX_CHUNKS);
 }
 
-function buildInsightScript(insight: Record<string, unknown>): string {
-  const body = stripMarkdownForTts(String(insight?.body ?? ""));
+function buildFullReportScript(body: Record<string, unknown>): string {
+  const insight = (body?.insight as Record<string, unknown> | undefined) ?? {};
+  const sections = (body?.sections as Record<string, unknown> | undefined) ?? {};
+
+  const headline = stripMarkdownForTts(String(insight?.headline ?? ""));
+  const insightBody = stripMarkdownForTts(String(insight?.body ?? ""));
   const alertsArr = Array.isArray(insight?.alerts)
     ? (insight.alerts as unknown[]).map((x) => stripMarkdownForTts(String(x))).filter(Boolean)
     : [];
@@ -92,15 +96,27 @@ function buildInsightScript(insight: Record<string, unknown>): string {
     ? (insight.next_week as unknown[]).map((x) => stripMarkdownForTts(String(x))).filter(Boolean)
     : [];
 
-  let script = body;
+  const SECTION_LABELS: Record<string, string> = {
+    sales_highlight: "판매 하이라이트입니다",
+    weather_trigger: "다음 주 날씨와 트리거입니다",
+    transport: "운송 현황입니다",
+  };
+
+  let script = `이번 주 인사이트입니다. ${headline}. ${insightBody}`;
   if (alertsArr.length) {
     script += ` 주의사항 ${alertsArr.length}가지입니다. `;
-    script += alertsArr.map((a, i) => `${i + 1}, ${a}`).join(". ") + ".";
+    script += alertsArr.join(". ") + ".";
   }
   if (nextArr.length) {
     script += ` 차주 주목 포인트 ${nextArr.length}가지입니다. `;
-    script += nextArr.map((n, i) => `${i + 1}, ${n}`).join(". ") + ".";
+    script += nextArr.join(". ") + ".";
   }
+
+  for (const [key, label] of Object.entries(SECTION_LABELS)) {
+    const text = stripMarkdownForTts(String(sections?.[key] ?? ""));
+    if (text) script += ` ${label}. ${text}`;
+  }
+
   return script.trim();
 }
 
@@ -164,7 +180,7 @@ Deno.serve(async (req) => {
     if (re || !report) throw new Error("리포트를 찾지 못했어요");
 
     const body = JSON.parse(report.body_md);
-    const script = buildInsightScript(body.insight ?? {});
+    const script = buildFullReportScript(body);
     if (script.length < 10) {
       return Response.json(
         { ok: false, error: "음성 변환할 내용 없음" },

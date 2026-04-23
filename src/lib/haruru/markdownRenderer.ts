@@ -67,10 +67,12 @@ export interface SplitAnswer {
 }
 
 export function splitBodyAndCitations(answer: string): SplitAnswer {
-  const idx = answer.indexOf("\n---");
-  if (idx < 0) return { body: answer, citations: null };
+  // 오직 "\n---\n근거:" 형태의 legacy 출처 블록만 잘라냄.
+  // 일반 마크다운 수평선은 본문 구분으로 자연스럽게 사용되므로 절대 자르지 않음.
+  const match = answer.match(/\n-{3,}\s*\n\s*근거\s*[:：]/);
+  if (!match || match.index === undefined) return { body: answer, citations: null };
   return {
-    body: answer.slice(0, idx).trimEnd(),
-    citations: answer.slice(idx + 4).trim(),
+    body: answer.slice(0, match.index).trimEnd(),
+    citations: answer.slice(match.index + match[0].length).trim(),
   };
 }

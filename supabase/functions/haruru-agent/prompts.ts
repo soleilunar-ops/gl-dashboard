@@ -57,7 +57,12 @@ sku_master: sku_id, sku_name, brand, product_category, sub_category, detail_cate
   * product_category 값: 'CE', 'Home', 'HPC' (영문 대분류만)
   * sub_category 값: 'Bath Acc. & Household Cleaning', 'Tools & Home Improvement', 'Health Care', 'Detergent', 'Health Appliance'
   * detail_category 값(한글): '보온소품', '보냉소품', '찜질용품', '안대/아이마스크', '혈압계', '제설함/모래함', '재난/방역용품', '습기제거제', '마사지기'
-  * ⚠️ "보온소품", "핫팩" 같은 한글 카테고리는 detail_category로 필터. product_category로 하면 0건.
+  * ⚠️ 사용자 용어 → detail_category 매핑 (절대 준수):
+    - "핫팩", "손난로", "불가마" → detail_category='보온소품'
+    - "아이워머", "스팀마스크", "눈워머" → detail_category='안대/아이마스크'
+    - "찜질팩", "쑥찜질" → detail_category='찜질용품'
+    - "제습제", "방습" → detail_category='습기제거제'
+  * ⚠️ product_category 는 영문 대분류라 한글 카테고리 필터에 쓰면 0행. 반드시 detail_category 사용.
 item_coupang_mapping: item_id, coupang_sku_id, bundle_ratio, mapping_status, channel_variant
 
 ### ERP 축 (orders 유일)
@@ -103,6 +108,19 @@ ${SCHEMA_HINT}
 - 두 축 연결: item_coupang_mapping으로 JOIN. 합산 금지, 각 축 수치 별도 컬럼.
 - 외부: weather_unified, keyword_trends, competitor_products, import_leadtime.
 
+## weather_unified JOIN 규칙 (절대 준수 — 행 증폭 방지)
+- weather_unified는 station별로 동일 weather_date에 **여러 행**을 갖습니다 (서울·수원·대전·광주·부산 등).
+- source 별로도 여러 행이 있을 수 있습니다 (asos, forecast, forecast_short, era5).
+- 매출·판매·주문과 JOIN할 때 반드시 다음 중 하나로 날짜당 1행으로 축소:
+  (a) \`weather_unified WHERE station='서울' AND source='asos'\`
+  (b) CTE로 GROUP BY weather_date + AVG(temp_*)·SUM(precipitation) 후 JOIN
+- 필터 없이 JOIN하면 판매 행이 관측소×소스 수만큼 곱해져 SUM이 크게 부풀려집니다.
+- "비 온 날" 필터는 서울 기준으로 \`WHERE w.station='서울' AND w.precipitation>0\`.
+
+## GROUP BY · DISTINCT 권장
+- JOIN 결과에 동일 키(sku_id, sale_date 등)가 중복될 가능성이 있으면 DISTINCT 또는 GROUP BY로 중복 제거 후 집계.
+- SUM/COUNT 결과가 감각적으로 과해 보이면 JOIN 중복을 먼저 의심하세요.
+
 ## 기타 규칙
 1. read-only (SELECT/WITH만). DML/DDL 금지. ;(세미콜론) 금지.
 2. 기존 뷰 우선 (v_hotpack_*, v_unified_orders_dashboard 등).
@@ -112,10 +130,13 @@ ${SCHEMA_HINT}
 ## 날짜 해석 규칙 (중요)
 - 오늘: ${today}
 - ${seasonInfo}
-- 판매·재고·날씨·키워드 데이터는 위 시즌 범위 내에만 있음. 시즌 밖은 데이터 없음.
-- 연도 없는 날짜(예: '12월 3일')는 위 시즌 범위 내 해당 날짜로 해석.
-- '지난주', '어제' 상대 표현은 오늘 기준이지만, 오늘이 비수기면 0행 가능 — 그대로 반환.
-- 2024년 이전 데이터는 없음. 미래(시즌 아직 미개시) 조회 금지.
+- 판매·재고·날씨·키워드 데이터는 **여러 시즌에 걸쳐 존재할 수 있습니다** (과거 종료 시즌 + 현재 · 미래 시즌 초기 시드 데이터 포함).
+- 기본 조회 범위: 최근 24개월 (${today}로부터 -730일). 사용자가 특정 연도·시즌을 명시하지 않으면 이 넓은 범위에서 조회.
+- "올해 시즌" 해석: 가장 최근 종료 시즌 + 미개시/진행 중 시즌에 존재하는 데이터 전체 — 두 시즌 범위를 모두 커버.
+- 연도 없는 날짜(예: '12월 3일')는 데이터가 있는 가장 최근 시즌의 해당 날짜로 해석. 필요 시 **가장 가까운 과거·미래 2개 모두** 조회해 데이터가 있는 쪽을 선택.
+- '지난주', '어제' 상대 표현은 오늘 기준이지만, 데이터가 0행이면 자동으로 가장 최근 데이터가 있는 주차로 폴백.
+- 2024년 이전 데이터는 없음.
+- **0행 회피 원칙**: 좁은 필터로 0행이 예상되면 일단 넓은 범위로 조회하고, 결과에서 상위 N개만 선택해 LIMIT 처리.
 
 다음 JSON만 출력 (다른 텍스트 금지):
 {"sql":"SELECT ...","tables":["table_a"],"rationale":"한 문장"}`;
@@ -135,4 +156,4 @@ export const VERIFIER_RETRY_PROMPT = (issues: string[]) =>
   `이전 답변에서 다음 문제가 있었습니다:
 - ${issues.join("\n- ")}
 
-컨텍스트에 없는 숫자는 쓰지 말고, 모든 수치 뒤에 [ref:sql.row_N] 또는 [ref:rag.<source>.<id>] 태그를 붙여 다시 답변해 주세요.`;
+컨텍스트에 없는 숫자는 쓰지 마세요. 본문에는 근거 태그를 붙이지 않습니다 (UI가 별도 패널로 표시). 수치·식별자는 자연스럽게 본문에 작성하고 다시 답변해 주세요.`;

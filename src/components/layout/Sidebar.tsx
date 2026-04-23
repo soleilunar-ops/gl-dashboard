@@ -17,6 +17,7 @@ import {
   Triangle,
   Upload,
   Menu,
+  Boxes,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { navigation, type NavItem } from "./navigation.config";
@@ -44,6 +45,7 @@ const iconMap: Record<string, LucideIcon> = {
   Truck,
   Triangle,
   Upload,
+  Boxes,
 };
 
 interface SidebarProps {

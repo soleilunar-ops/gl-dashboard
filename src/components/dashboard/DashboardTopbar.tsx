@@ -20,20 +20,18 @@ export function DashboardTopbar() {
   return (
     <header className="dashboard-topbar">
       <div className="dashboard-topbar-left">
-        <span className="dashboard-fire" aria-hidden>
-          🔥
-        </span>
         <div>
-          <h1 className="dashboard-title">오늘의 하루루 브리핑</h1>
-          <p className="dashboard-subtitle">매일 아침 6시 · 쿠팡 50억+ 시즌 전용 대시보드</p>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">오늘의 하루루 브리핑</h1>
         </div>
       </div>
       <div className="dashboard-topbar-actions">
-        <button type="button" className="dashboard-topbar-btn">
+        <button
+          type="button"
+          className="dashboard-topbar-btn"
+          onClick={() => window.location.reload()}
+          title="페이지를 새로고침하여 최신 데이터를 다시 불러옵니다"
+        >
           ↻ 새로고침 {hhmm && `· ${hhmm}`}
-        </button>
-        <button type="button" className="dashboard-topbar-btn">
-          ⚙ 설정
         </button>
       </div>
     </header>
