@@ -243,6 +243,58 @@
     grid-template-columns: repeat(2, 1fr);
     padding: 14px 16px;
   }
+
+  /* 카드 헤더: 가로 flex → 세로 스택으로 전환 (배지·제목 짜부라짐 방지) */
+  .wr-card-header {
+    padding: 16px 16px 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .wr-header-main {
+    width: 100%;
+  }
+  .wr-header-badge {
+    white-space: nowrap;
+  }
+  .wr-header-title {
+    font-size: 14.5px;
+    word-break: keep-all;
+    line-height: 1.4;
+  }
+  .wr-header-meta {
+    font-size: 11px;
+  }
+  .wr-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .wr-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 7px 10px;
+    font-size: 11.5px;
+  }
+
+  /* 나머지 영역 좌우 패딩 축소 */
+  .wr-headline {
+    padding: 14px 16px;
+  }
+  .wr-alerts {
+    padding: 14px 16px;
+  }
+  .wr-footer {
+    padding: 12px 16px;
+  }
+  .wr-cta-wrap {
+    padding: 16px 16px 18px;
+  }
+
+  /* 카드 모서리 소폭 축소로 답답함 완화 */
+  .wr-card {
+    border-radius: 14px;
+  }
 }
 
 /* ───── 푸터 ───── */
