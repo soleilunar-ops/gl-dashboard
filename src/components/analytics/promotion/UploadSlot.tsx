@@ -75,6 +75,8 @@ export default function UploadSlot({
 }: UploadSlotProps) {
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [fileName, setFileName] = useState("");
+  // 변경 이유: Storage 업로드용 원본 File 객체 보관 (확정 버튼 누를 때까지 유지)
+  const [file, setFile] = useState<File | null>(null);
   const [overlapOpen, setOverlapOpen] = useState(false);
   const [overlapCount, setOverlapCount] = useState(0);
   const [pendingMode, setPendingMode] = useState<UploadConflictMode>("replace");
@@ -147,6 +149,7 @@ export default function UploadSlot({
       }
       setRows(parsed);
       setFileName(file.name);
+      setFile(file);
       if (uploadKind === "coupon") {
         setOverlapCount(0);
         return;
@@ -166,6 +169,12 @@ export default function UploadSlot({
     if (!rows?.length) return;
     setUploading(true);
     const supabase = createClient();
+    // 변경 이유: Storage 경로 접두사용 user.id 획득 (미들웨어 인증 가드로 user는 보장되나 안전망)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userId = user?.id;
+    const fileForLog = file ?? undefined;
     let res: UploadResult;
     try {
       if (uploadKind === "daily_performance") {
@@ -173,27 +182,35 @@ export default function UploadSlot({
           supabase,
           rows as ParsedDailyPerformanceRow[],
           mode,
-          fileName || "daily_performance.csv"
+          fileName || "daily_performance.csv",
+          fileForLog,
+          userId
         );
       } else if (uploadKind === "delivery_detail") {
         res = await uploadDeliveryDetail(
           supabase,
           rows as ParsedDeliveryRow[],
           mode,
-          fileName || "delivery.xlsx"
+          fileName || "delivery.xlsx",
+          fileForLog,
+          userId
         );
       } else if (uploadKind === "milkrun") {
         res = await uploadMilkrunCosts(
           supabase,
           rows as ParsedMilkrunRow[],
           mode,
-          fileName || "milkrun.xls"
+          fileName || "milkrun.xls",
+          fileForLog,
+          userId
         );
       } else {
         res = await uploadCouponContracts(
           supabase,
           rows as ParsedCouponContractRow[],
-          fileName || "coupon.xls"
+          fileName || "coupon.xls",
+          fileForLog,
+          userId
         );
       }
       if (res.errors.length) {
@@ -202,6 +219,7 @@ export default function UploadSlot({
         toast.success(`저장 완료: ${res.inserted + res.updated}건 처리되었습니다.`);
       }
       setRows(null);
+      setFile(null);
       setOverlapOpen(false);
       onUploaded?.();
     } catch (e) {
@@ -285,7 +303,15 @@ export default function UploadSlot({
             >
               확정
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setRows(null)} disabled={uploading}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setRows(null);
+                setFile(null);
+              }}
+              disabled={uploading}
+            >
               취소
             </Button>
           </div>

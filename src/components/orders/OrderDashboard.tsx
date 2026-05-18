@@ -16,7 +16,10 @@ import { OrdersListFilters } from "./OrdersListFilters";
 import { OrdersTable } from "./OrdersTable";
 import { OrdersActionPanel } from "./OrdersActionPanel";
 import { OrdersStockSidebar } from "./OrdersStockSidebar";
-import { OrdersExcelUploadDialog } from "./OrdersExcelUploadDialog";
+// 인계 보류(2026-05-18): 엑셀 업로드 기능은 슬아의 파서(`구매현황` 시트 + `일자-No.` 컬럼 가정)가
+// 실제 이카운트 다운로드 형식(`년/월/일`·`구매처명` 등)과 어긋남. 슬아와 협의해 파서 형식 확정 후 복구.
+// 관련 인프라(API enum 정합화, Storage 한글 키 수정)는 보존되어 있어 import 한 줄만 풀면 즉시 동작.
+// import { OrdersExcelUploadDialog } from "./OrdersExcelUploadDialog";
 import OrderContractAddForm from "./OrderContractAddForm";
 import type { OrderErpDealKind } from "./types";
 import {
@@ -472,12 +475,13 @@ export default function OrderDashboard() {
                       ? "Supabase에서 데이터를 불러오는 중입니다…"
                       : "ERP 데이터 불러오기"}
                   </Button>
-                  <OrdersExcelUploadDialog
+                  {/* 인계 보류(2026-05-18): 엑셀 업로드 기능 임시 숨김. import 라인 주석 참조 */}
+                  {/* <OrdersExcelUploadDialog
                     companyCode={singleCompanyOrNull}
                     purchases={purchases}
                     onImported={refetch}
                     triggerClassName="h-11 px-6 text-base"
-                  />
+                  /> */}
                   <Button
                     type="button"
                     variant="ghost"

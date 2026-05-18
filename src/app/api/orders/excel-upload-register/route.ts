@@ -9,10 +9,11 @@ import { ORDER_EXCEL_STORAGE_BUCKET } from "@/lib/orders/excelUploadStorage";
 
 const VALID_COMPANY: readonly OrderCompanyCode[] = ["gl", "glpharm", "hnb"];
 
-/** Storage 객체 키용 파일명 정규화 — 변경 이유: bulk-import와 동일 규칙 유지 */
+/** Storage 객체 키용 파일명 정규화 — 변경 이유: Supabase Storage가 비-ASCII 키 거부(예: 한글 파일명) → 영숫자/점/대시/언더바만 허용. 원본 파일명은 excel_uploads.file_name에 한글 그대로 보존 */
 function safeStorageSegment(name: string): string {
   const t = name.trim() || "upload.xlsx";
-  return t.replace(/[^\w.\s\-가-힣()]/g, "_").slice(0, 140);
+  const cleaned = t.replace(/[^\w.\-]/g, "_").slice(0, 140);
+  return cleaned || "upload.xlsx";
 }
 
 function resolveCompany(value: unknown): OrderCompanyCode | null {
@@ -78,7 +79,9 @@ export async function POST(request: Request) {
   const { data: inserted, error: logErr } = await admin
     .from("excel_uploads")
     .insert({
-      category: "order_purchase_excel",
+      // 변경 이유: excel_uploads.category CHECK 제약에 'order_purchase_excel' 없음 → 'other'로 통과시키고 notes로 실제 카테고리 보존
+      category: "other",
+      notes: "order_purchase_excel",
       company_code: companyCode,
       file_name: displayFileName,
       total_rows: 0,

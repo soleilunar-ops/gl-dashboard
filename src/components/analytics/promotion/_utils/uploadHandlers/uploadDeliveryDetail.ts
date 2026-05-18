@@ -26,7 +26,9 @@ export async function uploadDeliveryDetail(
   supabase: SupabaseClient<Database>,
   rows: ParsedDeliveryRow[],
   mode: UploadConflictMode,
-  fileName: string
+  fileName: string,
+  file?: File,
+  userId?: string
 ): Promise<UploadResult> {
   const errors: string[] = [];
   let inserted = 0;
@@ -52,11 +54,13 @@ export async function uploadDeliveryDetail(
       errors.push(`기존 데이터 조회 실패: ${exErr.message}`);
       await logUploadHistory(supabase, {
         fileName,
-        fileType: "delivery_detail",
+        fileType: "coupang_delivery",
         periodStart,
         periodEnd,
         rowCount: rows.length,
         status: "failed",
+        file,
+        userId,
       });
       return { inserted: 0, updated: 0, errors, periodStart, periodEnd };
     }
@@ -73,11 +77,13 @@ export async function uploadDeliveryDetail(
       errors.push(`기간 내 기존 데이터 삭제 실패: ${delErr.message}`);
       await logUploadHistory(supabase, {
         fileName,
-        fileType: "delivery_detail",
+        fileType: "coupang_delivery",
         periodStart,
         periodEnd,
         rowCount: 0,
         status: "failed",
+        file,
+        userId,
       });
       return { inserted: 0, updated: 0, errors, periodStart, periodEnd };
     }
@@ -93,11 +99,13 @@ export async function uploadDeliveryDetail(
   const status = errors.length ? "partial" : "success";
   await logUploadHistory(supabase, {
     fileName,
-    fileType: "delivery_detail",
+    fileType: "coupang_delivery",
     periodStart,
     periodEnd,
     rowCount: inserted,
     status: errors.length && inserted === 0 ? "failed" : status,
+    file,
+    userId,
   });
 
   return { inserted, updated: 0, errors, periodStart, periodEnd };

@@ -55,7 +55,13 @@
       "Bash(taskkill /PID 9008 /F)",
       "Bash(taskkill /F /IM node.exe)",
       "Bash(cmd.exe //c \"taskkill /PID 9008 /F\")",
-      "Bash(cmd.exe //c \"taskkill /F /IM node.exe\")"
+      "Bash(cmd.exe //c \"taskkill /F /IM node.exe\")",
+      "Bash(findstr /I \"DASHBOARD_DATE\")",
+      "Bash(findstr /I \"DASHBOARD\")",
+      "PowerShell(Set-Content *)",
+      "Bash(taskkill *)",
+      "PowerShell(Stop-Process *)",
+      "Bash(git add *)"
     ]
   }
 }

@@ -5,13 +5,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdmin } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import type { OrderCompanyCode } from "@/lib/orders/orderMeta";
+import { normalizeOrderCompanyCode, type OrderCompanyCode } from "@/lib/orders/orderMeta";
 import type { Database } from "@/lib/supabase/types";
 
+/** 변경 이유: 사용자 친화 입력값 'gl_pharm'도 받아 정규화 후 DB enum 'glpharm'으로 통일 */
 function resolveCompanyCode(value: string | null): OrderCompanyCode | null {
-  if (value === "gl" || value === "glpharm" || value === "hnb") {
-    return value;
-  }
+  if (value === "gl" || value === "glpharm" || value === "hnb") return value;
+  if (value === "gl_pharm") return normalizeOrderCompanyCode("gl_pharm");
   return null;
 }
 
@@ -51,7 +51,9 @@ export async function GET(request: Request) {
     .select(
       "id, company_code, file_name, total_rows, inserted_rows, skipped_rows, uploaded_at, storage_path, uploaded_by"
     )
-    .eq("category", "order_purchase_excel")
+    // 변경 이유: category enum에 'order_purchase_excel' 없어 'other'+notes 보존 패턴으로 분리됨
+    .eq("category", "other")
+    .eq("notes", "order_purchase_excel")
     .order("uploaded_at", { ascending: false });
 
   if (!scopeAll && companyCode) {

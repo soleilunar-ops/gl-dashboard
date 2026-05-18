@@ -1,6 +1,7 @@
 "use client";
 
-// 3열 — 체크리스트 + 검색량 + Insight(green)
+// 3열 — 체크리스트 + Insight(green)
+// 변경 이유(2026-05-18): 네이버 검색량 카드는 sync-keyword-trends Edge Function 미가동·미배포 상태라 라이브 데이터 없음. UI에서 숨김(코드는 git에 보존)
 import { useState } from "react";
 import type { SeasonProfile } from "@/lib/demo";
 
@@ -21,8 +22,6 @@ function tagClass(tag: "긴급" | "오늘" | "이번주") {
 
 export function BriefingActionColumn({ data }: Props) {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-
-  const maxBar = Math.max(...data.searchVolume.sparkline, 1);
 
   return (
     <section>
@@ -50,35 +49,7 @@ export function BriefingActionColumn({ data }: Props) {
         ))}
       </div>
 
-      {/* 검색량 */}
-      <div className="hb-divider-dotted">
-        <div className="hb-divider-label">
-          네이버 검색량 · {data.searchVolume.startDate} ~ {data.searchVolume.endDate}
-        </div>
-        <div className="hb-search-big">
-          <div className="hb-search-num">
-            <span className="hb-search-num-value">
-              {data.searchVolume.dailyChangePercent > 0 ? "+" : ""}
-              {data.searchVolume.dailyChangePercent}
-            </span>
-            <span className="hb-search-num-unit">%</span>
-          </div>
-          <span className="hb-search-label">전일 대비</span>
-        </div>
-        <div className="hb-sparkline">
-          {data.searchVolume.sparkline.map((v, i) => (
-            <div
-              key={i}
-              className="hb-sparkline-bar"
-              style={{ height: `${(v / maxBar) * 100}%`, minHeight: 2 }}
-            />
-          ))}
-        </div>
-        <div className="hb-sparkline-axis">
-          <span>{data.searchVolume.startDate.slice(5)}</span>
-          <span>{data.searchVolume.endDate.slice(5)}</span>
-        </div>
-      </div>
+      {/* 검색량 영역은 일시 숨김 (네이버 DataLab 연동 미가동) */}
 
       {/* Insight */}
       <div className="hb-insight hb-green">

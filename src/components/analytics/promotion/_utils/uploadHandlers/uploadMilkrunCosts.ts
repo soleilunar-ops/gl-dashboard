@@ -20,7 +20,9 @@ export async function uploadMilkrunCosts(
   supabase: SupabaseClient<Database>,
   rows: ParsedMilkrunRow[],
   mode: UploadConflictMode,
-  fileName: string
+  fileName: string,
+  file?: File,
+  userId?: string
 ): Promise<UploadResult> {
   const errors: string[] = [];
   let inserted = 0;
@@ -55,6 +57,8 @@ export async function uploadMilkrunCosts(
         periodEnd,
         rowCount: 0,
         status: "failed",
+        file,
+        userId,
       });
       return { inserted: 0, updated: 0, errors, periodStart, periodEnd };
     }
@@ -73,6 +77,8 @@ export async function uploadMilkrunCosts(
         periodEnd,
         rowCount: 0,
         status: "failed",
+        file,
+        userId,
       });
       return { inserted: 0, updated: 0, errors, periodStart, periodEnd };
     }
@@ -95,6 +101,8 @@ export async function uploadMilkrunCosts(
     periodEnd,
     rowCount: inserted,
     status: errors.length && inserted === 0 ? "failed" : status,
+    file,
+    userId,
   });
 
   return { inserted, updated: 0, errors, periodStart, periodEnd };

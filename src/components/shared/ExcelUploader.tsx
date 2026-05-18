@@ -127,7 +127,16 @@ export default function ExcelUploader({
         onClick={() => inputRef.current?.click()}
       >
         <p className="text-muted-foreground mb-2">파일을 끌어다 놓거나 아래 버튼으로 선택하세요.</p>
-        <Button type="button" variant="secondary" size="sm" onClick={(e) => e.stopPropagation()}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={(e) => {
+            // 변경 이유: stopPropagation만 있고 input 열기가 빠져 있어 버튼이 동작 안 함. 부모 div 클릭으로 떨어지면 중복 실행되므로 stopPropagation은 유지하고 input을 직접 호출
+            e.stopPropagation();
+            inputRef.current?.click();
+          }}
+        >
           파일 선택
         </Button>
         <input

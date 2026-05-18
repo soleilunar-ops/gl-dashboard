@@ -17,7 +17,9 @@ const BATCH = 100;
 export async function uploadCouponContracts(
   supabase: SupabaseClient<Database>,
   rows: ParsedCouponContractRow[],
-  fileName: string
+  fileName: string,
+  file?: File,
+  userId?: string
 ): Promise<UploadResult> {
   const errors: string[] = [];
   const seasonConfig = await fetchSeasonConfig(supabase);
@@ -59,6 +61,8 @@ export async function uploadCouponContracts(
     periodEnd: periodEnd || periodStart || new Date().toISOString().slice(0, 10),
     rowCount: updated,
     status,
+    file,
+    userId,
   });
 
   return { inserted: 0, updated, errors, periodStart, periodEnd };
