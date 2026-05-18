@@ -4,11 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 
-/** 프로모션 업로드 이력 UI에 노출할 카테고리 (다른 팀 영역 업로드 제외) */
+/** 프로모션 업로드 이력 UI에 노출할 카테고리 — 변경 이유: excel_uploads.category DB CHECK 제약값으로 정합화 */
 const PROMOTION_CATEGORIES = [
   "coupon_contracts",
-  "daily_performance",
-  "delivery_detail",
+  "coupang_daily_performance",
+  "coupang_delivery",
   "milkrun_costs",
 ] as const;
 

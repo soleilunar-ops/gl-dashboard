@@ -38,10 +38,11 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-/** Storage 객체 키용 파일명 정규화 — 변경 이유: 경로 주입 방지 */
+/** Storage 객체 키용 파일명 정규화 — 변경 이유: Supabase Storage가 비-ASCII 키 거부(예: 한글 파일명) → 영숫자/점/대시/언더바만 허용. 원본 파일명은 excel_uploads.file_name에 한글 그대로 보존 */
 function safeStorageSegment(name: string): string {
   const t = name.trim() || "upload.xlsx";
-  return t.replace(/[^\w.\s\-가-힣()]/g, "_").slice(0, 140);
+  const cleaned = t.replace(/[^\w.\-]/g, "_").slice(0, 140);
+  return cleaned || "upload.xlsx";
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -264,7 +265,8 @@ export async function POST(request: Request) {
       item_id: itemId,
       erp_system: companyCode,
       tx_type: "purchase",
-      source_table: "excel_upload",
+      // 변경 이유: orders.source_table CHECK 제약에 'excel_upload' 없음 → 'manual'로 매핑(엑셀=수기 일괄 입력 성격), 실제 출처는 memo의 composeOrderSource에 보존
+      source_table: "manual",
       erp_code: r.erpCode,
       erp_tx_no: r.erpRef,
       erp_tx_line_no: lineNo,
@@ -359,7 +361,9 @@ export async function POST(request: Request) {
 
   if (displayFileName) {
     const { error: logErr } = await admin.from("excel_uploads").insert({
-      category: "order_purchase_excel",
+      // 변경 이유: excel_uploads.category CHECK 제약에 'order_purchase_excel' 없음 → 'other'로 통과시키고 notes로 실제 카테고리 보존
+      category: "other",
+      notes: "order_purchase_excel",
       company_code: companyCode,
       file_name: displayFileName,
       total_rows: normalized.length,
